@@ -1,7 +1,7 @@
 // src/app/api/v1/admin/users/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { query } from '@/lib/db';
-import { INITIAL_USER_ACCOUNTS, UserAccountItem } from '@/lib/user-store';
+import { INITIAL_USER_ACCOUNTS, UserAccountItem } from '@/lib/user-constants';
 
 // MpsiUserAccount 테이블 자동 생성 DDL
 const CREATE_USER_TABLE_SQL = `
