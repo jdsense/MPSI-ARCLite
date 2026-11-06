@@ -18,7 +18,7 @@ import {
   Sparkles
 } from "lucide-react";
 import { saveRoleSession, RoleType } from "@/lib/role-store";
-import { findUserByLoginId } from "@/lib/user-store";
+import { findUserByLoginId, useUserAccountStore } from "@/lib/user-store";
 import { verifyPassword, DEFAULT_INITIAL_PASSWORD } from "@/lib/auth-crypto";
 
 type TabRole = "mpsi" | "admin" | "mold" | "mass";
@@ -84,6 +84,7 @@ const ROLE_METAS: RoleCardMeta[] = [
 
 export default function LoginPage() {
   const router = useRouter();
+  useUserAccountStore(); // 로그인 페이지 진입 시 DB 계정 동기화
   const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<TabRole>("mpsi");
 

@@ -107,9 +107,18 @@ function sha256Pure(str: string): string {
   while ((utf8.length % 64) !== 56) {
     utf8.push(0);
   }
-  for (let i = 7; i >= 0; i--) {
-    utf8.push((bitLength >>> (i * 8)) & 0xff);
-  }
+  const highBits = Math.floor(bitLength / 0x100000000);
+  const lowBits = bitLength >>> 0;
+  utf8.push(
+    (highBits >>> 24) & 0xff,
+    (highBits >>> 16) & 0xff,
+    (highBits >>> 8) & 0xff,
+    highBits & 0xff,
+    (lowBits >>> 24) & 0xff,
+    (lowBits >>> 16) & 0xff,
+    (lowBits >>> 8) & 0xff,
+    lowBits & 0xff
+  );
 
   const words: number[] = [];
   for (let i = 0; i < utf8.length; i += 4) {
