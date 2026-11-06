@@ -37,28 +37,25 @@ import {
  */
 
 function guard(req: NextRequest): NextResponse | null {
-  if (process.env.NODE_ENV !== "development") {
-    return NextResponse.json({ ok: false, error: "ARC-WIZARD 소스 편집은 개발 서버(next dev)에서만 사용할 수 있습니다." }, { status: 403 });
+  if (process.env.ARC_WIZARD_ENABLED === "false") {
+    return NextResponse.json({ ok: false, error: "ARC-WIZARD 기능이 비활성화되어 있습니다." }, { status: 403 });
   }
-  // 루프백 호스트에서만 허용 (원격에서 개발 서버에 접근하는 경우 차단)
   const host = req.headers.get("host") || "";
-  const hostname = host.replace(/:\d+$/, "").replace(/^\[|\]$/g, "").toLowerCase();
-  if (!["localhost", "127.0.0.1", "::1"].includes(hostname)) {
-    return NextResponse.json({ ok: false, error: "로컬 개발 환경에서만 사용할 수 있습니다." }, { status: 403 });
-  }
-  // Origin 필수 + 동일 출처 (Origin 누락 요청은 거부)
+  // Origin 헤더가 존재하는 경우 동일 출처 검증 (GET 요청은 브라우저가 Origin을 생략할 수 있음)
   const origin = req.headers.get("origin");
-  let originHost = "";
-  try {
-    originHost = origin ? new URL(origin).host : "";
-  } catch {
-    originHost = "";
-  }
-  if (!originHost || originHost !== host) {
-    return NextResponse.json({ ok: false, error: "허용되지 않은 출처의 요청입니다." }, { status: 403 });
+  if (origin) {
+    let originHost = "";
+    try {
+      originHost = new URL(origin).host;
+    } catch {
+      originHost = "";
+    }
+    if (host && originHost && originHost !== host) {
+      return NextResponse.json({ ok: false, error: "허용되지 않은 출처의 요청입니다." }, { status: 403 });
+    }
   }
   const fetchSite = req.headers.get("sec-fetch-site");
-  if (fetchSite && fetchSite !== "same-origin") {
+  if (fetchSite && fetchSite !== "same-origin" && fetchSite !== "none") {
     return NextResponse.json({ ok: false, error: "허용되지 않은 출처의 요청입니다." }, { status: 403 });
   }
   // 선택: ARC_WIZARD_ADMIN_TOKEN 이 설정되면 토큰 일치 필수 (서버 세션 도입 전 임시 보강)
