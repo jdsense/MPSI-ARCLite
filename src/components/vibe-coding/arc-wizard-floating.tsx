@@ -154,7 +154,7 @@ export function ArcWizardFloating() {
   const [llmEnabled, setLlmEnabled] = useState(true);
   const [aiModel, setAiModel] = useState("gemini-3.8-flash");
   const [aiProvider, setAiProvider] = useState<"auto" | "gemini" | "vertex" | "openai-compatible">("gemini");
-  const [maskedKey, setMaskedKey] = useState("AQ.Ab8...oA0A");
+  const [maskedKey, setMaskedKey] = useState("");
   const [aiBaseUrl, setAiBaseUrl] = useState("");
   const [isAiModalOpen, setIsAiModalOpen] = useState(false);
   const [formProvider, setFormProvider] = useState<"auto" | "gemini" | "vertex" | "openai-compatible">("gemini");
@@ -365,7 +365,7 @@ export function ArcWizardFloating() {
       }
       setFormApiKey("");
       setIsAiModalOpen(false);
-      say(`✅ AI 엔진 설정 저장 완료\n• 모델: ${d.aiConfig?.model}\n• 공급자: ${d.aiConfig?.provider}\n• API 키: ${d.aiConfig?.maskedKey || "(미설정)"}`, "ok");
+      say(`✅ AI 엔진 설정 저장 완료\n• 모델: ${d.aiConfig?.model}\n• 공급자: ${d.aiConfig?.provider}\n• API 키: ${d.llmEnabled ? "보안 키 적용됨 (비공개)" : "(미설정)"}`, "ok");
     } finally {
       setBusy(false);
     }
@@ -835,7 +835,9 @@ export function ArcWizardFloating() {
                 <div>
                   <div className="flex items-center justify-between mb-1">
                     <label className="text-[11px] font-semibold text-zinc-300">API Key</label>
-                    <span className="text-[10px] font-mono text-emerald-400">현재 적용중: {maskedKey || "없음"}</span>
+                    <span className="text-[10px] font-mono text-emerald-400">
+                      {llmEnabled || maskedKey ? "● 보안 키 적용중 (비공개)" : "미설정"}
+                    </span>
                   </div>
                   <input
                     type="password"

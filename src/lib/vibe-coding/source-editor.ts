@@ -54,13 +54,52 @@ interface HistoryEntry {
 const toRel = (abs: string) => path.relative(ROOT, abs).split(path.sep).join("/");
 const sha = (s: string) => crypto.createHash("sha1").update(s).digest("hex");
 
+// 인증·권한·DB·동기화·전역 레이아웃 등 AI 편집 금지 파일 (src/ 기준 상대경로, 소문자)
+const DENIED_FILES = new Set([
+  "lib/auth-crypto.ts",
+  "lib/db.ts",
+  "lib/role-store.ts",
+  "lib/permission-store.ts",
+  "lib/user-store.ts",
+  "lib/menu-store.ts",
+  "lib/notification-store.ts",
+  "services/sync-service.ts",
+  "config/node-config.ts",
+  "types/sync.ts",
+  "app/layout.tsx",
+  "app/portal/layout.tsx",
+  "middleware.ts",
+  "proxy.ts",
+]);
+const DENIED_PREFIXES = ["app/auth/", "app/api/", "components/vibe-coding/", "lib/vibe-coding/"];
+
+/** 비교용 정규화: 심볼릭 링크 해소 + 슬래시 + 소문자 (Windows 대소문자 우회 방지) */
+function normForCompare(abs: string): string {
+  let real = abs;
+  try {
+    real = fs.realpathSync.native(abs);
+  } catch {
+    // 존재하지 않는 경로는 원본 유지
+  }
+  return real.split(path.sep).join("/").toLowerCase();
+}
+
+/** src/ 기준 상대경로가 금지 대상인지 (정규화된 소문자 경로 입력) */
+function isDeniedRel(relFromSrc: string): boolean {
+  return DENIED_FILES.has(relFromSrc) || DENIED_PREFIXES.some((p) => relFromSrc.startsWith(p));
+}
+
 /** src/ 하위의 허용된 파일인지 검증하고 절대경로를 반환 */
 export function resolveSafePath(relFile: string): string {
   const abs = path.resolve(ROOT, relFile);
-  if (!abs.startsWith(SRC_DIR + path.sep)) throw new Error(`허용되지 않은 경로입니다: ${relFile}`);
-  if (EXCLUDED_DIRS.some((d) => abs.startsWith(d + path.sep))) throw new Error(`편집이 금지된 경로입니다: ${relFile}`);
-  if (!ALLOWED_EXT.has(path.extname(abs))) throw new Error(`편집할 수 없는 파일 형식입니다: ${relFile}`);
+  if (!abs.toLowerCase().startsWith((SRC_DIR + path.sep).toLowerCase())) throw new Error(`허용되지 않은 경로입니다: ${relFile}`);
   if (!fs.existsSync(abs)) throw new Error(`파일이 존재하지 않습니다: ${relFile}`);
+  const srcNorm = normForCompare(SRC_DIR) + "/";
+  const absNorm = normForCompare(abs);
+  if (!absNorm.startsWith(srcNorm)) throw new Error(`허용되지 않은 경로입니다: ${relFile}`);
+  const relFromSrc = absNorm.slice(srcNorm.length);
+  if (isDeniedRel(relFromSrc)) throw new Error(`편집이 금지된 경로입니다: ${relFile}`);
+  if (!ALLOWED_EXT.has(path.extname(abs).toLowerCase())) throw new Error(`편집할 수 없는 파일 형식입니다: ${relFile}`);
   return abs;
 }
 
@@ -82,6 +121,8 @@ function walk(dir: string, out: string[]) {
       if (EXCLUDED_DIRS.includes(abs)) continue;
       walk(abs, out);
     } else if (ALLOWED_EXT.has(path.extname(entry.name))) {
+      const relFromSrc = path.relative(SRC_DIR, abs).split(path.sep).join("/").toLowerCase();
+      if (isDeniedRel(relFromSrc)) continue; // 금지 파일은 검색 후보에서도 제외
       out.push(abs);
     }
   }
@@ -166,6 +207,8 @@ function ensureHistoryDir() {
 /** 선택된 위치들(단일 라인 문구 또는 멀티라인 소스 블록)을 치환하고 백업(히스토리)을 남김 */
 export function applyEdits(edits: EditRequest[], summary: string) {
   if (!edits.length) throw new Error("적용할 변경이 없습니다.");
+  if (edits.length > 20) throw new Error("한 번에 적용할 수 있는 변경은 20건까지입니다.");
+  if (new Set(edits.map((e) => e.file)).size > 5) throw new Error("한 번에 변경할 수 있는 파일은 5개까지입니다.");
   for (const e of edits) {
     const err = validateReplacement(e.to, true);
     if (err) throw new Error(err);
@@ -241,15 +284,23 @@ export function undoHistory(id?: string) {
   if (!fs.existsSync(file)) throw new Error("해당 변경 이력을 찾을 수 없습니다.");
   const entry = JSON.parse(fs.readFileSync(file, "utf-8")) as HistoryEntry;
 
+  // 되돌리기 허용 대상: 일반 편집 가능 파일 + createPage 가 관리하는 고정 파일 + 숨김컬럼 설정
+  const MANAGED_RESTORE = new Set([
+    toRel(OVERRIDES_FILE),
+    toRel(path.join(SRC_DIR, "config", "menu-config.json")),
+    toRel(path.join(SRC_DIR, "app", "portal", "layout.tsx")),
+  ]);
+  const restorePath = (rel: string) =>
+    MANAGED_RESTORE.has(rel) ? path.join(ROOT, rel) : resolveSafePath(rel);
   for (const f of entry.files) {
-    const abs = f.file === toRel(OVERRIDES_FILE) ? OVERRIDES_FILE : resolveSafePath(f.file);
+    const abs = restorePath(f.file);
     const current = fs.readFileSync(abs, "utf-8");
     if (sha(current) !== f.afterHash) {
       throw new Error(`${f.file} 파일이 이후에 다시 수정되어 자동으로 되돌릴 수 없습니다. (최신 변경부터 되돌려 주세요)`);
     }
   }
   for (const f of entry.files) {
-    const abs = f.file === toRel(OVERRIDES_FILE) ? OVERRIDES_FILE : resolveSafePath(f.file);
+    const abs = restorePath(f.file);
     fs.writeFileSync(abs, f.before, "utf-8");
   }
   for (const createdRel of entry.createdFiles || []) {
@@ -567,8 +618,7 @@ export function normalizeModelName(raw: string): string {
 
 export function maskApiKey(key: string): string {
   if (!key) return "";
-  if (key.length <= 10) return "****";
-  return `${key.slice(0, 6)}...${key.slice(-4)}`;
+  return "••••••••••••";
 }
 
 export function getAiConfig(): AiConfig {
@@ -1021,6 +1071,12 @@ ${excerpt}`;
       if (!e?.search || typeof e.replace !== "string" || e.search === e.replace) continue;
       if (validateReplacement(e.replace, true)) continue;
       const targetRel: string = e.file && e.file.startsWith("src/") ? e.file : rel;
+      // AI 제안 범위: 현재 화면 page + 공통/도메인 컴포넌트 + 사이드바만 (그 외 파일 제안은 폐기)
+      const inScope =
+        targetRel === rel ||
+        targetRel === sidebarRel ||
+        (targetRel.startsWith("src/components/") && !targetRel.startsWith("src/components/ui/"));
+      if (!inScope) continue;
       let targetSource = source;
       let targetLines = lines;
       if (targetRel !== rel) {
