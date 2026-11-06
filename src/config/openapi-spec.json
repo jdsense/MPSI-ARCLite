@@ -1,0 +1,135 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "MPSI 분산 노드 간 데이터 동기화 API 규격서",
+    "version": "1.0.0",
+    "description": "KS X 9101-1:2025 표준 기반 MPSI 본사, 우성정공, 뉴몰드 간의 트랜잭셔널 아웃박스 비동기 연계 API"
+  },
+  "servers": [
+    { "url": "https://mpsi-hub.a2lab.co.kr", "description": "MPSI 본사 Hub 프로덕션" },
+    { "url": "http://localhost:3000", "description": "로컬 개발 환경" }
+  ],
+  "paths": {
+    "/api/v1/sync/inbound": {
+      "post": {
+        "summary": "타 노드로부터 비즈니스 동기화 이벤트 수신 (멱등성 보장)",
+        "operationId": "receiveInboundSyncEvent",
+        "parameters": [
+          {
+            "name": "x-node-api-key",
+            "in": "header",
+            "required": true,
+            "schema": { "type": "string" },
+            "description": "노드 간 보안 인증 API 키"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SyncEnvelope"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "수신 및 접수 성공",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SyncInboundResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "유효하지 않은 페이로드 또는 대상 노드 불일치"
+          },
+          "401": {
+            "description": "인증 실패"
+          }
+        }
+      }
+    },
+    "/api/v1/sync/status": {
+      "get": {
+        "summary": "현재 노드 정체성 및 분산 연계 상태/헬스체크 현황 조회",
+        "operationId": "getSyncStatus",
+        "responses": {
+          "200": {
+            "description": "정상 응답",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "currentNode": {
+                      "type": "object",
+                      "properties": {
+                        "nodeId": { "type": "string" },
+                        "nodeType": { "type": "string" },
+                        "nodeName": { "type": "string" },
+                        "isStandalone": { "type": "boolean" },
+                        "hubApiUrl": { "type": "string" }
+                      }
+                    },
+                    "clusterNodes": {
+                      "type": "array",
+                      "items": { "type": "object" }
+                    },
+                    "syncMetrics": { "type": "object" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "SyncEnvelope": {
+        "type": "object",
+        "required": ["version", "idempotencyKey", "eventType", "sourceNodeId", "targetNodeId", "entityName", "entityId", "data"],
+        "properties": {
+          "version": { "type": "string", "example": "1.0.0" },
+          "idempotencyKey": { "type": "string", "example": "IDEM-20261022-A1B2C3" },
+          "eventType": {
+            "type": "string",
+            "enum": [
+              "MOLD_ORDER_DISPATCHED",
+              "MOLD_PROGRESS_UPDATED",
+              "MOLD_TRIAL_SUBMITTED",
+              "MASS_ORDER_DISPATCHED",
+              "MASS_VALIDATION_REPORTED",
+              "MASS_PPAP_SUBMITTED",
+              "MASS_PPAP_APPROVED"
+            ]
+          },
+          "sourceNodeId": { "type": "string", "example": "WOOSUNG_MOLD" },
+          "targetNodeId": { "type": "string", "example": "MPSI_HQ" },
+          "entityName": { "type": "string", "example": "MoldManufactureItem" },
+          "entityId": { "type": "string", "example": "MI26001P0" },
+          "timestamp": { "type": "string", "format": "date-time" },
+          "data": { "type": "object" },
+          "signature": { "type": "string" }
+        }
+      },
+      "SyncInboundResponse": {
+        "type": "object",
+        "properties": {
+          "success": { "type": "boolean" },
+          "code": { "type": "string" },
+          "message": { "type": "string" },
+          "inboxId": { "type": "string" },
+          "idempotencyKey": { "type": "string" },
+          "processedAt": { "type": "string", "format": "date-time" }
+        }
+      }
+    }
+  }
+}
+

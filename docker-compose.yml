@@ -1,0 +1,19 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: mpsi-postgres
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: mpsi_user
+      POSTGRES_PASSWORD: mpsi_secure_pwd
+      POSTGRES_DB: mpsi_db
+    volumes:
+      - ./Readme/mpsi_schema_ddl.sql:/docker-entrypoint-initdb.d/01_init.sql:ro
+      - mpsi_pgdata:/var/lib/postgresql/data
+
+volumes:
+  mpsi_pgdata:
+    driver: local
+

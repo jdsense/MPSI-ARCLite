@@ -1,0 +1,405 @@
+[
+  {
+    "id": "project",
+    "groupTitle": "MPSI 메인 공정 메뉴",
+    "title": "프로젝트 관리",
+    "icon": "Briefcase",
+    "isGroupMenu": true,
+    "baseUrl": "/portal/project",
+    "url": "/portal/project",
+    "roles": [
+      "ADMIN",
+      "MPSI"
+    ],
+    "submenus": [
+      {
+        "id": "project-list",
+        "title": "프로젝트 관리대장",
+        "url": "/portal/project",
+        "roles": [
+          "ADMIN",
+          "MPSI"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "quotation",
+    "groupTitle": "MPSI 메인 공정 메뉴",
+    "title": "금형-견적관리",
+    "icon": "FileSpreadsheet",
+    "isGroupMenu": true,
+    "baseUrl": "/portal/quotation",
+    "url": "/portal/quotation",
+    "roles": [
+      "ADMIN",
+      "MPSI"
+    ],
+    "submenus": [
+      {
+        "id": "quotation-hq",
+        "title": "원청사 견적 (수주관리)",
+        "url": "/portal/quotation",
+        "roles": [
+          "ADMIN",
+          "MPSI"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "mold-dev",
+    "groupTitle": "MPSI 메인 공정 메뉴",
+    "title": "금형-개발 관리(자체/외주)",
+    "icon": "Wrench",
+    "isGroupMenu": true,
+    "baseUrl": "/portal/mold-dev",
+    "roles": [
+      "ADMIN",
+      "MPSI"
+    ],
+    "submenus": [
+      {
+        "id": "mold-dev-quotation",
+        "title": "1. 금형 견적 관리",
+        "url": "/portal/mold-dev/quotation",
+        "roles": [
+          "ADMIN",
+          "MPSI"
+        ]
+      },
+      {
+        "id": "mold-dev-design",
+        "title": "2. 제품검토 및 금형설계",
+        "url": "/portal/mold-dev/design",
+        "roles": [
+          "ADMIN",
+          "MPSI"
+        ]
+      },
+      {
+        "id": "mold-dev-manufacture",
+        "title": "3. 금형제작",
+        "url": "/portal/mold-dev/manufacture",
+        "roles": [
+          "ADMIN",
+          "MPSI"
+        ]
+      },
+      {
+        "id": "mold-dev-trial",
+        "title": "4. 시사출/금형 육성 및 승인",
+        "url": "/portal/mold-dev/trial",
+        "roles": [
+          "ADMIN",
+          "MPSI"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "mass-prod",
+    "groupTitle": "MPSI 메인 공정 메뉴",
+    "title": "금형-양산 관리(자체/외주)",
+    "icon": "Factory",
+    "isGroupMenu": true,
+    "baseUrl": "/portal/mass-prod",
+    "roles": [
+      "ADMIN",
+      "MPSI"
+    ],
+    "submenus": [
+      {
+        "id": "mass-prod-quotation",
+        "title": "1. 양산 견적 관리",
+        "url": "/portal/mass-prod/quotation",
+        "roles": [
+          "ADMIN",
+          "MPSI"
+        ]
+      },
+      {
+        "id": "mass-prod-validation",
+        "title": "2. 양산성 검증/시양산",
+        "url": "/portal/mass-prod/validation",
+        "roles": [
+          "ADMIN",
+          "MPSI"
+        ]
+      },
+      {
+        "id": "mass-prod-ppap",
+        "title": "3. 양산 승인(PPAP)",
+        "url": "/portal/mass-prod/ppap",
+        "roles": [
+          "ADMIN",
+          "MPSI"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "vendor-mold",
+    "groupTitle": "외주 협력사 전용 포털",
+    "title": "협력사 - 금형",
+    "icon": "Wrench",
+    "isGroupMenu": true,
+    "baseUrl": "/portal/vendor-portal/mold",
+    "url": "/portal/vendor-portal/mold/projects",
+    "roles": [
+      "ADMIN",
+      "VENDOR_MOLD"
+    ],
+    "flattenForRole": "VENDOR_MOLD",
+    "submenus": [
+      {
+        "id": "vmold-projects",
+        "title": "프로젝트 관리",
+        "url": "/portal/vendor-portal/mold/projects",
+        "roles": [
+          "ADMIN",
+          "VENDOR_MOLD"
+        ]
+      },
+      {
+        "id": "vmold-quotation",
+        "title": "견적 관리",
+        "url": "/portal/vendor-portal/mold/quotation",
+        "roles": [
+          "ADMIN",
+          "VENDOR_MOLD"
+        ]
+      },
+      {
+        "id": "vmold-design",
+        "title": "제품검토 및 금형설계",
+        "url": "/portal/vendor-portal/mold/design",
+        "roles": [
+          "ADMIN",
+          "VENDOR_MOLD"
+        ]
+      },
+      {
+        "id": "vmold-manufacture",
+        "title": "금형제작",
+        "url": "/portal/vendor-portal/mold/manufacture",
+        "roles": [
+          "ADMIN",
+          "VENDOR_MOLD"
+        ]
+      },
+      {
+        "id": "vmold-trial",
+        "title": "시사출/금형 육성",
+        "url": "/portal/vendor-portal/mold/trial",
+        "roles": [
+          "ADMIN",
+          "VENDOR_MOLD"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "vendor-mass",
+    "groupTitle": "외주 협력사 전용 포털",
+    "title": "협력사 - 양산",
+    "icon": "Factory",
+    "isGroupMenu": true,
+    "baseUrl": "/portal/vendor-portal/mass",
+    "url": "/portal/vendor-portal/mass/projects",
+    "roles": [
+      "ADMIN",
+      "VENDOR_MASS"
+    ],
+    "flattenForRole": "VENDOR_MASS",
+    "submenus": [
+      {
+        "id": "vmass-projects",
+        "title": "프로젝트 관리",
+        "url": "/portal/vendor-portal/mass/projects",
+        "roles": [
+          "ADMIN",
+          "VENDOR_MASS"
+        ]
+      },
+      {
+        "id": "vmass-quotation",
+        "title": "견적 관리",
+        "url": "/portal/vendor-portal/mass/quotation",
+        "roles": [
+          "ADMIN",
+          "VENDOR_MASS"
+        ]
+      },
+      {
+        "id": "vmass-validation",
+        "title": "시양산 관리",
+        "url": "/portal/vendor-portal/mass/validation",
+        "roles": [
+          "ADMIN",
+          "VENDOR_MASS"
+        ]
+      },
+      {
+        "id": "vmass-revision",
+        "title": "설변 PM관리",
+        "url": "/portal/vendor-portal/mass/revision",
+        "roles": [
+          "ADMIN",
+          "VENDOR_MASS"
+        ]
+      },
+      {
+        "id": "vmass-ppap",
+        "title": "양산 승인(PPAP 승인)",
+        "url": "/portal/vendor-portal/mass/ppap",
+        "roles": [
+          "ADMIN",
+          "VENDOR_MASS"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "basic-info",
+    "groupTitle": "기초정보 및 시스템 관리",
+    "title": "기초정보",
+    "icon": "Database",
+    "isGroupMenu": true,
+    "baseUrl": "/portal/basic-info",
+    "roles": [
+      "ADMIN",
+      "MPSI"
+    ],
+    "submenus": [
+      {
+        "id": "basic-employee",
+        "title": "사원정보",
+        "url": "/portal/basic-info/employee",
+        "roles": [
+          "ADMIN",
+          "MPSI"
+        ]
+      },
+      {
+        "id": "basic-customer",
+        "title": "고객정보",
+        "url": "/portal/basic-info/customer",
+        "roles": [
+          "ADMIN",
+          "MPSI"
+        ]
+      },
+      {
+        "id": "basic-vendor",
+        "title": "공급/외주업체 정보",
+        "url": "/portal/basic-info/vendor",
+        "roles": [
+          "ADMIN",
+          "MPSI"
+        ]
+      },
+      {
+        "id": "basic-item",
+        "title": "품목정보",
+        "url": "/portal/basic-info/item",
+        "roles": [
+          "ADMIN",
+          "MPSI"
+        ]
+      },
+      {
+        "id": "basic-process",
+        "title": "공정정보",
+        "url": "/portal/basic-info/process",
+        "roles": [
+          "ADMIN",
+          "MPSI"
+        ]
+      },
+      {
+        "id": "basic-warehouse",
+        "title": "창고정보",
+        "url": "/portal/basic-info/warehouse",
+        "roles": [
+          "ADMIN",
+          "MPSI"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "admin",
+    "groupTitle": "기초정보 및 시스템 관리",
+    "title": "시스템관리",
+    "icon": "Settings",
+    "isGroupMenu": true,
+    "baseUrl": "/portal/admin",
+    "roles": [
+      "ADMIN"
+    ],
+    "submenus": [
+      {
+        "id": "admin-users",
+        "title": "계정관리",
+        "url": "/portal/admin/users",
+        "roles": [
+          "ADMIN"
+        ]
+      },
+      {
+        "id": "admin-permissions",
+        "title": "권한관리",
+        "url": "/portal/admin/permissions",
+        "roles": [
+          "ADMIN"
+        ]
+      },
+      {
+        "id": "admin-blank",
+        "title": "빈 페이지",
+        "url": "/portal/admin/blank",
+        "roles": [
+          "ADMIN"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "delivery-status",
+    "groupTitle": "MPSI 메인 공정 메뉴",
+    "title": "배송현황",
+    "icon": "Truck",
+    "isGroupMenu": false,
+    "url": "/portal/delivery-status",
+    "roles": [
+      "ADMIN",
+      "MPSI"
+    ],
+    "submenus": []
+  },
+  {
+    "id": "menu-mw4kixja",
+    "groupTitle": "MPSI 메인 공정 메뉴",
+    "title": "대시보드(테스트)",
+    "icon": "Gauge",
+    "isGroupMenu": true,
+    "baseUrl": "/portal/custom/group-is4u",
+    "url": "/portal/custom/group-is4u",
+    "roles": [
+      "ADMIN",
+      "MPSI"
+    ],
+    "submenus": [
+      {
+        "id": "sub-mw4kixja",
+        "title": "대시보드 관리",
+        "url": "/portal/custom/group-is4u",
+        "roles": [
+          "ADMIN",
+          "MPSI"
+        ]
+      }
+    ]
+  }
+]

@@ -1,0 +1,140 @@
+{
+  "$schema": "https://arcforge.platform.io/schemas/v1/manifest.json",
+  "name": "mpsi-smart-manufacturing-portal",
+  "version": "1.0.0",
+  "description": "사출 금형 개발 및 양산 협업 시스템 (MPSI - 우성정공 - 뉴몰드 분산 설치 및 하이브리드 포털)",
+  "standardCompliance": "KS X 9101-1:2025",
+  "architectureType": "Hybrid Distributed Multi-Instance with Transactional Outbox",
+  "nodes": [
+    {
+      "nodeId": "MPSI_HQ",
+      "nodeType": "HQ",
+      "nodeName": "MPSI 본사",
+      "isStandalone": false,
+      "defaultRoute": "/portal/project",
+      "allowedRoles": ["MPSI", "ADMIN", "VENDOR_MOLD", "VENDOR_MASS"],
+      "database": {
+        "engine": "PostgreSQL 15+",
+        "quotedIdentifiers": true,
+        "totalTables": 112
+      }
+    },
+    {
+      "nodeId": "WOOSUNG_MOLD",
+      "nodeType": "VENDOR_MOLD",
+      "nodeName": "우성정공(주)",
+      "isStandalone": true,
+      "defaultRoute": "/portal/vendor-portal/mold/projects",
+      "allowedRoles": ["VENDOR_MOLD"],
+      "database": {
+        "engine": "PostgreSQL 15+",
+        "quotedIdentifiers": true,
+        "totalTables": 112
+      }
+    },
+    {
+      "nodeId": "NEWMOLD_MASS",
+      "nodeType": "VENDOR_MASS",
+      "nodeName": "(주)뉴몰드",
+      "isStandalone": true,
+      "defaultRoute": "/portal/vendor-portal/mass/projects",
+      "allowedRoles": ["VENDOR_MASS"],
+      "database": {
+        "engine": "PostgreSQL 15+",
+        "quotedIdentifiers": true,
+        "totalTables": 112
+      }
+    }
+  ],
+  "roleMenuMapping": {
+    "MPSI": {
+      "label": "MPSI 본사 총괄 관리자",
+      "navigation": [
+        { "title": "프로젝트 관리", "route": "/portal/project", "depth": 1 },
+        { "title": "금형-견적관리", "route": "/portal/quotation", "depth": 1 },
+        { "title": "금형-개발 관리", "route": "/portal/mold-dev/quotation", "depth": 1, "subRoutes": ["/portal/mold-dev/quotation", "/portal/mold-dev/design", "/portal/mold-dev/manufacture", "/portal/mold-dev/trial"] },
+        { "title": "금형-양산 관리", "route": "/portal/mass-prod/quotation", "depth": 1, "subRoutes": ["/portal/mass-prod/quotation", "/portal/mass-prod/validation", "/portal/mass-prod/ppap"] },
+        { "title": "배송현황", "route": "/portal/delivery-status", "depth": 1 }
+      ]
+    },
+    "VENDOR_MOLD": {
+      "label": "금형제작 외주 협력사 (우성정공 등)",
+      "navigation": [
+        { "title": "프로젝트 관리", "route": "/portal/vendor-portal/mold/projects", "depth": 1 },
+        { "title": "견적 관리", "route": "/portal/vendor-portal/mold/quotation", "depth": 1 },
+        { "title": "제품검토 및 금형설계", "route": "/portal/vendor-portal/mold/design", "depth": 1 },
+        { "title": "금형제작 (7대가공실적)", "route": "/portal/vendor-portal/mold/manufacture", "depth": 1 },
+        { "title": "시사출/금형 육성 (T1~T4)", "route": "/portal/vendor-portal/mold/trial", "depth": 1 }
+      ]
+    },
+    "VENDOR_MASS": {
+      "label": "사출양산 외주 협력사 (뉴몰드 등)",
+      "navigation": [
+        { "title": "프로젝트 관리", "route": "/portal/vendor-portal/mass/projects", "depth": 1 },
+        { "title": "견적 관리", "route": "/portal/vendor-portal/mass/quotation", "depth": 1 },
+        { "title": "시양산 관리 (12H/Cpk)", "route": "/portal/vendor-portal/mass/validation", "depth": 1 },
+        { "title": "설변 PM관리 (타수/E001)", "route": "/portal/vendor-portal/mass/revision", "depth": 1 },
+        { "title": "양산 승인 (PPAP 18대 서류)", "route": "/portal/vendor-portal/mass/ppap", "depth": 1 }
+      ]
+    }
+  },
+  "syncEvents": [
+    {
+      "eventType": "MOLD_ORDER_DISPATCHED",
+      "sourceNode": "MPSI_HQ",
+      "targetNode": "WOOSUNG_MOLD",
+      "entityName": "mold_orders",
+      "description": "금형 제작 발주 및 3D CAD 모델 전송"
+    },
+    {
+      "eventType": "MOLD_PROGRESS_UPDATED",
+      "sourceNode": "WOOSUNG_MOLD",
+      "targetNode": "MPSI_HQ",
+      "entityName": "MoldManufactureItem",
+      "description": "7대 가공 공정률(건드릴/밀링/열처리/CNC/방전/래핑/조립) 보고"
+    },
+    {
+      "eventType": "MOLD_TRIAL_SUBMITTED",
+      "sourceNode": "WOOSUNG_MOLD",
+      "targetNode": "MPSI_HQ",
+      "entityName": "MoldTrialProject",
+      "description": "T1~T4 시사출 성적서 및 CMM 치수성적서 제출"
+    },
+    {
+      "eventType": "MASS_ORDER_DISPATCHED",
+      "sourceNode": "MPSI_HQ",
+      "targetNode": "NEWMOLD_MASS",
+      "entityName": "mass_orders",
+      "description": "사출 양산 견적 배포 및 생산 의뢰"
+    },
+    {
+      "eventType": "MASS_VALIDATION_REPORTED",
+      "sourceNode": "NEWMOLD_MASS",
+      "targetNode": "MPSI_HQ",
+      "entityName": "mass_validations",
+      "description": "12H 연속사출 결과 및 Cpk 공정능력 보고"
+    },
+    {
+      "eventType": "MASS_PPAP_SUBMITTED",
+      "sourceNode": "NEWMOLD_MASS",
+      "targetNode": "MPSI_HQ",
+      "entityName": "PPAPApprovalItem",
+      "description": "PPAP 18대 품질서류 패키지 제출 및 승인 요청"
+    },
+    {
+      "eventType": "MASS_PPAP_APPROVED",
+      "sourceNode": "MPSI_HQ",
+      "targetNode": "NEWMOLD_MASS",
+      "entityName": "PPAPApprovalItem",
+      "description": "부품제출보증서(PSW) 최종 승인 및 완제품 구매 PO 확정"
+    }
+  ],
+  "conversionArtifacts": {
+    "ddlScript": "Readme/mpsi_schema_ddl.sql",
+    "dbDesignDoc": "Readme/MPSI_DATABASE_DESIGN.md",
+    "permissionDoc": "Readme/권한설정.md",
+    "openApiSpec": "src/config/openapi-spec.json",
+    "conversionGuide": "Readme/ARCFORGE_CONVERSION_SPEC.md"
+  }
+}
+
