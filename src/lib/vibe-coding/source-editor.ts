@@ -18,6 +18,7 @@ export const OVERRIDES_FILE = path.join(SRC_DIR, "config", "arc-wizard-overrides
 // 편집 대상에서 제외할 경로 (자기 자신/API 라우트 등)
 const EXCLUDED_DIRS = [
   path.join(SRC_DIR, "app", "api"),
+  path.join(SRC_DIR, "app", "truck-twin"),
   path.join(SRC_DIR, "components", "vibe-coding"),
   path.join(SRC_DIR, "lib", "vibe-coding"),
 ];
@@ -74,7 +75,7 @@ const DENIED_FILES = new Set([
   "middleware.ts",
   "proxy.ts",
 ]);
-const DENIED_PREFIXES = ["app/auth/", "app/api/", "components/vibe-coding/", "lib/vibe-coding/"];
+const DENIED_PREFIXES = ["app/auth/", "app/api/", "app/truck-twin/", "components/vibe-coding/", "lib/vibe-coding/"];
 
 /** 비교용 정규화: 심볼릭 링크 해소 + 슬래시 + 소문자 (Windows 대소문자 우회 방지) */
 function normForCompare(abs: string): string {

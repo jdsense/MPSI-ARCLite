@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>트럭 트윈 데모</title>
+<style>
+  body { margin: 0; padding: 24px; font: 14px/1.5 system-ui, -apple-system, "Segoe UI", "Noto Sans KR", sans-serif; color: #111827; background: #fff; }
+  main { max-width: 960px; margin: 0 auto; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  p.sub { margin: 0 0 16px; color: #4b5563; }
+  pre { margin: 0 0 16px; padding: 12px 14px; background: #0b1220; color: #d6e2f0; border-radius: 8px; overflow-x: auto; font: 12px/1.6 ui-monospace, Menlo, Consolas, monospace; }
+  .toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 12px; }
+  .toolbar .group { display: inline-flex; gap: 4px; align-items: center; }
+  .toolbar .sep { width: 1px; height: 20px; background: #d1d5db; margin: 0 4px; }
+  button, select { font: inherit; padding: 4px 10px; border: 1px solid #cbd5e1; border-radius: 6px; background: #f8fafc; color: inherit; cursor: pointer; }
+  button:hover { background: #eef2f7; }
+  button[aria-pressed="true"] { background: #0e7490; border-color: #0e7490; color: #fff; }
+  #stage { height: 520px; }
+  #status { margin-top: 12px; padding: 8px 12px; background: #f3f4f6; border-radius: 6px; font: 12px/1.6 ui-monospace, Menlo, Consolas, monospace; white-space: pre-wrap; }
+</style>
+</head>
+<body>
+<main>
+  <h1>트럭 트윈 데모</h1>
+  <p class="sub">YARD-OPS 배차실행 화면의 3D 트럭을 바닐라 three.js 단일 파일로 옮긴 그리기 전용 라이브러리.</p>
+
+<pre id="usage">&lt;script src="truck-twin.min.js?key=발급받은_API_키"&gt;&lt;/script&gt;
+&lt;div id="stage" style="height: 520px"&gt;&lt;/div&gt;
+&lt;script&gt;
+  const twin = TruckTwin.create(document.getElementById("stage"), {
+    truck: { label, vehicleTypeName, bedLengthMm, heightLimitMm, usableHeightMm, bedFloorHeightMm, topSupportMm },
+    cargo: [{ key, compartment, stackOrder, label, blockLabel, lengthMm, loadHeightMm, packingHeightMm, colorIndex, detail }],
+    theme: "auto",                       // 'light' | 'dark' | 'auto'
+    onSelect: (key) =&gt; {},             // 3D 에서 화물을 클릭하면
+    onHover: (key) =&gt; {},
+    onFail: (message, reason) =&gt; {},   // 키 오류 · WebGL 불가 · 컨텍스트 손실
+  });
+  twin.select("P-001");   // 바깥(2D 목록)에서 강조 맞추기
+  twin.setData(truck, cargo);
+&lt;/script&gt;</pre>
+
+  <div class="toolbar">
+    <span class="group" role="group" aria-label="테마">
+      테마
+      <button type="button" data-theme-btn="light">라이트</button>
+      <button type="button" data-theme-btn="dark">다크</button>
+      <button type="button" data-theme-btn="auto" aria-pressed="true">auto</button>
+    </span>
+    <span class="sep"></span>
+    <label class="group">화물 선택
+      <select id="pick"><option value="">(선택 없음)</option></select>
+    </label>
+    <span class="sep"></span>
+    <button type="button" id="swap">5톤으로 교체</button>
+    <button type="button" id="destroy">destroy</button>
+  </div>
+
+  <div id="stage"></div>
+  <div id="status">로드 중…</div>
+</main>
+
+<script src="demo-key.js"></script>
+<script>
+(function () {
+  var stage = document.getElementById("stage");
+  var statusEl = document.getElementById("status");
+  var pick = document.getElementById("pick");
+  var swapBtn = document.getElementById("swap");
+  var destroyBtn = document.getElementById("destroy");
+  var themeBtns = document.querySelectorAll("[data-theme-btn]");
+  var log = { select: "—", hover: "—", fail: "—" };
+  var twin = null;
+  var theme = "auto";
+  var is5t = false;
+
+  function mm(v) { return v == null ? "—" : v.toLocaleString("ko-KR") + "mm"; }
+
+  // 프론트 dispatch/cargo.ts 의 상세 12행과 같은 라벨.
+  function makeCargo(s) {
+    var loadHeightMm = s.packingHeightMm + s.supportMm;
+    return {
+      key: s.key, compartment: s.compartment, stackOrder: s.stackOrder, label: s.key, blockLabel: s.block,
+      lengthMm: s.lengthMm, loadHeightMm: loadHeightMm, packingHeightMm: s.packingHeightMm, countEa: s.countEa,
+      colorIndex: s.colorIndex,
+      detail: [
+        { label: "현장", value: s.site },
+        { label: "프로젝트", value: s.order },
+        { label: "블록", value: s.block },
+        { label: "패킹번호", value: s.key },
+        { label: "제품명", value: s.product },
+        { label: "길이", value: mm(s.lengthMm) },
+        { label: "제품높이", value: mm(s.productHeightMm) },
+        { label: "수량", value: s.countEa.toLocaleString("ko-KR") + "매" },
+        { label: "단수", value: s.layers + "단" },
+        { label: "패킹높이", value: mm(s.packingHeightMm) },
+        { label: "점유높이(받침대 포함)", value: mm(loadHeightMm) },
+        { label: "적치구역", value: s.area }
+      ]
+    };
+  }
+
+  var TRUCK_11T = { label: "11톤-01", vehicleTypeName: "11톤 카고", bedLengthMm: 9200, heightLimitMm: 4000, bedFloorHeightMm: 1200, topSupportMm: 100, usableHeightMm: 2700 };
+  var TRUCK_5T = { label: "5톤-02", vehicleTypeName: "5톤 카고", bedLengthMm: 6200, heightLimitMm: 3800, bedFloorHeightMm: 1100, topSupportMm: 100, usableHeightMm: 2600 };
+
+  function sample(base) {
+    return Object.assign({ site: "당진 제일 1공장", order: "PRJ-2611", product: "H형강 H-300x300", supportMm: 100, countEa: 24, layers: 3 }, base);
+  }
+
+  var CARGO_11T = [
+    sample({ key: "P-001", compartment: "FRONT", stackOrder: 1, block: "B-101", colorIndex: 0, lengthMm: 5000, productHeightMm: 300, packingHeightMm: 600, area: "A-01" }),
+    sample({ key: "P-002", compartment: "FRONT", stackOrder: 2, block: "B-101", colorIndex: 0, lengthMm: 4200, productHeightMm: 300, packingHeightMm: 500, area: "A-01" }),
+    sample({ key: "P-003", compartment: "FRONT", stackOrder: 3, block: "B-102", colorIndex: 1, lengthMm: 3000, productHeightMm: 250, packingHeightMm: 450, area: "A-02" }),
+    sample({ key: "P-004", compartment: "REAR", stackOrder: 1, block: "B-103", colorIndex: 2, lengthMm: 4000, productHeightMm: 350, packingHeightMm: 600, area: "B-03" }),
+    sample({ key: "P-005", compartment: "REAR", stackOrder: 2, block: "B-103", colorIndex: 2, lengthMm: 3600, productHeightMm: 300, packingHeightMm: 450, area: "B-03" }),
+    sample({ key: "P-006", compartment: "REAR", stackOrder: 3, block: "B-104", colorIndex: 3, lengthMm: 3200, productHeightMm: 250, packingHeightMm: 450, area: "미적치" })
+  ].map(makeCargo);
+
+  var CARGO_5T = [
+    sample({ key: "Q-001", compartment: "FRONT", stackOrder: 1, block: "B-201", colorIndex: 4, lengthMm: 3000, productHeightMm: 300, packingHeightMm: 600, area: "C-01" }),
+    sample({ key: "Q-002", compartment: "FRONT", stackOrder: 2, block: "B-201", colorIndex: 4, lengthMm: 2800, productHeightMm: 250, packingHeightMm: 500, area: "C-01" }),
+    sample({ key: "Q-003", compartment: "REAR", stackOrder: 1, block: "B-202", colorIndex: 5, lengthMm: 2600, productHeightMm: 300, packingHeightMm: 550, area: "C-02" })
+  ].map(makeCargo);
+
+  function render() {
+    statusEl.textContent = "onSelect: " + log.select + "\nonHover:  " + log.hover + "\nonFail:   " + log.fail;
+  }
+
+  function fillPicker(cargo) {
+    pick.length = 1;
+    cargo.forEach(function (c) {
+      var o = document.createElement("option");
+      o.value = c.key;
+      o.textContent = c.key + " · " + c.blockLabel;
+      pick.appendChild(o);
+    });
+    pick.value = "";
+  }
+
+  function setTheme(t) {
+    theme = t;
+    themeBtns.forEach(function (b) { b.setAttribute("aria-pressed", String(b.dataset.themeBtn === t)); });
+    if (twin) twin.setTheme(t);
+  }
+
+  function create() {
+    is5t = false;
+    fillPicker(CARGO_11T);
+    twin = TruckTwin.create(stage, {
+      truck: TRUCK_11T,
+      cargo: CARGO_11T,
+      theme: theme,
+      onSelect: function (key) { log.select = String(key); pick.value = key || ""; render(); },
+      onHover: function (key) { log.hover = String(key); render(); },
+      onFail: function (message, reason) { log.fail = "[" + reason + "] " + message; render(); }
+    });
+    swapBtn.textContent = "5톤으로 교체";
+    destroyBtn.textContent = "destroy";
+    render();
+  }
+
+  themeBtns.forEach(function (b) { b.addEventListener("click", function () { setTheme(b.dataset.themeBtn); }); });
+  pick.addEventListener("change", function () { if (twin) twin.select(pick.value || null); log.select = pick.value || "null"; render(); });
+  swapBtn.addEventListener("click", function () {
+    if (!twin) return;
+    is5t = !is5t;
+    var cargo = is5t ? CARGO_5T : CARGO_11T;
+    twin.setData(is5t ? TRUCK_5T : TRUCK_11T, cargo);
+    fillPicker(cargo);
+    swapBtn.textContent = is5t ? "11톤으로 교체" : "5톤으로 교체";
+  });
+  destroyBtn.addEventListener("click", function () {
+    if (twin) { twin.destroy(); twin = null; destroyBtn.textContent = "다시 create"; statusEl.textContent = "destroy() 완료 — 리스너·옵저버·WebGL 컨텍스트 해제"; }
+    else { log = { select: "—", hover: "—", fail: "—" }; create(); }
+  });
+
+  // ?key= 경로 시연: 라이브러리 <script> 를 동적으로 만들어 키를 쿼리로 붙인다.
+  var s = document.createElement("script");
+  s.src = "../truck-twin.min.js?key=" + encodeURIComponent(window.TRUCK_TWIN_DEMO_KEY);
+  s.onload = create;
+  s.onerror = function () { statusEl.textContent = "../truck-twin.min.js 를 찾지 못했습니다 — demo 폴더는 truck-twin.min.js 와 같은 위치에 있어야 합니다."; };
+  document.head.appendChild(s);
+})();
+</script>
+</body>
+</html>
