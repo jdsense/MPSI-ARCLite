@@ -15,10 +15,13 @@ import path from "path";
 
 const CONFIG_FILE = path.join(process.cwd(), ".arc-wizard", "logistics-gw-config.json");
 const DEFAULT_GW_BASE_URL = "https://mpsi-gw.a2lab.co.kr";
+const DEFAULT_MPSI_API_KEY = "4ac4b5afad3d6ce016bb1cca7fc565a48c2646449f7400c3197856c5ccf81879";
+const DEFAULT_SIM_API_KEY = "adaa94c2dd8fc6302ad09f3aa6fb6ac343e3a769f5b079ace4e5f2cfe33a963b";
 
 export interface GatewayRuntimeConfig {
   baseUrl: string;
   apiKey: string;
+  simApiKey?: string;
 }
 
 export function getGatewayConfig(): GatewayRuntimeConfig {
@@ -44,10 +47,16 @@ export function getGatewayConfig(): GatewayRuntimeConfig {
     saved.apiKey ||
     process.env.MPSI_API_KEY ||
     process.env.SOFTRUSH_API_KEY ||
-    ""
+    DEFAULT_MPSI_API_KEY
   ).trim();
 
-  return { baseUrl, apiKey };
+  const simApiKey = (
+    saved.simApiKey ||
+    process.env.SIM_API_KEY ||
+    DEFAULT_SIM_API_KEY
+  ).trim();
+
+  return { baseUrl, apiKey, simApiKey };
 }
 
 export function saveGatewayConfig(patch: Partial<GatewayRuntimeConfig>): GatewayRuntimeConfig {
