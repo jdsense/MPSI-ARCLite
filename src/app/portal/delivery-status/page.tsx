@@ -760,9 +760,6 @@ export default function DeliveryStatusPage() {
               <h2 className="text-base font-bold text-zinc-900 dark:text-zinc-100">
                 SCM 배송현황 (소프트러쉬 물류연계 관제)
               </h2>
-              <span className="px-2 py-0.5 rounded-full text-[10px] font-mono bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-zinc-300 border border-slate-200 dark:border-zinc-700">
-                GW: {gwBaseUrl}
-              </span>
               <span
                 className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
                   gwHasKey
@@ -1104,20 +1101,37 @@ export default function DeliveryStatusPage() {
                       {/* 배송요청 & 배송추적 버튼 */}
                       <td className="py-2.5 px-3 text-center" onClick={(e) => e.stopPropagation()}>
                         <div className="flex items-center justify-center gap-1.5">
-                          <Button
-                            size="xs"
-                            disabled={isRequesting}
-                            onClick={() => handleRequestDelivery(item, idx)}
-                            className="h-6 px-2 text-[10.5px] font-bold bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer gap-1"
-                            title="중간 게이트웨이(POST /api/v1/logistics/deliveries)로 배송건 위탁 전송 및 동기화"
-                          >
-                            {isRequesting ? (
-                              <RefreshCw className="h-3 w-3 animate-spin" />
-                            ) : (
-                              <Send className="h-2.5 w-2.5" />
-                            )}
-                            <span>배송요청</span>
-                          </Button>
+                          {(() => {
+                            const isDispatched = item.status === "배송중" || item.status === "배송완료";
+                            const isDisabled = isRequesting || isDispatched;
+
+                            return (
+                              <Button
+                                size="xs"
+                                disabled={isDisabled}
+                                onClick={() => !isDisabled && handleRequestDelivery(item, idx)}
+                                className={`h-6 px-2 text-[10.5px] font-bold gap-1 transition-colors ${
+                                  isDispatched
+                                    ? "bg-slate-200 text-zinc-400 dark:bg-zinc-800 dark:text-zinc-500 cursor-not-allowed border border-slate-300 dark:border-zinc-700"
+                                    : "bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer"
+                                }`}
+                                title={
+                                  isDispatched
+                                    ? `현재 [${item.status}] 상태로 이미 위탁되어 배송이 진행/완료된 건입니다.`
+                                    : "중간 게이트웨이(POST /api/v1/logistics/deliveries)로 배송건 위탁 전송 및 동기화"
+                                }
+                              >
+                                {isRequesting ? (
+                                  <RefreshCw className="h-3 w-3 animate-spin" />
+                                ) : isDispatched ? (
+                                  <Check className="h-2.5 w-2.5" />
+                                ) : (
+                                  <Send className="h-2.5 w-2.5" />
+                                )}
+                                <span>{isDispatched ? "위탁완료" : "배송요청"}</span>
+                              </Button>
+                            );
+                          })()}
                           <Button
                             size="xs"
                             variant="outline"
