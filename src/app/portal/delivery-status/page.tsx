@@ -10,7 +10,6 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { DeliveryItem, DeliveryStatusType } from "@/types/delivery";
-import { TruckTwinViewer } from "@/components/delivery/truck-twin-viewer";
 
 export type { DeliveryItem };
 
@@ -161,7 +160,7 @@ export default function DeliveryStatusPage() {
   const [filterStatus, setFilterStatus] = useState<"ALL" | "출하준비" | "배송중" | "배송완료">("ALL");
   const [selectedItem, setSelectedItem] = useState<DeliveryItem | null>(null);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
-  const [activeModalTab, setActiveModalTab] = useState<"TIMELINE" | "TRUCK_TWIN" | "API_JSON">("TIMELINE");
+  const [activeModalTab, setActiveModalTab] = useState<"TIMELINE" | "API_JSON">("TIMELINE");
   const [isSyncing, setIsSyncing] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [copiedJson, setCopiedJson] = useState(false);
@@ -249,31 +248,8 @@ export default function DeliveryStatusPage() {
           </div>
         </div>
 
-        {/* 외부 API 동기화 버튼 및 소프트러시 3D 트럭 디지털 트윈 바로가기 */}
-        <div className="flex flex-wrap items-center gap-2 shrink-0">
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => {
-              const target = deliveries[0] || INITIAL_DELIVERIES[0];
-              setSelectedItem(target);
-              setActiveModalTab("TRUCK_TWIN");
-              setIsDetailModalOpen(true);
-            }}
-            className="h-8 px-3 border-emerald-500/40 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 text-xs font-bold gap-1.5 cursor-pointer"
-          >
-            <Layers className="h-3.5 w-3.5" />
-            <span>3D 트럭 적재 트윈 (공유 모듈)</span>
-          </Button>
-          <a
-            href="/truck-twin/1.0.0/demo/index.html"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-1 h-8 px-3 rounded-md border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 hover:bg-slate-50 text-zinc-700 dark:text-zinc-300 text-xs font-bold"
-          >
-            <span>호스팅 데모</span>
-            <ExternalLink className="h-3 w-3" />
-          </a>
+        {/* 외부 API 동기화 버튼 */}
+        <div className="flex items-center gap-2 shrink-0">
           <Button
             size="sm"
             onClick={handleSyncExternalApi}
@@ -500,17 +476,6 @@ export default function DeliveryStatusPage() {
                   배송 타임라인 & 기사 정보
                 </button>
                 <button
-                  onClick={() => setActiveModalTab("TRUCK_TWIN")}
-                  className={`px-3 py-1 rounded-md font-bold text-xs cursor-pointer flex items-center gap-1 ${
-                    activeModalTab === "TRUCK_TWIN"
-                      ? "bg-white dark:bg-zinc-900 text-emerald-700 dark:text-emerald-400 shadow-2xs border border-emerald-200"
-                      : "text-zinc-500 hover:text-zinc-800"
-                  }`}
-                >
-                  <Layers className="h-3.5 w-3.5" />
-                  3D 적재 디지털 트윈
-                </button>
-                <button
                   onClick={() => setActiveModalTab("API_JSON")}
                   className={`px-3 py-1 rounded-md font-bold text-xs cursor-pointer flex items-center gap-1 ${
                     activeModalTab === "API_JSON"
@@ -639,8 +604,6 @@ export default function DeliveryStatusPage() {
                     </div>
                   </div>
                 </>
-              ) : activeModalTab === "TRUCK_TWIN" ? (
-                <TruckTwinViewer delivery={selectedItem} />
               ) : (
                 /* REST API JSON 프리뷰 탭 */
                 <div className="flex flex-col gap-2">
