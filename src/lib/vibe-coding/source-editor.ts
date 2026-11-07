@@ -213,7 +213,6 @@ export function validateInstructionSecurity(instruction: string): string | null 
 export function validateReplacement(to: string, allowCode = true): string | null {
   if (to === undefined || to === null) return "새 문구가 비어 있습니다.";
   if (!allowCode && !to.trim()) return "새 문구가 비어 있습니다.";
-  if (to.length > 8000) return "변경 코드가 너무 깁니다 (8000자 이하).";
   if (to.includes("\0")) return "허용되지 않는 제어 문자가 포함되어 있습니다.";
   if (!allowCode && FORBIDDEN_CHARS.test(to)) {
     return "새 문구에 사용할 수 없는 문자가 있습니다: { } < > \" ' ` \\ 줄바꿈";
@@ -329,8 +328,8 @@ function ensureHistoryDir() {
 /** 선택된 위치들(단일 라인 문구 또는 멀티라인 소스 블록)을 치환하고 백업(히스토리)을 남김 */
 export function applyEdits(edits: EditRequest[], summary: string) {
   if (!edits.length) throw new Error("적용할 변경이 없습니다.");
-  if (edits.length > 20) throw new Error("한 번에 적용할 수 있는 변경은 20건까지입니다.");
-  if (new Set(edits.map((e) => e.file)).size > 5) throw new Error("한 번에 변경할 수 있는 파일은 5개까지입니다.");
+  if (edits.length > 100) throw new Error("한 번에 적용할 수 있는 변경은 100건까지입니다.");
+  if (new Set(edits.map((e) => e.file)).size > 10) throw new Error("한 번에 변경할 수 있는 파일은 10개까지입니다.");
   for (const e of edits) {
     const err = validateReplacement(e.to, true);
     if (err) throw new Error(err);
