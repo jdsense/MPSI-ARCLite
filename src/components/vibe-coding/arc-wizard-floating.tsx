@@ -32,6 +32,76 @@ interface CandidateItem {
 
 type EditStatus = "pending" | "applying" | "applied" | "cancelled" | "error";
 
+type BusyKind = "freeform" | "image" | "search" | "createPage" | "column" | "undo" | "config";
+
+function getBusySteps(kind: BusyKind, targetLabel: string, modelLabel: string): { title: string; steps: string[] } {
+  switch (kind) {
+    case "image":
+      return {
+        title: "멀티모달 이미지·소스 분석 진행 중",
+        steps: [
+          "1. 보안 정책 및 아크위저드 수정 제한 규칙 검증",
+          `2. 첨부 이미지 인코딩 및 현재 화면(${targetLabel}) DOM 스캔`,
+          `3. AI 멀티모달 엔진(${modelLabel}) 시각 요소·문구 대조 분석`,
+          "4. 변경 대상 소스 라인 매칭 및 Diff 제안 카드 생성",
+        ],
+      };
+    case "search":
+      return {
+        title: "화면 문구 소스 위치 탐색 중",
+        steps: [
+          "1. 선택 문구 정규화 및 보안 가이드라인 확인",
+          `2. 타겟 화면 소스(${targetLabel}) 및 공통 컴포넌트 스캔`,
+          "3. 일치 후보 라인·컬럼 좌표 계산 및 우선순위 정렬",
+        ],
+      };
+    case "createPage":
+      return {
+        title: "신규 메뉴 및 페이지 소스 생성 중",
+        steps: [
+          "1. 상위 메뉴 구조 분석 및 신규 라우트 경로 설계",
+          "2. 페이지 컴포넌트(page.tsx) 표준 템플릿 소스 생성",
+          "3. 사이드바 메뉴(app-sidebar.tsx) 및 레이아웃 등록",
+        ],
+      };
+    case "column":
+      return {
+        title: "테이블 컬럼 표시/숨김 설정 반영 중",
+        steps: [
+          "1. 현재 화면 테이블 헤더(th) 컬럼 매칭 확인",
+          "2. 전역 화면 오버라이드 설정(arc-wizard-overrides.json) 저장",
+        ],
+      };
+    case "undo":
+      return {
+        title: "이전 소스 상태로 복원(Undo) 중",
+        steps: [
+          "1. 스냅샷 백업 이력(.arc-wizard/history) 조회",
+          "2. 원본 소스 파일 복원 및 화면 상태 동기화",
+        ],
+      };
+    case "config":
+      return {
+        title: "AI 엔진 설정 및 연결 상태 확인 중",
+        steps: [
+          "1. API 공급자 및 모델 설정값 검증",
+          `2. AI 엔드포인트(${modelLabel}) 응답 테스트 및 저장`,
+        ],
+      };
+    case "freeform":
+    default:
+      return {
+        title: "프롬프트 분석 및 소스 코드 처리 중",
+        steps: [
+          "1. 보안 정책 및 아크위저드 보호 영역 검증",
+          `2. 현재 화면 DOM 컨텍스트 및 타겟 소스(${targetLabel}) 스캔`,
+          `3. AI 엔진(${modelLabel}) 프롬프트 의도 분석 및 코드 탐색`,
+          "4. 소스 파일 라인·컬럼 매칭 및 수정안(Diff) 검증",
+        ],
+      };
+  }
+}
+
 type Message =
   | { id: string; kind: "text"; sender: "ai" | "user"; text: string; tone?: "ok" | "warn" | "error" }
   | {
@@ -174,6 +244,9 @@ export function ArcWizardFloating() {
   const [isMinimized, setIsMinimized] = useState(false);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
+  const [busyKind, setBusyKind] = useState<BusyKind>("freeform");
+  const [busyStepIdx, setBusyStepIdx] = useState(0);
+  const [busyElapsedMs, setBusyElapsedMs] = useState(0);
   const [picking, setPicking] = useState(false);
   const [hoverBox, setHoverBox] = useState<{ top: number; left: number; width: number; height: number; label: string } | null>(null);
   const [pageFile, setPageFile] = useState<string | null>(null);
@@ -249,11 +322,35 @@ export function ArcWizardFloating() {
 
   useEffect(() => {
     if (isOpen) endRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, isOpen, busy]);
+  }, [messages, isOpen, busy, busyStepIdx]);
+
+  // 처리 단계 진행 타이머 (사용자에게 현재 어떤 과정이 진행 중인지 단계별로 표시)
+  useEffect(() => {
+    if (!busy) {
+      setBusyStepIdx(0);
+      setBusyElapsedMs(0);
+      return;
+    }
+    const startedAt = Date.now();
+    const { steps } = getBusySteps(busyKind, pageFile || pathname || "현재 화면", llmEnabled ? aiModel : "규칙 엔진");
+    const maxIdx = Math.max(0, steps.length - 1);
+
+    const timer = window.setInterval(() => {
+      const elapsed = Date.now() - startedAt;
+      setBusyElapsedMs(elapsed);
+      // 경과 시간에 따라 단계 자동 전환 (0s -> 0, 0.6s -> 1, 1.5s -> 2, 3.0s -> 3)
+      const nextIdx =
+        elapsed < 600 ? 0 : elapsed < 1500 ? Math.min(1, maxIdx) : elapsed < 3000 ? Math.min(2, maxIdx) : maxIdx;
+      setBusyStepIdx(nextIdx);
+    }, 200);
+
+    return () => window.clearInterval(timer);
+  }, [busy, busyKind, pageFile, pathname, llmEnabled, aiModel]);
 
   // ───── 문구 변경 흐름 ─────
   const startRename = useCallback(
     async (texts: string[], to: string) => {
+      setBusyKind("search");
       setBusy(true);
       try {
         const d = await api("search", { texts });
@@ -304,6 +401,7 @@ export function ArcWizardFloating() {
 
   const undo = useCallback(
     async (id?: string) => {
+      setBusyKind("undo");
       setBusy(true);
       try {
         const d = await api("undo", id ? { id } : {});
@@ -329,6 +427,7 @@ export function ArcWizardFloating() {
         });
         if (!exists) return say(`현재 화면의 테이블에서 [${column}] 컬럼 헤더를 찾지 못했습니다. 헤더 문구를 정확히 입력해 주세요.`, "warn");
       }
+      setBusyKind("column");
       setBusy(true);
       try {
         const d = await api("hideColumn", { column, hidden });
@@ -369,6 +468,7 @@ export function ArcWizardFloating() {
   };
 
   const handleSaveAiConfig = async () => {
+    setBusyKind("config");
     setBusy(true);
     setAiTestMsg(null);
     try {
@@ -399,6 +499,7 @@ export function ArcWizardFloating() {
   };
 
   const handleTestAi = async () => {
+    setBusyKind("config");
     setBusy(true);
     setAiTestMsg({ text: "AI 모델 연결 테스트 중..." });
     try {
@@ -444,6 +545,7 @@ export function ArcWizardFloating() {
       // 이미지가 첨부된 경우 AI 멀티모달 분석 우선 실행
       if (img) {
         if (!llmEnabled) return say("⚠️ 이미지를 분석하려면 ⚙️ AI 설정에서 API 키를 설정해 주세요.", "warn");
+        setBusyKind("image");
         setBusy(true);
         try {
           const d = await api("freeform", {
@@ -467,6 +569,7 @@ export function ArcWizardFloating() {
 
       switch (cmd.type) {
         case "createPage": {
+          setBusyKind("createPage");
           setBusy(true);
           try {
             const d = await api("createPage", {
@@ -505,6 +608,7 @@ export function ArcWizardFloating() {
         case "help":
           return say(HELP_TEXT);
         default: {
+          setBusyKind("freeform");
           setBusy(true);
           try {
             const d = await api("freeform", {
@@ -744,12 +848,80 @@ export function ArcWizardFloating() {
                       />
                     )
                   )}
-                  {busy && (
-                    <div className="flex items-center gap-2 text-xs text-sky-400 p-2">
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                      소스 코드 처리 중...
-                    </div>
-                  )}
+                  {busy && (() => {
+                    const targetLabel = pageFile || pathname || "현재 화면";
+                    const modelLabel = llmEnabled ? aiModel : "규칙 엔진";
+                    const { title, steps } = getBusySteps(busyKind, targetLabel, modelLabel);
+                    const totalSteps = steps.length;
+                    const activeIdx = Math.min(busyStepIdx, totalSteps - 1);
+                    const progressPct = Math.round(((activeIdx + 1) / totalSteps) * 100);
+                    const elapsedSec = (busyElapsedMs / 1000).toFixed(1);
+
+                    return (
+                      <div className="rounded-xl border border-sky-500/40 bg-[#0b1834] p-3 text-xs space-y-2 shadow-lg">
+                        {/* 상단 타이틀 및 경과 시간 */}
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-2 text-sky-300 font-bold">
+                            <Loader2 className="h-4 w-4 animate-spin text-sky-400 shrink-0" />
+                            <span>{title}</span>
+                          </div>
+                          <div className="flex items-center gap-1.5 shrink-0 font-mono text-[10px]">
+                            <span className="px-1.5 py-0.5 rounded bg-sky-950 text-sky-300 border border-sky-700/60">
+                              단계 {activeIdx + 1}/{totalSteps}
+                            </span>
+                            <span className="text-zinc-400">{elapsedSec}s</span>
+                          </div>
+                        </div>
+
+                        {/* 진행률 바 */}
+                        <div className="h-1.5 w-full rounded-full bg-slate-900 overflow-hidden border border-blue-900/50">
+                          <div
+                            className="h-full bg-gradient-to-r from-sky-500 to-emerald-400 transition-all duration-300"
+                            style={{ width: `${progressPct}%` }}
+                          />
+                        </div>
+
+                        {/* 단계별 진행 상태 체크리스트 */}
+                        <div className="space-y-1 pt-0.5">
+                          {steps.map((stepText, idx) => {
+                            const isDone = idx < activeIdx;
+                            const isCurrent = idx === activeIdx;
+                            return (
+                              <div
+                                key={idx}
+                                className={`flex items-center gap-2 text-[11px] px-2 py-1 rounded ${
+                                  isCurrent
+                                    ? "bg-sky-500/15 text-sky-100 font-semibold border border-sky-500/30"
+                                    : isDone
+                                    ? "text-emerald-300/80"
+                                    : "text-zinc-500"
+                                }`}
+                              >
+                                {isDone ? (
+                                  <Check className="h-3.5 w-3.5 text-emerald-400 shrink-0" />
+                                ) : isCurrent ? (
+                                  <Loader2 className="h-3.5 w-3.5 animate-spin text-sky-400 shrink-0" />
+                                ) : (
+                                  <span className="h-3.5 w-3.5 flex items-center justify-center text-[10px] text-zinc-600 shrink-0">
+                                    ○
+                                  </span>
+                                )}
+                                <span className="flex-1 truncate">{stepText}</span>
+                                {isDone && (
+                                  <span className="text-[9.5px] font-mono text-emerald-400 shrink-0">완료</span>
+                                )}
+                                {isCurrent && (
+                                  <span className="text-[9.5px] font-mono text-sky-300 shrink-0 animate-pulse">
+                                    진행 중
+                                  </span>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })()}
                   <div ref={endRef} />
                 </div>
 
@@ -1037,7 +1209,10 @@ function EditCard({
           </>
         )}
         {msg.status === "applying" && (
-          <span className="flex items-center gap-1 text-sky-300"><Loader2 className="h-3.5 w-3.5 animate-spin" /> 적용 중...</span>
+          <span className="flex items-center gap-1.5 text-sky-300 text-[11px]">
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            원본 백업 스냅샷 저장 → 소스 파일 라인 치환 → 화면 갱신 중...
+          </span>
         )}
         {msg.status === "applied" && (
           <>
