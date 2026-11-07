@@ -125,6 +125,18 @@ ARC-WIZARD는 화면을 보면서 실시간으로 소스 코드(`.tsx`)와 UI �
 
 ---
 
+### 3-6. 아크위저드 보안 가드레일 및 수정 제약 사항 (Security Guardrails)
+ARC-WIZARD는 시스템 무결성과 보안을 보호하기 위해 프롬프트 분석 단계, AI 생성 단계, 파일 반영 단계의 **3중 보안 가드레일**을 강제합니다:
+
+1. **아크위저드 자체 소스 코드 수정 불가**:
+   * 아크위저드를 이용하여 아크위저드 관련 소스 코드(`src/components/vibe-coding/`, `src/lib/vibe-coding/`, `/api/v1/vibe-coding/`)나 내부 엔진 로직은 절대 검색하거나 수정할 수 없습니다.
+2. **보안사항을 위배하는 코드 실행 및 반영 불가**:
+   * **인증/권한 우회 차단**: 로그인 검증, 역할 권한(`role-store`, `auth-crypto`, `user-store`), 403 접근 통제 로직을 우회하거나 무력화하는 프롬프트 및 코드는 즉시 차단됩니다.
+   * **민감 정보 노출 차단**: API Key(`GEMINI_API_KEY` 등), DB 접속 정보(`DATABASE_URL`), `.env` 환경변수(`process.env`), 쿠키(`document.cookie`)에 접근하거나 노출하는 코드는 차단됩니다.
+   * **동적 실행 및 악성 스크립트 차단**: `eval()`, `new Function()`, `dangerouslySetInnerHTML`, `innerHTML`, `<script>`, `child_process`, `fs` 파일 시스템 조작, 외부 도메인 `fetch`, DB 테이블 파괴 쿼리(`DROP TABLE`, `TRUNCATE` 등)는 실행 및 반영이 원천 거부됩니다.
+
+---
+
 ## 4. 서버 배포 및 운영 가이드
 
 ### 4-1. 개발 모드 vs 프로덕션 빌드 운영 가이드
@@ -158,3 +170,4 @@ pm2 restart mpsi-app
 pm2 stop mpsi-app
 pm2 delete mpsi-app
 ```
+

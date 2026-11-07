@@ -134,8 +134,35 @@ const HELP_TEXT = `사용 방법
   • 숨김 컬럼 목록 · 변경 이력 · 되돌려줘
   • 자유 지시 및 이미지(Ctrl+V 붙여넣기/첨부) 기반 소스 수정 제안
 
-※ 우측 상단 ⚙️ 버튼에서 언제든 AI 모델과 API 키/엔드포인트를 변경할 수 있습니다.
-※ 실제 소스 파일(src/)을 수정하며, 개발 서버(next dev)에서만 동작합니다.`;
+🔒 [보안 및 제약 사항]
+  1. 아크위저드를 이용하여 아크위저드 관련 소스 코드는 수정할 수 없습니다.
+  2. 보안사항을 위배하는 코드(권한/인증 우회, 키/환경변수 노출, 악성 스크립트 실행 등)는 실행할 수 없습니다.`;
+
+/** 클라이언트 측 프롬프트 보안 정책 사전 검증 */
+function checkClientSecurityPolicy(text: string): string | null {
+  const t = (text || "").trim();
+  if (!t) return null;
+
+  // 1. 아크위저드 관련 소스코드 수정 시도 차단
+  const mentionsArcWizard = /(아크\s*위저드|아크\s*워저드|arc[-_\s]*wizard|vibe[-_\s]*coding|source[-_\s]*editor|command[-_\s]*parser|ArcWizardFloating)/i.test(t);
+  const hasModifyIntent = /(수정|변경|바꿔|고쳐|삭제|지워|추가|제거|무력화|우회|주석|편집|해제|열어|노출|보여)/i.test(t);
+  if (mentionsArcWizard && hasModifyIntent) {
+    return "🚫 [보안 정책 차단] 아크위저드를 이용하여 아크위저드 관련 소스 코드는 수정할 수 없습니다.";
+  }
+
+  // 2. 보안사항 위배 프롬프트/코드 차단
+  if (/(권한\s*우회|로그인\s*우회|인증\s*우회|인증\s*무시|권한\s*체크\s*제거|권한\s*검증\s*삭제|403\s*해제|모든\s*권한\s*허용)/i.test(t)) {
+    return "🚫 [보안 정책 차단] 보안사항을 위배하는 코드(권한 및 인증 검증 우회)는 실행할 수 없습니다.";
+  }
+  if (/(비밀번호\s*노출|패스워드\s*노출|비밀번호\s*탈취|api\s*키\s*노출|api\s*key.*노출|환경\s*변수.*출력|process\.env|\.env\s*파일)/i.test(t)) {
+    return "🚫 [보안 정책 차단] 보안사항을 위배하는 코드(API 키·비밀번호·환경변수 노출)는 실행할 수 없습니다.";
+  }
+  if (/(\beval\s*\(|new\s+Function|dangerouslySetInnerHTML|\binnerHTML\s*=|document\.cookie|child_process|execSync|spawnSync|DROP\s+TABLE|TRUNCATE\s+TABLE|<\s*script\b|javascript\s*:)/i.test(t)) {
+    return "🚫 [보안 정책 차단] 보안사항을 위배하는 코드(동적 스크립트 실행, 시스템 명령, XSS, DB 파괴 등)는 실행할 수 없습니다.";
+  }
+
+  return null;
+}
 
 // ───────── 컴포넌트 ─────────
 export function ArcWizardFloating() {
@@ -407,6 +434,12 @@ export function ArcWizardFloating() {
       });
       setInput("");
       setAttachedImage(null);
+
+      // 프롬프트 보안 정책 사전 검증 (아크위저드 자기 수정 금지 & 보안 위배 코드 실행 금지)
+      const secBlock = checkClientSecurityPolicy(text);
+      if (secBlock) {
+        return say(secBlock, "error");
+      }
 
       // 이미지가 첨부된 경우 AI 멀티모달 분석 우선 실행
       if (img) {

@@ -54,17 +54,20 @@ interface HistoryEntry {
 const toRel = (abs: string) => path.relative(ROOT, abs).split(path.sep).join("/");
 const sha = (s: string) => crypto.createHash("sha1").update(s).digest("hex");
 
-// 인증·권한·DB·동기화·전역 레이아웃 등 AI 편집 금지 파일 (src/ 기준 상대경로, 소문자)
+// 인증·권한·DB·동기화·전역 레이아웃·아크위저드 등 AI 편집 금지 파일 (src/ 기준 상대경로, 소문자)
 const DENIED_FILES = new Set([
   "lib/auth-crypto.ts",
   "lib/db.ts",
   "lib/role-store.ts",
   "lib/permission-store.ts",
   "lib/user-store.ts",
+  "lib/user-constants.ts",
   "lib/menu-store.ts",
   "lib/notification-store.ts",
   "services/sync-service.ts",
   "config/node-config.ts",
+  "config/arc-wizard-overrides.json",
+  "config/menu-config.json",
   "types/sync.ts",
   "app/layout.tsx",
   "app/portal/layout.tsx",
@@ -86,6 +89,7 @@ function normForCompare(abs: string): string {
 
 /** src/ 기준 상대경로가 금지 대상인지 (정규화된 소문자 경로 입력) */
 function isDeniedRel(relFromSrc: string): boolean {
+  if (relFromSrc.includes("vibe-coding") || relFromSrc.includes("arc-wizard")) return true;
   return DENIED_FILES.has(relFromSrc) || DENIED_PREFIXES.some((p) => relFromSrc.startsWith(p));
 }
 
@@ -103,6 +107,108 @@ export function resolveSafePath(relFile: string): string {
   return abs;
 }
 
+// 아크위저드 자체 소스 수정 차단 패턴
+const SELF_MODIFICATION_CODE_PATTERNS: RegExp[] = [
+  /vibe-coding/i,
+  /arc-wizard-floating/i,
+  /ArcWizardFloating/,
+  /source-editor/i,
+  /command-parser/i,
+  /\/api\/v1\/vibe-coding/i,
+];
+
+// 보안 위배 코드 실행 차단 패턴 (동적 코드 실행, 시스템/파일 제어, XSS, 인증/세션 우회, 환경변수/키 탈취, 외부 네트워크 유출, DB 파괴 등)
+const SECURITY_VIOLATION_CODE_PATTERNS: { pattern: RegExp; reason: string }[] = [
+  { pattern: /\beval\s*\(/, reason: "동적 코드 실행(eval)은 허용되지 않습니다." },
+  { pattern: /\bnew\s+Function\b|\bFunction\s*\(/, reason: "동적 함수 생성(Function)은 허용되지 않습니다." },
+  { pattern: /\bset(?:Timeout|Interval)\s*\(\s*["'`]/, reason: "문자열 기반 타이머 코드 실행은 허용되지 않습니다." },
+  {
+    pattern: /dangerouslySetInnerHTML|\binnerHTML\s*=|\bouterHTML\s*=|\bdocument\.write(?:ln)?\s*\(|\binsertAdjacentHTML\s*\(/,
+    reason: "XSS 위험이 있는 직접 DOM HTML 주입 코드는 허용되지 않습니다.",
+  },
+  {
+    pattern: /<\s*script\b|javascript\s*:|vbscript\s*:|data\s*:\s*text\/html/i,
+    reason: "스크립트 태그 또는 실행형 URI 삽입은 허용되지 않습니다.",
+  },
+  {
+    pattern: /\bchild_process\b|\b(?:exec|execSync|spawn|spawnSync|fork)\s*\(/,
+    reason: "시스템 쉘/프로세스 명령 실행 코드는 허용되지 않습니다.",
+  },
+  {
+    pattern: /\bprocess\.(?:env|exit|kill|binding|dlopen|mainModule)\b/,
+    reason: "서버 프로세스 또는 환경변수(process.env) 접근 코드는 허용되지 않습니다.",
+  },
+  {
+    pattern: /\brequire\s*\(\s*["'`](?:fs|path|os|net|http|https|child_process|crypto|vm|cluster|dgram|dns|tls|node:)/,
+    reason: "서버 내부 모듈(fs, child_process 등) 호출은 허용되지 않습니다.",
+  },
+  {
+    pattern: /\bfs\.(?:read|write|append|unlink|rm|rmdir|mkdir|readdir|chmod|chown|copyFile|rename)/,
+    reason: "파일 시스템 직접 조작 코드는 허용되지 않습니다.",
+  },
+  {
+    pattern: /\bdocument\.cookie\b/,
+    reason: "쿠키(document.cookie) 직접 접근 및 탈취 코드는 허용되지 않습니다.",
+  },
+  {
+    pattern: /\blocalStorage\.(?:clear|removeItem)\s*\(|\blocalStorage\.(?:setItem|getItem)\s*\(\s*["'`](?:mpsi_role|mpsi_user_accounts)/,
+    reason: "인증 세션 및 계정 스토리지 직접 조작은 허용되지 않습니다.",
+  },
+  {
+    pattern: /\b(?:saveRoleSession|verifyPassword|hashPassword|DEFAULT_INITIAL_PASSWORD)\b/,
+    reason: "인증·권한 검증 로직 조작은 허용되지 않습니다.",
+  },
+  {
+    pattern: /\b(?:GEMINI_API_KEY|ARC_WIZARD_API_KEY|ARC_WIZARD_ADMIN_TOKEN|DATABASE_URL|NODE_API_KEY|NODE_HMAC_SECRET)\b/,
+    reason: "보안 API 키 및 데이터베이스 연결 정보 참조는 허용되지 않습니다.",
+  },
+  {
+    pattern: /\bfetch\s*\(\s*["'`]https?:\/\/|\bnew\s+XMLHttpRequest\b|\bnavigator\.sendBeacon\b|\bnew\s+WebSocket\s*\(/i,
+    reason: "외부 도메인으로의 네트워크 전송 코드는 허용되지 않습니다.",
+  },
+  {
+    pattern: /\b(?:DROP\s+TABLE|TRUNCATE\s+TABLE|DELETE\s+FROM\s+\w+\s*;?\s*$|ALTER\s+TABLE|GRANT\s+ALL)\b/i,
+    reason: "데이터베이스 스키마/데이터 파괴 쿼리는 허용되지 않습니다.",
+  },
+];
+
+/** 사용자 프롬프트(지시문) 단계에서의 보안 정책 및 자기 수정 금지 검증 */
+export function validateInstructionSecurity(instruction: string): string | null {
+  const text = (instruction || "").trim();
+  if (!text) return null;
+
+  // 1. 아크위저드 관련 소스코드 수정 시도 차단
+  const mentionsArcWizard = /(아크\s*위저드|아크\s*워저드|arc[-_\s]*wizard|vibe[-_\s]*coding|source[-_\s]*editor|command[-_\s]*parser|ArcWizardFloating)/i.test(text);
+  const hasModifyIntent = /(수정|변경|바꿔|고쳐|삭제|지워|추가|제거|무력화|우회|주석|편집|해제|열어|노출|보여)/i.test(text);
+  if (mentionsArcWizard && hasModifyIntent) {
+    return "🚫 **[보안 정책 차단]** 아크위저드(ARC-WIZARD)를 이용하여 아크위저드 관련 소스 코드나 내부 엔진 설정 코드는 수정할 수 없습니다.";
+  }
+
+  // 2. 보안사항 위배 프롬프트/명령 차단
+  const securityPromptPatterns: { pattern: RegExp; reason: string }[] = [
+    {
+      pattern: /(권한\s*우회|로그인\s*우회|인증\s*우회|인증\s*무시|권한\s*체크\s*제거|권한\s*검증\s*삭제|403\s*해제|모든\s*권한\s*허용)/i,
+      reason: "인증 및 권한 검증을 우회하거나 무력화하는 작업은 수행할 수 없습니다.",
+    },
+    {
+      pattern: /(비밀번호\s*노출|패스워드\s*노출|비밀번호\s*탈취|api\s*키\s*노출|api\s*key.*노출|환경\s*변수.*출력|process\.env|\.env\s*파일)/i,
+      reason: "API 키, 비밀번호, 환경변수(.env) 등 민감 보안 정보를 노출하는 코드는 작성할 수 없습니다.",
+    },
+    {
+      pattern: /(\beval\s*\(|new\s+Function|dangerouslySetInnerHTML|document\.cookie|child_process|execSync|spawnSync|DROP\s+TABLE|TRUNCATE\s+TABLE|<script)/i,
+      reason: "시스템 명령 실행, 동적 코드 실행(eval), XSS 스크립트 삽입, DB 파괴 등 보안을 위배하는 코드는 실행할 수 없습니다.",
+    },
+  ];
+
+  for (const rule of securityPromptPatterns) {
+    if (rule.pattern.test(text)) {
+      return `🚫 **[보안 정책 차단]** 보안사항을 위배하는 코드는 실행하거나 반영할 수 없습니다.\n• 사유: ${rule.reason}`;
+    }
+  }
+
+  return null;
+}
+
 export function validateReplacement(to: string, allowCode = true): string | null {
   if (to === undefined || to === null) return "새 문구가 비어 있습니다.";
   if (!allowCode && !to.trim()) return "새 문구가 비어 있습니다.";
@@ -111,6 +217,21 @@ export function validateReplacement(to: string, allowCode = true): string | null
   if (!allowCode && FORBIDDEN_CHARS.test(to)) {
     return "새 문구에 사용할 수 없는 문자가 있습니다: { } < > \" ' ` \\ 줄바꿈";
   }
+
+  // 1) 아크위저드 자체 소스/API 참조 및 수정 차단
+  for (const pat of SELF_MODIFICATION_CODE_PATTERNS) {
+    if (pat.test(to)) {
+      return "보안 정책 차단: 아크위저드(ARC-WIZARD) 관련 소스 코드나 내부 API는 수정할 수 없습니다.";
+    }
+  }
+
+  // 2) 보안 위배 코드 패턴 정적 검사
+  for (const rule of SECURITY_VIOLATION_CODE_PATTERNS) {
+    if (rule.pattern.test(to)) {
+      return `보안 정책 차단: ${rule.reason}`;
+    }
+  }
+
   return null;
 }
 
@@ -965,6 +1086,12 @@ export async function proposeEditsWithLLM(
   imageDataUrl?: string,
   screenContext?: ScreenSnapshot
 ): Promise<{ edits: EditRequest[]; reply?: string; endpoint?: string } | null> {
+  // 0. 프롬프트 보안 정책 및 아크위저드 자기 수정 금지 사전 검증
+  const securityBlock = validateInstructionSecurity(instruction);
+  if (securityBlock) {
+    return { edits: [], reply: securityBlock };
+  }
+
   const cfg = getAiConfig();
   const rel = routePageFile(pathname);
   if (!rel) return { edits: [], reply: `현재 경로(${pathname})에 매핑된 page.tsx 파일을 찾을 수 없습니다.` };
@@ -1005,11 +1132,12 @@ export async function proposeEditsWithLLM(
     ? fs.readFileSync(sidebarAbs, "utf-8").split("\n").slice(60, 210).join("\n")
     : "";
 
-  // 현재 페이지에서 import한 공통/도메인 컴포넌트 파일(예: DateRangeFilter 등)도 함께 전달하여 내부 버튼/필터 수정까지 지원
+  // 현재 페이지에서 import한 공통/도메인 컴포넌트 파일(예: DateRangeFilter 등)도 함께 전달하여 내부 버튼/필터 수정까지 지원 (vibe-coding 제외)
   const importedComponentBlocks: string[] = [];
-  const importRegex = /from\s+["']@\/components\/(?!ui\/)([^"']+)["']/g;
+  const importRegex = /from\s+["']@\/components\/(?!ui\/|vibe-coding\/)([^"']+)["']/g;
   for (const m of source.matchAll(importRegex)) {
     const compRel = `src/components/${m[1].replace(/\.(tsx|ts)$/, "")}.tsx`;
+    if (compRel.includes("vibe-coding") || compRel.includes("arc-wizard")) continue;
     const compAbs = path.join(ROOT, compRel);
     if (fs.existsSync(compAbs) && importedComponentBlocks.length < 2) {
       const compContent = fs.readFileSync(compAbs, "utf-8");
@@ -1025,6 +1153,10 @@ ${domSummary}
 
 [사용자 요청]:
 "${instruction || "첨부한 이미지를 참고해 화면 소스를 수정해줘"}"
+
+[절대 보안 및 제약 규칙 - 최우선 준수]:
+1. 아크위저드(ARC-WIZARD, vibe-coding, arc-wizard-floating, source-editor, command-parser) 관련 소스 코드는 어떠한 경우에도 수정할 수 없습니다. 요청 시 "edits": [] 로 반환하고 "reply"에 "보안 정책상 아크위저드 자체 소스 코드는 수정할 수 없습니다."라고 안내하세요.
+2. 보안사항을 위배하는 코드(권한/인증 우회, 비밀번호·API 키·환경변수 노출, eval/Function 동적 실행, dangerouslySetInnerHTML/innerHTML 등 XSS 유발 코드, child_process/fs 등 시스템 제어, 외부 도메인 데이터 전송, DB 파괴 쿼리 등)는 절대 생성하거나 실행할 수 없습니다. 요청 시 즉시 거절 사유를 "reply"에 반환하고 "edits": [] 로 반환하세요.
 
 [작성 규칙]:
 1. 사용자가 현재 화면이나 메뉴에 대해 질문한 경우: "reply"에 한국어로 정확히 답변하고 "edits"는 []로 반환하세요.
@@ -1066,16 +1198,27 @@ ${excerpt}`;
 
     const out: EditRequest[] = [];
     const rawEdits = Array.isArray(parsed.edits) ? parsed.edits : [];
+    let blockedReason: string | null = null;
 
     for (const e of rawEdits as { file?: string; search?: string; replace?: string }[]) {
       if (!e?.search || typeof e.replace !== "string" || e.search === e.replace) continue;
-      if (validateReplacement(e.replace, true)) continue;
       const targetRel: string = e.file && e.file.startsWith("src/") ? e.file : rel;
+      if (targetRel.includes("vibe-coding") || targetRel.includes("arc-wizard")) {
+        blockedReason = "🚫 **[보안 정책 차단]** 아크위저드(ARC-WIZARD) 관련 소스 코드는 수정할 수 없습니다.";
+        continue;
+      }
+      const repErr = validateReplacement(e.replace, true);
+      if (repErr) {
+        blockedReason = `🚫 **[${repErr}]**`;
+        continue;
+      }
       // AI 제안 범위: 현재 화면 page + 공통/도메인 컴포넌트 + 사이드바만 (그 외 파일 제안은 폐기)
       const inScope =
         targetRel === rel ||
         targetRel === sidebarRel ||
-        (targetRel.startsWith("src/components/") && !targetRel.startsWith("src/components/ui/"));
+        (targetRel.startsWith("src/components/") &&
+          !targetRel.startsWith("src/components/ui/") &&
+          !targetRel.startsWith("src/components/vibe-coding/"));
       if (!inScope) continue;
       let targetSource = source;
       let targetLines = lines;
@@ -1103,7 +1246,12 @@ ${excerpt}`;
     }
     return {
       edits: out,
-      reply: typeof parsed.reply === "string" ? parsed.reply : undefined,
+      reply:
+        out.length === 0 && blockedReason
+          ? blockedReason
+          : typeof parsed.reply === "string"
+          ? parsed.reply
+          : undefined,
       endpoint: usedEndpoint,
     };
   } catch (err: unknown) {
