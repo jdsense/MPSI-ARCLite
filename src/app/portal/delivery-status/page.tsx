@@ -18,6 +18,7 @@ import {
   Key,
   CheckCircle2,
   FileJson,
+  Plus,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -29,176 +30,8 @@ import {
 
 export type { DeliveryItem };
 
-// SCM 표준 샘플 배송 데이터 (게이트웨이 KS X 9101 BOD 위탁 규격 필드 포함)
-const INITIAL_DELIVERIES: DeliveryItem[] = [
-  {
-    id: "DLV-20261107-001",
-    deliveryId: "DLV-20261107-001",
-    trackingNo: "SR-20261107-001",
-    projectNo: "MI26001P0",
-    customerId: "HMC-ASAN",
-    customerName: "현대자동차 (아산공장)",
-    destination: "아산공장 1라인 부품하차장 B구역",
-    shippingPoint: "(주)뉴몰드 사출 1공장",
-    productName: "Front Door Upper Cover",
-    partNo: "0471-NT500-LH",
-    qty: 500,
-    unit: "EA",
-    requestedDeliveryDate: "2026-11-10",
-    preferredReceiptDate: "2026-11-10",
-    note: "오전 하차 희망",
-    status: "배송중",
-    carrierName: "소프트러쉬 운송",
-    vehicleNo: "경기 88바 1234",
-    vehicleType: "11톤 윙바디",
-    driverName: "김철수 기사",
-    driverPhone: "010-3849-2910",
-    departureTime: "2026-10-18 09:30",
-    estimatedArrival: "2026-10-18 15:30",
-    currentLocation: "서해안고속도로 평택분기점 통과",
-    apiSource: "소프트러쉬 물류 API v1.0 (GPS)",
-    transitSteps: [
-      { step: "출하 등록 & 상차 완료", location: "(주)뉴몰드 사출 1공장", time: "2026-10-18 09:30", isCompleted: true, note: "출하 검수 및 윙바디 상차 완료" },
-      { step: "물류 터미널 통과", location: "평택 스마트 물류허브", time: "2026-10-18 11:20", isCompleted: true, note: "자동 바코드 스캔 통과" },
-      { step: "간선 수송 및 배송 중", location: "서해안고속도로 평택JCT", time: "2026-10-18 13:40", isCompleted: true, note: "정상 운행 중 (시속 82km)" },
-      { step: "납품처 도착 & 하차/입고", location: "현대차 아산공장 하차장", time: "2026-10-18 15:30 (예정)", isCompleted: false, note: "하차 대기 예정" },
-    ],
-  },
-  {
-    id: "DLV-20261107-002",
-    deliveryId: "DLV-20261107-002",
-    trackingNo: "LOG-20261018-002",
-    projectNo: "MI26002P0",
-    customerId: "HMC-ULSAN",
-    customerName: "현대자동차 (울산공장)",
-    destination: "울산 2공장 차체조립동 하차데크",
-    shippingPoint: "(주)뉴몰드 안산공장",
-    productName: "Rear door",
-    partNo: "4850",
-    qty: 800,
-    unit: "EA",
-    requestedDeliveryDate: "2026-11-11",
-    preferredReceiptDate: "2026-11-11",
-    note: "오후 하차 희망",
-    status: "배송중",
-    carrierName: "롯데글로벌로지스",
-    vehicleNo: "울산 91바 5678",
-    vehicleType: "14톤 특장 트럭",
-    driverName: "이성호 기사",
-    driverPhone: "010-4829-1029",
-    departureTime: "2026-10-18 08:00",
-    estimatedArrival: "2026-10-18 17:00",
-    currentLocation: "경부고속도로 김천휴게소 부근",
-    apiSource: "소프트러쉬 물류 API v1.0 (GPS)",
-    transitSteps: [
-      { step: "출하 등록 & 상차 완료", location: "(주)뉴몰드 안산공장", time: "2026-10-18 08:00", isCompleted: true, note: "완제품 OQC 합격 후 상차" },
-      { step: "중부 물류허브 집하", location: "대전 물류 복합센터", time: "2026-10-18 11:50", isCompleted: true, note: "화물 적재 상태 점검" },
-      { step: "간선 배송 중", location: "경부고속도로 김천구간", time: "2026-10-18 14:10", isCompleted: true, note: "정체 없이 정상 주행 중" },
-      { step: "납품처 도착 & 인수", location: "현대차 울산 2공장", time: "2026-10-18 17:00 (예정)", isCompleted: false, note: "입고 검수 대기" },
-    ],
-  },
-  {
-    id: "DLV-20261107-003",
-    deliveryId: "DLV-20261107-003",
-    trackingNo: "TRK-20261018-003",
-    projectNo: "MI26003P0",
-    customerId: "MOBIS-HWASUNG",
-    customerName: "현대모비스 (화성공장)",
-    destination: "화성 모듈조립 3공장",
-    shippingPoint: "(주)뉴몰드 사출공장",
-    productName: "Door Trim",
-    partNo: "84710-NT700",
-    qty: 400,
-    unit: "EA",
-    requestedDeliveryDate: "2026-11-10",
-    preferredReceiptDate: "2026-11-10",
-    note: "파손 주의 품목",
-    status: "배송완료",
-    carrierName: "CJ대한통운",
-    vehicleNo: "서울 82바 9988",
-    vehicleType: "5톤 윙바디",
-    driverName: "박동진 기사",
-    driverPhone: "010-9182-3847",
-    departureTime: "2026-10-18 09:00",
-    estimatedArrival: "2026-10-18 14:00",
-    actualArrival: "2026-10-18 13:50",
-    currentLocation: "현대모비스 화성공장 (인수완료)",
-    apiSource: "소프트러쉬 물류 API v1.0 (GPS)",
-    transitSteps: [
-      { step: "출하 등록 & 상차 완료", location: "(주)뉴몰드 사출공장", time: "2026-10-18 09:00", isCompleted: true, note: "출하 바코드 발행" },
-      { step: "수도권 남부 터미널 통과", location: "군포 복합물류터미널", time: "2026-10-18 10:45", isCompleted: true, note: "경유 터미널 통과" },
-      { step: "간선 운송", location: "수원-화성 고속화도로", time: "2026-10-18 12:20", isCompleted: true, note: "목적지 근접" },
-      { step: "납품처 도착 & 인수 완료", location: "현대모비스 화성공장", time: "2026-10-18 13:50", isCompleted: true, note: "입고 담당자 전자서명 완료" },
-    ],
-  },
-  {
-    id: "DLV-20261107-004",
-    deliveryId: "DLV-20261107-004",
-    trackingNo: "CJ-20261018-004",
-    projectNo: "MI26004P0",
-    customerId: "KIA-HWASUNG",
-    customerName: "기아자동차 (화성공장)",
-    destination: "화성 완성차 조립 1라인",
-    shippingPoint: "MPSI 자체사출라인",
-    productName: "Radiator Lower Grille",
-    partNo: "86350-K7000",
-    qty: 600,
-    unit: "EA",
-    requestedDeliveryDate: "2026-11-10",
-    preferredReceiptDate: "2026-11-10",
-    note: "정시 입고 필수",
-    status: "배송완료",
-    carrierName: "CJ대한통운",
-    vehicleNo: "경기 85바 4421",
-    vehicleType: "11톤 윙바디",
-    driverName: "정재민 기사",
-    driverPhone: "010-5544-7788",
-    departureTime: "2026-10-18 07:30",
-    estimatedArrival: "2026-10-18 11:30",
-    actualArrival: "2026-10-18 11:20",
-    currentLocation: "기아 화성공장 하차데크 (입고 완료)",
-    apiSource: "소프트러쉬 물류 API v1.0 (GPS)",
-    transitSteps: [
-      { step: "상차 완료", location: "MPSI 자체사출라인", time: "2026-10-18 07:30", isCompleted: true },
-      { step: "물류 허브 통과", location: "안산 터미널", time: "2026-10-18 08:50", isCompleted: true },
-      { step: "배송 운행", location: "화성 남양로", time: "2026-10-18 10:10", isCompleted: true },
-      { step: "배송 및 인수 완료", location: "기아 화성공장", time: "2026-10-18 11:20", isCompleted: true, note: "정시 도착 완료" },
-    ],
-  },
-  {
-    id: "DLV-20261107-005",
-    deliveryId: "DLV-20261107-005",
-    trackingNo: "LOG-20261018-005",
-    projectNo: "MI26005P0",
-    customerId: "HKMC-NAMYANG",
-    customerName: "HKMC 남양연구소",
-    destination: "연구개발 2동 프로토 시험실",
-    shippingPoint: "MPSI 사출공장 출하장",
-    productName: "Door Armrest Base",
-    partNo: "82710-AA000",
-    qty: 150,
-    unit: "EA",
-    requestedDeliveryDate: "2026-11-12",
-    preferredReceiptDate: "2026-11-12",
-    note: "연구소 담당자 입회 하차",
-    status: "출하준비",
-    carrierName: "직배송/자체배송",
-    vehicleNo: "서울 80가 1122",
-    vehicleType: "1톤 탑차",
-    driverName: "한승우 기사",
-    driverPhone: "010-2233-4455",
-    departureTime: "2026-10-18 16:30 (예정)",
-    estimatedArrival: "2026-10-18 18:00 (예정)",
-    currentLocation: "사출 출하장 상차 대기 중",
-    apiSource: "소프트러쉬 물류 API v1.0 (GPS)",
-    transitSteps: [
-      { step: "출하 포장 및 라벨링", location: "출하 검사실", time: "2026-10-18 14:00", isCompleted: true },
-      { step: "차량 배차 및 상차 대기", location: "사출공장 출하장", time: "2026-10-18 16:00", isCompleted: false },
-      { step: "배송 출발", location: "남양연구소 이동구간", time: "2026-10-18 16:30 (예정)", isCompleted: false },
-      { step: "현장 납품 완료", location: "남양연구소 2동", time: "2026-10-18 18:00 (예정)", isCompleted: false },
-    ],
-  },
-];
+// 실제 게이트웨이(https://mpsi-gw.a2lab.co.kr) 연동 배송 데이터 (더미 데이터 미사용)
+const INITIAL_DELIVERIES: DeliveryItem[] = [];
 
 interface GatewayLogBanner {
   title: string;
@@ -233,6 +66,66 @@ function buildGatewayPayloadItem(item: DeliveryItem, index = 1): LogisticsGatewa
     preferredReceiptDate: item.preferredReceiptDate || "2026-11-10",
     note: item.note || "오전 하차 희망",
   };
+}
+
+function normalizeGatewayDeliveries(
+  gatewayItems: Partial<DeliveryItem>[],
+  existingList: DeliveryItem[] = []
+): DeliveryItem[] {
+  const nowStr = new Date().toLocaleTimeString("ko-KR", { hour12: false });
+  const existingMap = new Map<string, DeliveryItem>();
+  for (const item of existingList) {
+    if (item.trackingNo) existingMap.set(item.trackingNo, item);
+    if (item.id) existingMap.set(item.id, item);
+  }
+
+  return gatewayItems.map((gw, idx) => {
+    const key = gw.trackingNo || gw.id || "";
+    const existing = existingMap.get(key);
+
+    const normalizedStatus: DeliveryStatusType =
+      gw.status === "배송중" || gw.status === "배송완료" || gw.status === "출하준비"
+        ? gw.status
+        : "출하준비";
+
+    return {
+      id: gw.id || gw.trackingNo || `DLV-${idx + 1}`,
+      deliveryId: gw.id || gw.deliveryId || `DLV-${idx + 1}`,
+      trackingNo: gw.trackingNo || "-",
+      projectNo: gw.projectNo || "-",
+      customerId: gw.customerId || existing?.customerId || "HMC-ASAN",
+      customerName: gw.customerName || existing?.customerName || "-",
+      destination:
+        gw.destination !== undefined && gw.destination !== ""
+          ? gw.destination
+          : existing?.destination || "",
+      shippingPoint: gw.shippingPoint || existing?.shippingPoint || "(주)뉴몰드 사출 1공장",
+      productName: gw.productName || existing?.productName || "-",
+      partNo: gw.partNo || existing?.partNo || "",
+      qty: typeof gw.qty === "number" && gw.qty > 0 ? gw.qty : existing?.qty || 1,
+      unit: gw.unit || existing?.unit || "EA",
+      requestedDeliveryDate: gw.requestedDeliveryDate || existing?.requestedDeliveryDate || "2026-11-10",
+      preferredReceiptDate: gw.preferredReceiptDate || existing?.preferredReceiptDate || "2026-11-10",
+      note: gw.note !== undefined ? gw.note : existing?.note || "",
+      status: normalizedStatus,
+      carrierName:
+        gw.carrierName !== undefined && gw.carrierName !== ""
+          ? gw.carrierName
+          : "소프트러쉬 운송",
+      vehicleNo: gw.vehicleNo || "",
+      vehicleType: gw.vehicleType || "",
+      driverName: gw.driverName || "",
+      driverPhone: gw.driverPhone || "",
+      departureTime: gw.departureTime || "",
+      estimatedArrival: gw.estimatedArrival || "",
+      actualArrival: gw.actualArrival || "",
+      currentLocation: gw.currentLocation || "",
+      apiSource: gw.apiSource || "소프트러쉬 물류 API v1.0 (GPS)",
+      transitSteps: Array.isArray(gw.transitSteps) ? gw.transitSteps : [],
+      lastSyncedAt: existing?.lastSyncedAt || nowStr,
+      gatewayResponseCode: gw.gatewayResponseCode || existing?.gatewayResponseCode || "S000",
+    };
+  });
 }
 
 function mergeDeliveriesFromGateway(
@@ -271,7 +164,6 @@ function mergeDeliveriesFromGateway(
         qty: typeof gw.qty === "number" && gw.qty > 0 ? gw.qty : existing.qty,
         unit: gw.unit || existing.unit,
         status: normalizedStatus,
-        // 게이트웨이에서 빈 문자열("")로 오는 배차 전 필드는 게이트웨이 원본 값을 반영하되 표시 시 안내
         carrierName: gw.carrierName !== undefined && gw.carrierName !== "" ? gw.carrierName : existing.carrierName,
         vehicleNo: gw.vehicleNo !== undefined ? gw.vehicleNo : existing.vehicleNo,
         vehicleType: gw.vehicleType !== undefined ? gw.vehicleType : existing.vehicleType,
@@ -348,6 +240,27 @@ export default function DeliveryStatusPage() {
   const [gwInputKey, setGwInputKey] = useState("");
   const [isSavingGwConfig, setIsSavingGwConfig] = useState(false);
 
+  // 신규 배송 위탁 등록 모달 상태 (실제 게이트웨이 POST /api/v1/logistics/deliveries)
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [isSubmittingCreate, setIsSubmittingCreate] = useState(false);
+  const [createIssues, setCreateIssues] = useState<string[]>([]);
+  const [newDeliveryForm, setNewDeliveryForm] = useState<LogisticsGatewayPayloadItem>({
+    deliveryId: "",
+    trackingNo: "",
+    projectNo: "MI26001P0",
+    customerId: "HMC-ASAN",
+    customerName: "현대자동차 (아산공장)",
+    destination: "아산공장 1라인 부품하차장 B구역",
+    shippingPoint: "(주)뉴몰드 사출 1공장",
+    partNo: "0471-NT500-LH",
+    productName: "Front Door Upper Cover",
+    qty: 500,
+    unit: "EA",
+    requestedDeliveryDate: "2026-11-10",
+    preferredReceiptDate: "2026-11-10",
+    note: "오전 하차 희망",
+  });
+
   const showToast = (msg: string) => {
     setToastMessage(msg);
     setTimeout(() => setToastMessage(null), 4000);
@@ -366,9 +279,8 @@ export default function DeliveryStatusPage() {
         ? json.raw.data
         : [];
 
-      if (list.length > 0) {
-        setDeliveries((prev) => mergeDeliveriesFromGateway(prev, list));
-      }
+      // 실제 게이트웨이 데이터만 화면 그리드에 100% 반영 (더미 데이터 제거)
+      setDeliveries((prev) => normalizeGatewayDeliveries(list, prev));
 
       if (!silent) {
         setGwBanner({
@@ -658,6 +570,143 @@ export default function DeliveryStatusPage() {
     }
   };
 
+  // 신규 배송 등록 모달 열기
+  const handleOpenCreateModal = () => {
+    const todayStr = new Date().toISOString().slice(0, 10).replace(/-/g, "");
+    const randNum = String(Math.floor(Math.random() * 900) + 100);
+    const nextDeliveryId = `DLV-${todayStr}-${randNum}`;
+    const nextTrackingNo = `SR-${todayStr}-${randNum}`;
+    const targetDate = new Date(Date.now() + 86400000 * 3).toISOString().slice(0, 10);
+
+    setNewDeliveryForm({
+      deliveryId: nextDeliveryId,
+      trackingNo: nextTrackingNo,
+      projectNo: "MI26001P0",
+      customerId: "HMC-ASAN",
+      customerName: "현대자동차 (아산공장)",
+      destination: "아산공장 1라인 부품하차장 B구역",
+      shippingPoint: "(주)뉴몰드 사출 1공장",
+      partNo: "0471-NT500-LH",
+      productName: "Front Door Upper Cover",
+      qty: 500,
+      unit: "EA",
+      requestedDeliveryDate: targetDate,
+      preferredReceiptDate: targetDate,
+      note: "오전 하차 희망",
+    });
+    setCreateIssues([]);
+    setIsCreateModalOpen(true);
+  };
+
+  // 신규 배송 위탁 제출 (POST /api/v1/logistics/deliveries)
+  const handleSubmitCreateDelivery = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSubmittingCreate(true);
+    setCreateIssues([]);
+
+    // 기본 필수값 유효성 검사
+    const missing: string[] = [];
+    if (!newDeliveryForm.deliveryId.trim()) missing.push("배송식별자(deliveryId)");
+    if (!newDeliveryForm.trackingNo.trim()) missing.push("운송장번호(trackingNo)");
+    if (!newDeliveryForm.projectNo.trim()) missing.push("프로젝트번호(projectNo)");
+    if (!newDeliveryForm.customerName.trim()) missing.push("고객사명(customerName)");
+    if (!newDeliveryForm.productName.trim()) missing.push("품목명(productName)");
+    if (newDeliveryForm.qty <= 0) missing.push("수량(1 이상)");
+
+    if (missing.length > 0) {
+      setCreateIssues([`필수 항목이 누락되었습니다: ${missing.join(", ")}`]);
+      setIsSubmittingCreate(false);
+      return;
+    }
+
+    const requestBody = {
+      scenarioId: "MPSI-SR-DELIVERY-01",
+      actionCode: "Add",
+      deliveries: [newDeliveryForm],
+    };
+
+    try {
+      const res = await fetch("/api/v1/logistics/deliveries", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(requestBody),
+      });
+      const dispatchJson = await res.json();
+
+      // 422 명사 검증 실패 시 모달 및 상단에 사유(issues) 노출
+      if (dispatchJson.httpStatus === 422 || (Array.isArray(dispatchJson.issues) && dispatchJson.issues.length > 0)) {
+        const issues = dispatchJson.issues || [dispatchJson.message || "명사 검증 실패 (KS X 9101 BOD 규격 오류)"];
+        setCreateIssues(issues);
+        setGwBanner({
+          title: `신규 배송 위탁 명사 검증 실패 (HTTP ${dispatchJson.httpStatus || 422}) — ${newDeliveryForm.trackingNo}`,
+          ok: false,
+          httpStatus: dispatchJson.httpStatus || 422,
+          responseCode: dispatchJson.responseCode,
+          message: dispatchJson.message || "명사 검증 실패",
+          issues,
+          requestPayload: requestBody,
+          responsePayload: dispatchJson.raw ?? dispatchJson,
+          timestamp: new Date().toLocaleTimeString("ko-KR", { hour12: false }),
+        });
+        showToast("⚠️ 명사 검증 실패(422): 게이트웨이 검증 사유를 확인해 주세요.");
+        return;
+      }
+
+      if (dispatchJson.httpStatus === 401) {
+        const msg = "x-mpsi-api-key 인증 실패: [게이트웨이 설정]에서 API 키를 확인해 주세요.";
+        setCreateIssues([msg]);
+        showToast("⚠️ 게이트웨이 인증 실패(401)");
+        return;
+      }
+
+      const isAlreadyRegistered = dispatchJson.responseCode === "E402";
+      const isDispatchOk = Boolean(dispatchJson.success) || isAlreadyRegistered;
+
+      // 위탁 성공 후 즉시 실시간 동기화 (POST /api/v1/logistics/sync) 및 게이트웨이 보관 목록 갱신 (GET /api/v1/logistics/deliveries)
+      const syncRes = await fetch("/api/v1/logistics/sync", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ projectNo: newDeliveryForm.projectNo }),
+      });
+      const syncJson = await syncRes.json();
+
+      const syncDataList: Partial<DeliveryItem>[] = Array.isArray(syncJson?.data)
+        ? syncJson.data
+        : Array.isArray(syncJson?.raw?.data)
+        ? syncJson.raw.data
+        : [];
+      if (syncDataList.length > 0) {
+        setDeliveries((prev) => mergeDeliveriesFromGateway(prev, syncDataList));
+      }
+
+      const { count: listCount } = await fetchGatewayDeliveries(undefined, true);
+
+      setIsCreateModalOpen(false);
+
+      const nowStr = new Date().toLocaleTimeString("ko-KR", { hour12: false });
+      setGwBanner({
+        title: `신규 배송 위탁 등록 & 실시간 동기화 완료 — [${newDeliveryForm.trackingNo}] (${newDeliveryForm.projectNo})`,
+        ok: isDispatchOk,
+        httpStatus: dispatchJson.httpStatus,
+        responseCode: dispatchJson.responseCode || "S000",
+        message: `① 위탁(POST /deliveries): ${dispatchJson.message || "성공"} [${dispatchJson.responseCode || "S000"}]  |  ② 동기화(POST /sync): ${syncJson.message || "완료"}  |  게이트웨이 보관 데이터 ${listCount}건 실시간 반영`,
+        issues: dispatchJson.issues || syncJson.issues,
+        requestPayload: requestBody,
+        responsePayload: {
+          dispatch: dispatchJson.raw ?? dispatchJson,
+          sync: syncJson.raw ?? syncJson,
+        },
+        timestamp: nowStr,
+      });
+
+      showToast(`✅ [${newDeliveryForm.trackingNo}] 게이트웨이 배송건 위탁 등록이 완료되었습니다.`);
+    } catch (err: unknown) {
+      setCreateIssues([`서버 전송 오류: ${err instanceof Error ? err.message : String(err)}`]);
+    } finally {
+      setIsSubmittingCreate(false);
+    }
+  };
+
   // 검색 및 상태 필터링
   const filteredList = deliveries.filter((item) => {
     if (filterStatus !== "ALL" && item.status !== filterStatus) return false;
@@ -730,8 +779,17 @@ export default function DeliveryStatusPage() {
           </div>
         </div>
 
-        {/* 외부 API 동기화 및 게이트웨이 설정 버튼 */}
-        <div className="flex items-center gap-2 shrink-0">
+        {/* 외부 API 동기화, 게이트웨이 설정 및 신규 배송 등록 버튼 */}
+        <div className="flex items-center gap-2 shrink-0 flex-wrap">
+          <Button
+            size="sm"
+            onClick={handleOpenCreateModal}
+            className="h-8 px-3.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold gap-1.5 cursor-pointer shadow-xs"
+            title="중간 게이트웨이에 새 배송건 위탁 등록(POST /api/v1/logistics/deliveries)"
+          >
+            <Plus className="h-3.5 w-3.5" />
+            <span>신규 배송 등록</span>
+          </Button>
           <Button
             size="sm"
             variant="outline"
@@ -1397,6 +1455,326 @@ export default function DeliveryStatusPage() {
                 저장
               </Button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* 7. 신규 배송 위탁 등록 모달 (POST /api/v1/logistics/deliveries) */}
+      {isCreateModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-in fade-in">
+          <div className="bg-white dark:bg-zinc-900 w-full max-w-2xl rounded-xl shadow-2xl border border-slate-200 dark:border-zinc-800 overflow-hidden flex flex-col max-h-[92vh]">
+            {/* 모달 헤더 */}
+            <div className="flex items-center justify-between px-4 py-3 bg-slate-900 text-white shrink-0">
+              <div className="flex items-center gap-2">
+                <Truck className="h-4 w-4 text-emerald-400" />
+                <h3 className="font-bold text-sm">
+                  신규 배송 위탁 등록 (KS X 9101 BOD 연계)
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsCreateModalOpen(false)}
+                className="p-1 rounded text-slate-400 hover:text-white cursor-pointer"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            {/* 모달 본문 */}
+            <form onSubmit={handleSubmitCreateDelivery} className="p-4 overflow-y-auto flex flex-col gap-3 text-xs">
+              <div className="p-2.5 rounded-lg bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 text-[11px] text-emerald-800 dark:text-emerald-300">
+                • <b>MPSI SCM ➔ 게이트웨이(mpsi-gw) 위탁 등록</b>: 등록 즉시 게이트웨이가 KS X 9101 BOD 규격 검증 후 소프트러쉬 물류사에 전송하고, 실시간 동기화하여 화면 그리드에 추가됩니다.
+              </div>
+
+              {/* 검증 실패 이슈 박스 (422 등) */}
+              {createIssues.length > 0 && (
+                <div className="p-3 rounded-lg bg-rose-50 dark:bg-rose-950/40 border border-rose-300 dark:border-rose-800 flex flex-col gap-1">
+                  <div className="flex items-center gap-1.5 font-bold text-rose-700 dark:text-rose-400 text-xs">
+                    <AlertCircle className="h-4 w-4 shrink-0" />
+                    <span>게이트웨이 검증 실패 사유 (issues)</span>
+                  </div>
+                  <ul className="list-disc list-inside font-mono text-[11px] text-rose-600 dark:text-rose-300 space-y-0.5 pt-1">
+                    {createIssues.map((iss, idx) => (
+                      <li key={idx}>{iss}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {/* 입력 폼 2열 그리드 */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {/* 배송식별자 */}
+                <div>
+                  <label className="block font-bold text-zinc-700 dark:text-zinc-300 mb-1">
+                    배송식별자 (deliveryId) <span className="text-rose-500">*</span>
+                  </label>
+                  <Input
+                    value={newDeliveryForm.deliveryId}
+                    onChange={(e) =>
+                      setNewDeliveryForm((prev) => ({ ...prev, deliveryId: e.target.value }))
+                    }
+                    placeholder="예: DLV-20261107-001"
+                    className="h-8 text-xs font-mono"
+                    required
+                  />
+                </div>
+
+                {/* 운송장번호 */}
+                <div>
+                  <label className="block font-bold text-zinc-700 dark:text-zinc-300 mb-1">
+                    운송장번호 (trackingNo) <span className="text-rose-500">*</span>
+                  </label>
+                  <Input
+                    value={newDeliveryForm.trackingNo}
+                    onChange={(e) =>
+                      setNewDeliveryForm((prev) => ({ ...prev, trackingNo: e.target.value }))
+                    }
+                    placeholder="예: SR-20261107-001"
+                    className="h-8 text-xs font-mono"
+                    required
+                  />
+                </div>
+
+                {/* 프로젝트번호 */}
+                <div>
+                  <label className="block font-bold text-zinc-700 dark:text-zinc-300 mb-1">
+                    프로젝트 관리번호 (projectNo) <span className="text-rose-500">*</span>
+                  </label>
+                  <div className="flex gap-1.5">
+                    <Input
+                      value={newDeliveryForm.projectNo}
+                      onChange={(e) =>
+                        setNewDeliveryForm((prev) => ({ ...prev, projectNo: e.target.value }))
+                      }
+                      placeholder="예: MI26001P0"
+                      className="h-8 text-xs font-mono flex-1"
+                      required
+                    />
+                    <select
+                      onChange={(e) => {
+                        if (e.target.value) {
+                          setNewDeliveryForm((prev) => ({ ...prev, projectNo: e.target.value }));
+                        }
+                      }}
+                      className="h-8 px-2 rounded-md bg-slate-100 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-xs font-mono"
+                    >
+                      <option value="">선택</option>
+                      <option value="MI26001P0">MI26001P0</option>
+                      <option value="MI26002P0">MI26002P0</option>
+                      <option value="MI26003P0">MI26003P0</option>
+                      <option value="MI26004P0">MI26004P0</option>
+                      <option value="MI26005P0">MI26005P0</option>
+                    </select>
+                  </div>
+                </div>
+
+                {/* 품목명 */}
+                <div>
+                  <label className="block font-bold text-zinc-700 dark:text-zinc-300 mb-1">
+                    품목명 (productName) <span className="text-rose-500">*</span>
+                  </label>
+                  <Input
+                    value={newDeliveryForm.productName}
+                    onChange={(e) =>
+                      setNewDeliveryForm((prev) => ({ ...prev, productName: e.target.value }))
+                    }
+                    placeholder="예: Front Door Upper Cover"
+                    className="h-8 text-xs"
+                    required
+                  />
+                </div>
+
+                {/* 고객사코드 */}
+                <div>
+                  <label className="block font-bold text-zinc-700 dark:text-zinc-300 mb-1">
+                    고객사 코드 (customerId) <span className="text-rose-500">*</span>
+                  </label>
+                  <Input
+                    value={newDeliveryForm.customerId}
+                    onChange={(e) =>
+                      setNewDeliveryForm((prev) => ({ ...prev, customerId: e.target.value }))
+                    }
+                    placeholder="예: HMC-ASAN"
+                    className="h-8 text-xs font-mono"
+                    required
+                  />
+                </div>
+
+                {/* 고객사명 */}
+                <div>
+                  <label className="block font-bold text-zinc-700 dark:text-zinc-300 mb-1">
+                    납품 고객사명 (customerName) <span className="text-rose-500">*</span>
+                  </label>
+                  <Input
+                    value={newDeliveryForm.customerName}
+                    onChange={(e) =>
+                      setNewDeliveryForm((prev) => ({ ...prev, customerName: e.target.value }))
+                    }
+                    placeholder="예: 현대자동차 (아산공장)"
+                    className="h-8 text-xs"
+                    required
+                  />
+                </div>
+
+                {/* 품번 */}
+                <div>
+                  <label className="block font-bold text-zinc-700 dark:text-zinc-300 mb-1">
+                    품번 (partNo)
+                  </label>
+                  <Input
+                    value={newDeliveryForm.partNo}
+                    onChange={(e) =>
+                      setNewDeliveryForm((prev) => ({ ...prev, partNo: e.target.value }))
+                    }
+                    placeholder="예: 0471-NT500-LH"
+                    className="h-8 text-xs font-mono"
+                  />
+                </div>
+
+                {/* 출하 수량 및 단위 */}
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="block font-bold text-zinc-700 dark:text-zinc-300 mb-1">
+                      출하 수량 (qty) <span className="text-rose-500">*</span>
+                    </label>
+                    <Input
+                      type="number"
+                      min={1}
+                      value={newDeliveryForm.qty}
+                      onChange={(e) =>
+                        setNewDeliveryForm((prev) => ({ ...prev, qty: Number(e.target.value) || 0 }))
+                      }
+                      className="h-8 text-xs font-mono"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-bold text-zinc-700 dark:text-zinc-300 mb-1">
+                      단위 (unit) <span className="text-rose-500">*</span>
+                    </label>
+                    <Input
+                      value={newDeliveryForm.unit}
+                      onChange={(e) =>
+                        setNewDeliveryForm((prev) => ({ ...prev, unit: e.target.value }))
+                      }
+                      placeholder="EA"
+                      className="h-8 text-xs font-mono"
+                      required
+                    />
+                  </div>
+                </div>
+
+                {/* 출하 공장 */}
+                <div>
+                  <label className="block font-bold text-zinc-700 dark:text-zinc-300 mb-1">
+                    출하지 / 상차공장 (shippingPoint)
+                  </label>
+                  <Input
+                    value={newDeliveryForm.shippingPoint}
+                    onChange={(e) =>
+                      setNewDeliveryForm((prev) => ({ ...prev, shippingPoint: e.target.value }))
+                    }
+                    placeholder="예: (주)뉴몰드 사출 1공장"
+                    className="h-8 text-xs"
+                  />
+                </div>
+
+                {/* 상세 납품처 */}
+                <div>
+                  <label className="block font-bold text-zinc-700 dark:text-zinc-300 mb-1">
+                    상세 납품처 / 하차지 (destination)
+                  </label>
+                  <Input
+                    value={newDeliveryForm.destination}
+                    onChange={(e) =>
+                      setNewDeliveryForm((prev) => ({ ...prev, destination: e.target.value }))
+                    }
+                    placeholder="예: 아산공장 1라인 부품하차장 B구역"
+                    className="h-8 text-xs"
+                  />
+                </div>
+
+                {/* 납품 요청일 */}
+                <div>
+                  <label className="block font-bold text-zinc-700 dark:text-zinc-300 mb-1">
+                    납품 요청일 (requestedDeliveryDate)
+                  </label>
+                  <Input
+                    type="date"
+                    value={newDeliveryForm.requestedDeliveryDate}
+                    onChange={(e) =>
+                      setNewDeliveryForm((prev) => ({
+                        ...prev,
+                        requestedDeliveryDate: e.target.value,
+                      }))
+                    }
+                    className="h-8 text-xs font-mono"
+                  />
+                </div>
+
+                {/* 희망 수령일 */}
+                <div>
+                  <label className="block font-bold text-zinc-700 dark:text-zinc-300 mb-1">
+                    희망 수령일 (preferredReceiptDate)
+                  </label>
+                  <Input
+                    type="date"
+                    value={newDeliveryForm.preferredReceiptDate}
+                    onChange={(e) =>
+                      setNewDeliveryForm((prev) => ({
+                        ...prev,
+                        preferredReceiptDate: e.target.value,
+                      }))
+                    }
+                    className="h-8 text-xs font-mono"
+                  />
+                </div>
+
+                {/* 비고 및 요청사항 */}
+                <div className="sm:col-span-2">
+                  <label className="block font-bold text-zinc-700 dark:text-zinc-300 mb-1">
+                    비고 / 요청사항 (note)
+                  </label>
+                  <Input
+                    value={newDeliveryForm.note}
+                    onChange={(e) =>
+                      setNewDeliveryForm((prev) => ({ ...prev, note: e.target.value }))
+                    }
+                    placeholder="예: 오전 하차 희망 / 파손 주의 품목"
+                    className="h-8 text-xs"
+                  />
+                </div>
+              </div>
+
+              {/* 하단 푸터 버튼 */}
+              <div className="pt-3 border-t border-slate-200 dark:border-zinc-800 flex items-center justify-between shrink-0">
+                <span className="text-[10.5px] text-zinc-400 font-mono">
+                  Endpoint: POST /api/v1/logistics/deliveries
+                </span>
+                <div className="flex items-center gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setIsCreateModalOpen(false)}
+                    className="h-8 px-3.5 text-xs cursor-pointer"
+                  >
+                    취소
+                  </Button>
+                  <Button
+                    type="submit"
+                    disabled={isSubmittingCreate}
+                    className="h-8 px-4 text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer gap-1.5 shadow-xs"
+                  >
+                    {isSubmittingCreate ? (
+                      <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <Send className="h-3.5 w-3.5" />
+                    )}
+                    <span>게이트웨이 배송 위탁 전송</span>
+                  </Button>
+                </div>
+              </div>
+            </form>
           </div>
         </div>
       )}
