@@ -14,17 +14,23 @@ export interface TransitStep {
 }
 
 export interface DeliveryItem {
-  id?: string;               // 시스템 내부 식별자
-  trackingNo: string;        // 운송장 번호 (필수 고유 키)
+  id?: string;               // 시스템 내부 식별자 (예: "DLV-20261107-001")
+  deliveryId?: string;       // 게이트웨이 배송식별자 (예: "DLV-20261107-001")
+  trackingNo: string;        // 운송장 번호 (필수 고유 키, 예: "SR-20261107-001")
   projectNo: string;         // 프로젝트 관리번호 (예: "MI26001P0")
+  customerId?: string;       // 고객사 코드 (예: "HMC-ASAN")
   customerName: string;      // 납품 고객사명
   destination?: string;      // 하차지 / 상세 입고처
+  shippingPoint?: string;    // 출하지 / 상차 공장 (예: "(주)뉴몰드 사출 1공장")
   productName: string;       // 품목명
   partNo?: string;           // 품번 (고객사 품번)
   qty: number;               // 출하/배송 수량
   unit: string;              // 단위 (예: "EA", "BOX")
+  requestedDeliveryDate?: string; // 납품 요청일 (YYYY-MM-DD)
+  preferredReceiptDate?: string;  // 희망 수령일 (YYYY-MM-DD)
+  note?: string;             // 비고 / 요청사항 (예: "오전 하차 희망")
   status: DeliveryStatusType;// 배송 상태
-  carrierName?: string;      // 운송사명 (예: "CJ대한통운", "롯데글로벌로지스")
+  carrierName?: string;      // 운송사명 (예: "소프트러쉬 운송", "CJ대한통운")
   vehicleNo?: string;        // 차량번호 (예: "경기 88바 1234")
   vehicleType?: string;      // 차종 (예: "11톤 윙바디", "5톤")
   driverName?: string;       // 운전 기사명
@@ -33,8 +39,38 @@ export interface DeliveryItem {
   estimatedArrival?: string; // 도착 예정일시
   actualArrival?: string;    // 실제 도착일시 (배송완료 시 권장)
   currentLocation?: string;  // 현재 위치 (GPS / 거점)
-  apiSource?: string;        // 연동 데이터 제공처 (예: "외부 물류 API")
+  apiSource?: string;        // 연동 데이터 제공처 (예: "소프트러쉬 물류 API v1.0 (GPS)")
   transitSteps?: TransitStep[]; // 배송 이력 타임라인 목록
+  lastSyncedAt?: string;     // 게이트웨이 최근 동기화 시각
+  gatewayResponseCode?: string; // 게이트웨이 최근 응답코드 (예: S000, W100, E402)
+}
+
+export interface LogisticsGatewayPayloadItem {
+  deliveryId: string;
+  trackingNo: string;
+  projectNo: string;
+  customerId: string;
+  customerName: string;
+  destination: string;
+  shippingPoint: string;
+  partNo: string;
+  productName: string;
+  qty: number;
+  unit: string;
+  requestedDeliveryDate: string;
+  preferredReceiptDate: string;
+  note: string;
+}
+
+export interface LogisticsGatewayResponse<T = unknown> {
+  success: boolean;
+  code?: number;
+  httpStatus?: number;
+  responseCode?: string;
+  message?: string;
+  issues?: string[];
+  data?: T;
+  raw?: unknown;
 }
 
 export interface DeliveryApiResponse {

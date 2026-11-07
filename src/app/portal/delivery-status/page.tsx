@@ -1,32 +1,54 @@
 "use client";
 
-import React, { useState } from "react";
-import { 
-  Truck, PackageCheck, Clock, MapPin, Search, 
-  RefreshCw, CheckCircle2, AlertCircle, Phone, 
-  Calendar, Building2, ExternalLink, Code2, Copy, 
-  Check, ArrowRight, Layers, Sparkles, Filter, X
+import React, { useCallback, useEffect, useState } from "react";
+import {
+  Truck,
+  MapPin,
+  Search,
+  RefreshCw,
+  AlertCircle,
+  Phone,
+  Code2,
+  Copy,
+  Check,
+  Sparkles,
+  X,
+  Send,
+  Settings,
+  Key,
+  CheckCircle2,
+  FileJson,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { DeliveryItem, DeliveryStatusType } from "@/types/delivery";
+import {
+  DeliveryItem,
+  DeliveryStatusType,
+  LogisticsGatewayPayloadItem,
+} from "@/types/delivery";
 
 export type { DeliveryItem };
 
-// SCM 표준 샘플 배송 데이터
+// SCM 표준 샘플 배송 데이터 (게이트웨이 KS X 9101 BOD 위탁 규격 필드 포함)
 const INITIAL_DELIVERIES: DeliveryItem[] = [
   {
-    id: "deliv-1",
-    trackingNo: "CJ-20261018-001",
+    id: "DLV-20261107-001",
+    deliveryId: "DLV-20261107-001",
+    trackingNo: "SR-20261107-001",
     projectNo: "MI26001P0",
+    customerId: "HMC-ASAN",
     customerName: "현대자동차 (아산공장)",
     destination: "아산공장 1라인 부품하차장 B구역",
+    shippingPoint: "(주)뉴몰드 사출 1공장",
     productName: "Front Door Upper Cover",
-    partNo: "84710-NT500-LH",
+    partNo: "0471-NT500-LH",
     qty: 500,
     unit: "EA",
+    requestedDeliveryDate: "2026-11-10",
+    preferredReceiptDate: "2026-11-10",
+    note: "오전 하차 희망",
     status: "배송중",
-    carrierName: "CJ대한통운",
+    carrierName: "소프트러쉬 운송",
     vehicleNo: "경기 88바 1234",
     vehicleType: "11톤 윙바디",
     driverName: "김철수 기사",
@@ -40,18 +62,24 @@ const INITIAL_DELIVERIES: DeliveryItem[] = [
       { step: "물류 터미널 통과", location: "평택 스마트 물류허브", time: "2026-10-18 11:20", isCompleted: true, note: "자동 바코드 스캔 통과" },
       { step: "간선 수송 및 배송 중", location: "서해안고속도로 평택JCT", time: "2026-10-18 13:40", isCompleted: true, note: "정상 운행 중 (시속 82km)" },
       { step: "납품처 도착 & 하차/입고", location: "현대차 아산공장 하차장", time: "2026-10-18 15:30 (예정)", isCompleted: false, note: "하차 대기 예정" },
-    ]
+    ],
   },
   {
-    id: "deliv-2",
+    id: "DLV-20261107-002",
+    deliveryId: "DLV-20261107-002",
     trackingNo: "LOG-20261018-002",
     projectNo: "MI26002P0",
+    customerId: "HMC-ULSAN",
     customerName: "현대자동차 (울산공장)",
     destination: "울산 2공장 차체조립동 하차데크",
+    shippingPoint: "(주)뉴몰드 안산공장",
     productName: "Rear door",
     partNo: "4850",
     qty: 800,
     unit: "EA",
+    requestedDeliveryDate: "2026-11-11",
+    preferredReceiptDate: "2026-11-11",
+    note: "오후 하차 희망",
     status: "배송중",
     carrierName: "롯데글로벌로지스",
     vehicleNo: "울산 91바 5678",
@@ -67,18 +95,24 @@ const INITIAL_DELIVERIES: DeliveryItem[] = [
       { step: "중부 물류허브 집하", location: "대전 물류 복합센터", time: "2026-10-18 11:50", isCompleted: true, note: "화물 적재 상태 점검" },
       { step: "간선 배송 중", location: "경부고속도로 김천구간", time: "2026-10-18 14:10", isCompleted: true, note: "정체 없이 정상 주행 중" },
       { step: "납품처 도착 & 인수", location: "현대차 울산 2공장", time: "2026-10-18 17:00 (예정)", isCompleted: false, note: "입고 검수 대기" },
-    ]
+    ],
   },
   {
-    id: "deliv-3",
+    id: "DLV-20261107-003",
+    deliveryId: "DLV-20261107-003",
     trackingNo: "TRK-20261018-003",
     projectNo: "MI26003P0",
+    customerId: "MOBIS-HWASUNG",
     customerName: "현대모비스 (화성공장)",
     destination: "화성 모듈조립 3공장",
+    shippingPoint: "(주)뉴몰드 사출공장",
     productName: "Door Trim",
     partNo: "84710-NT700",
     qty: 400,
     unit: "EA",
+    requestedDeliveryDate: "2026-11-10",
+    preferredReceiptDate: "2026-11-10",
+    note: "파손 주의 품목",
     status: "배송완료",
     carrierName: "CJ대한통운",
     vehicleNo: "서울 82바 9988",
@@ -95,18 +129,24 @@ const INITIAL_DELIVERIES: DeliveryItem[] = [
       { step: "수도권 남부 터미널 통과", location: "군포 복합물류터미널", time: "2026-10-18 10:45", isCompleted: true, note: "경유 터미널 통과" },
       { step: "간선 운송", location: "수원-화성 고속화도로", time: "2026-10-18 12:20", isCompleted: true, note: "목적지 근접" },
       { step: "납품처 도착 & 인수 완료", location: "현대모비스 화성공장", time: "2026-10-18 13:50", isCompleted: true, note: "입고 담당자 전자서명 완료" },
-    ]
+    ],
   },
   {
-    id: "deliv-4",
+    id: "DLV-20261107-004",
+    deliveryId: "DLV-20261107-004",
     trackingNo: "CJ-20261018-004",
     projectNo: "MI26004P0",
+    customerId: "KIA-HWASUNG",
     customerName: "기아자동차 (화성공장)",
     destination: "화성 완성차 조립 1라인",
+    shippingPoint: "MPSI 자체사출라인",
     productName: "Radiator Lower Grille",
     partNo: "86350-K7000",
     qty: 600,
     unit: "EA",
+    requestedDeliveryDate: "2026-11-10",
+    preferredReceiptDate: "2026-11-10",
+    note: "정시 입고 필수",
     status: "배송완료",
     carrierName: "CJ대한통운",
     vehicleNo: "경기 85바 4421",
@@ -123,18 +163,24 @@ const INITIAL_DELIVERIES: DeliveryItem[] = [
       { step: "물류 허브 통과", location: "안산 터미널", time: "2026-10-18 08:50", isCompleted: true },
       { step: "배송 운행", location: "화성 남양로", time: "2026-10-18 10:10", isCompleted: true },
       { step: "배송 및 인수 완료", location: "기아 화성공장", time: "2026-10-18 11:20", isCompleted: true, note: "정시 도착 완료" },
-    ]
+    ],
   },
   {
-    id: "deliv-5",
+    id: "DLV-20261107-005",
+    deliveryId: "DLV-20261107-005",
     trackingNo: "LOG-20261018-005",
     projectNo: "MI26005P0",
+    customerId: "HKMC-NAMYANG",
     customerName: "HKMC 남양연구소",
     destination: "연구개발 2동 프로토 시험실",
+    shippingPoint: "MPSI 사출공장 출하장",
     productName: "Door Armrest Base",
     partNo: "82710-AA000",
     qty: 150,
     unit: "EA",
+    requestedDeliveryDate: "2026-11-12",
+    preferredReceiptDate: "2026-11-12",
+    note: "연구소 담당자 입회 하차",
     status: "출하준비",
     carrierName: "직배송/자체배송",
     vehicleNo: "서울 80가 1122",
@@ -150,9 +196,134 @@ const INITIAL_DELIVERIES: DeliveryItem[] = [
       { step: "차량 배차 및 상차 대기", location: "사출공장 출하장", time: "2026-10-18 16:00", isCompleted: false },
       { step: "배송 출발", location: "남양연구소 이동구간", time: "2026-10-18 16:30 (예정)", isCompleted: false },
       { step: "현장 납품 완료", location: "남양연구소 2동", time: "2026-10-18 18:00 (예정)", isCompleted: false },
-    ]
-  }
+    ],
+  },
 ];
+
+interface GatewayLogBanner {
+  title: string;
+  ok: boolean;
+  httpStatus?: number;
+  responseCode?: string;
+  message: string;
+  issues?: string[];
+  requestPayload?: unknown;
+  responsePayload?: unknown;
+  timestamp: string;
+}
+
+function buildGatewayPayloadItem(item: DeliveryItem, index = 1): LogisticsGatewayPayloadItem {
+  const fallbackId = `DLV-20261107-${String(index).padStart(3, "0")}`;
+  const rawId = item.deliveryId || item.id || fallbackId;
+  const deliveryId = rawId.startsWith("DLV-") ? rawId : fallbackId;
+
+  return {
+    deliveryId,
+    trackingNo: item.trackingNo,
+    projectNo: item.projectNo,
+    customerId: item.customerId || "HMC-ASAN",
+    customerName: item.customerName,
+    destination: item.destination || "납품처 하차장",
+    shippingPoint: item.shippingPoint || "(주)뉴몰드 사출 1공장",
+    partNo: item.partNo || "0471-NT500-LH",
+    productName: item.productName,
+    qty: Number(item.qty) || 1,
+    unit: item.unit || "EA",
+    requestedDeliveryDate: item.requestedDeliveryDate || "2026-11-10",
+    preferredReceiptDate: item.preferredReceiptDate || "2026-11-10",
+    note: item.note || "오전 하차 희망",
+  };
+}
+
+function mergeDeliveriesFromGateway(
+  prevList: DeliveryItem[],
+  gatewayItems: Partial<DeliveryItem>[]
+): DeliveryItem[] {
+  if (!Array.isArray(gatewayItems) || gatewayItems.length === 0) return prevList;
+  const nowStr = new Date().toLocaleTimeString("ko-KR", { hour12: false });
+  const nextList = [...prevList];
+
+  for (const gw of gatewayItems) {
+    if (!gw || (!gw.trackingNo && !gw.id)) continue;
+    const idx = nextList.findIndex(
+      (item) =>
+        (gw.trackingNo && item.trackingNo === gw.trackingNo) ||
+        (gw.id && (item.id === gw.id || item.deliveryId === gw.id))
+    );
+
+    const normalizedStatus: DeliveryStatusType =
+      gw.status === "배송중" || gw.status === "배송완료" || gw.status === "출하준비"
+        ? gw.status
+        : "출하준비";
+
+    if (idx >= 0) {
+      const existing = nextList[idx];
+      nextList[idx] = {
+        ...existing,
+        id: gw.id || existing.id,
+        deliveryId: gw.id || existing.deliveryId || existing.id,
+        trackingNo: gw.trackingNo || existing.trackingNo,
+        projectNo: gw.projectNo || existing.projectNo,
+        customerName: gw.customerName || existing.customerName,
+        destination: gw.destination !== undefined && gw.destination !== "" ? gw.destination : existing.destination,
+        productName: gw.productName || existing.productName,
+        partNo: gw.partNo || existing.partNo,
+        qty: typeof gw.qty === "number" && gw.qty > 0 ? gw.qty : existing.qty,
+        unit: gw.unit || existing.unit,
+        status: normalizedStatus,
+        // 게이트웨이에서 빈 문자열("")로 오는 배차 전 필드는 게이트웨이 원본 값을 반영하되 표시 시 안내
+        carrierName: gw.carrierName !== undefined && gw.carrierName !== "" ? gw.carrierName : existing.carrierName,
+        vehicleNo: gw.vehicleNo !== undefined ? gw.vehicleNo : existing.vehicleNo,
+        vehicleType: gw.vehicleType !== undefined ? gw.vehicleType : existing.vehicleType,
+        driverName: gw.driverName !== undefined ? gw.driverName : existing.driverName,
+        driverPhone: gw.driverPhone !== undefined ? gw.driverPhone : existing.driverPhone,
+        departureTime: gw.departureTime !== undefined ? gw.departureTime : existing.departureTime,
+        estimatedArrival: gw.estimatedArrival !== undefined ? gw.estimatedArrival : existing.estimatedArrival,
+        actualArrival: gw.actualArrival !== undefined ? gw.actualArrival : existing.actualArrival,
+        currentLocation: gw.currentLocation !== undefined ? gw.currentLocation : existing.currentLocation,
+        apiSource: gw.apiSource || existing.apiSource || "소프트러쉬 물류 API v1.0 (GPS)",
+        transitSteps:
+          Array.isArray(gw.transitSteps) && gw.transitSteps.length > 0
+            ? gw.transitSteps
+            : existing.transitSteps,
+        lastSyncedAt: nowStr,
+      };
+    } else {
+      nextList.unshift({
+        id: gw.id || gw.trackingNo || `DLV-${Date.now()}`,
+        deliveryId: gw.id || `DLV-${Date.now()}`,
+        trackingNo: gw.trackingNo || "-",
+        projectNo: gw.projectNo || "-",
+        customerId: "HMC-ASAN",
+        customerName: gw.customerName || "-",
+        destination: gw.destination || "",
+        shippingPoint: "(주)뉴몰드 사출 1공장",
+        productName: gw.productName || "-",
+        partNo: gw.partNo || "",
+        qty: Number(gw.qty) || 0,
+        unit: gw.unit || "EA",
+        requestedDeliveryDate: "2026-11-10",
+        preferredReceiptDate: "2026-11-10",
+        note: "",
+        status: normalizedStatus,
+        carrierName: gw.carrierName || "소프트러쉬 운송",
+        vehicleNo: gw.vehicleNo || "",
+        vehicleType: gw.vehicleType || "",
+        driverName: gw.driverName || "",
+        driverPhone: gw.driverPhone || "",
+        departureTime: gw.departureTime || "",
+        estimatedArrival: gw.estimatedArrival || "",
+        actualArrival: gw.actualArrival || "",
+        currentLocation: gw.currentLocation || "",
+        apiSource: gw.apiSource || "소프트러쉬 물류 API v1.0 (GPS)",
+        transitSteps: Array.isArray(gw.transitSteps) ? gw.transitSteps : [],
+        lastSyncedAt: nowStr,
+      });
+    }
+  }
+
+  return nextList;
+}
 
 export default function DeliveryStatusPage() {
   const [deliveries, setDeliveries] = useState<DeliveryItem[]>(INITIAL_DELIVERIES);
@@ -162,21 +333,329 @@ export default function DeliveryStatusPage() {
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
   const [activeModalTab, setActiveModalTab] = useState<"TIMELINE" | "API_JSON">("TIMELINE");
   const [isSyncing, setIsSyncing] = useState(false);
+  const [requestingTrackingNo, setRequestingTrackingNo] = useState<string | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [copiedJson, setCopiedJson] = useState(false);
 
+  // 게이트웨이 송수신 결과 배너 및 전문 보기 토글
+  const [gwBanner, setGwBanner] = useState<GatewayLogBanner | null>(null);
+  const [showGwPayload, setShowGwPayload] = useState(false);
+
+  // 게이트웨이 연동 설정 모달 (MPSI_GW_BASE_URL / MPSI_API_KEY)
+  const [isGwConfigOpen, setIsGwConfigOpen] = useState(false);
+  const [gwBaseUrl, setGwBaseUrl] = useState("https://mpsi-gw.a2lab.co.kr");
+  const [gwHasKey, setGwHasKey] = useState(false);
+  const [gwInputKey, setGwInputKey] = useState("");
+  const [isSavingGwConfig, setIsSavingGwConfig] = useState(false);
+
   const showToast = (msg: string) => {
     setToastMessage(msg);
-    setTimeout(() => setToastMessage(null), 3500);
+    setTimeout(() => setToastMessage(null), 4000);
   };
 
-  // 소프트러쉬(외부 업체) 물류 API 연동 Pull 동기화
-  const handleSyncExternalApi = () => {
+  // 게이트웨이 보관 현황 목록 조회 (GET /api/v1/logistics/deliveries)
+  const fetchGatewayDeliveries = useCallback(async (projectNoFilter?: string, silent = false) => {
+    try {
+      const qs = projectNoFilter ? `?projectNo=${encodeURIComponent(projectNoFilter)}` : "";
+      const res = await fetch(`/api/v1/logistics/deliveries${qs}`, { cache: "no-store" });
+      const json = await res.json();
+
+      const list: Partial<DeliveryItem>[] = Array.isArray(json?.data)
+        ? json.data
+        : Array.isArray(json?.raw?.data)
+        ? json.raw.data
+        : [];
+
+      if (list.length > 0) {
+        setDeliveries((prev) => mergeDeliveriesFromGateway(prev, list));
+      }
+
+      if (!silent) {
+        setGwBanner({
+          title: "GET /api/v1/logistics/deliveries (게이트웨이 현황 목록 조회)",
+          ok: Boolean(json.success),
+          httpStatus: json.httpStatus,
+          responseCode: json.responseCode,
+          message:
+            json.message ||
+            (list.length > 0
+              ? `게이트웨이 보관 배송현황 ${list.length}건을 불러와 동기화했습니다.`
+              : "게이트웨이 조회 완료 (보관된 데이터 0건)"),
+          issues: json.issues,
+          responsePayload: json.raw ?? json,
+          timestamp: new Date().toLocaleTimeString("ko-KR", { hour12: false }),
+        });
+      }
+      return { json, count: list.length };
+    } catch (err: unknown) {
+      if (!silent) {
+        setGwBanner({
+          title: "GET /api/v1/logistics/deliveries 실패",
+          ok: false,
+          message: err instanceof Error ? err.message : "목록 조회 중 오류가 발생했습니다.",
+          timestamp: new Date().toLocaleTimeString("ko-KR", { hour12: false }),
+        });
+      }
+      return { json: null, count: 0 };
+    }
+  }, []);
+
+  // 초기 진입 시 게이트웨이 설정 상태 및 보관 목록 조회
+  useEffect(() => {
+    fetch("/api/v1/logistics/config")
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.baseUrl) setGwBaseUrl(d.baseUrl);
+        setGwHasKey(Boolean(d.hasApiKey));
+      })
+      .catch(() => {});
+
+    fetchGatewayDeliveries(undefined, true);
+  }, [fetchGatewayDeliveries]);
+
+  // ① 그리드 항목 [배송요청] 버튼 클릭 -> POST /api/v1/logistics/deliveries 호출 후 동기화
+  const handleRequestDelivery = async (item: DeliveryItem, rowIdx: number) => {
+    setRequestingTrackingNo(item.trackingNo);
+    const payloadItem = buildGatewayPayloadItem(item, rowIdx + 1);
+    const requestBody = {
+      scenarioId: "MPSI-SR-DELIVERY-01",
+      actionCode: "Add",
+      deliveries: [payloadItem],
+    };
+
+    try {
+      const res = await fetch("/api/v1/logistics/deliveries", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(requestBody),
+      });
+      const dispatchJson = await res.json();
+
+      // 422 명사 검증 실패 시 issues 배열 사유를 그대로 화면에 표시
+      if (dispatchJson.httpStatus === 422 || (Array.isArray(dispatchJson.issues) && dispatchJson.issues.length > 0)) {
+        setGwBanner({
+          title: `배송건 위탁 검증 실패 (HTTP ${dispatchJson.httpStatus || 422}) — ${item.trackingNo}`,
+          ok: false,
+          httpStatus: dispatchJson.httpStatus || 422,
+          responseCode: dispatchJson.responseCode,
+          message: dispatchJson.message || "명사 검증 실패 (KS X 9101 BOD 규격 미충족)",
+          issues: dispatchJson.issues,
+          requestPayload: requestBody,
+          responsePayload: dispatchJson.raw ?? dispatchJson,
+          timestamp: new Date().toLocaleTimeString("ko-KR", { hour12: false }),
+        });
+        showToast(`⚠️ 명사 검증 실패(422): 상단 게이트웨이 응답 사유(issues)를 확인하세요.`);
+        return;
+      }
+
+      // 401 인증키 오류
+      if (dispatchJson.httpStatus === 401) {
+        setGwBanner({
+          title: `게이트웨이 인증 실패 (HTTP 401) — x-mpsi-api-key 확인 필요`,
+          ok: false,
+          httpStatus: 401,
+          message: dispatchJson.message || "x-mpsi-api-key 헤더가 누락되었거나 일치하지 않습니다.",
+          requestPayload: requestBody,
+          responsePayload: dispatchJson.raw ?? dispatchJson,
+          timestamp: new Date().toLocaleTimeString("ko-KR", { hour12: false }),
+        });
+        showToast("⚠️ x-mpsi-api-key 인증 실패(401). 우측 상단 [게이트웨이 설정]에서 API 키를 확인하세요.");
+        return;
+      }
+
+      // 위탁 성공(200 S000/W100) 또는 이미 등록된 건(E402 등)인 경우 -> 즉시 동기화(POST /sync) 및 목록 조회(GET /deliveries) 수행
+      const isAlreadyRegistered = dispatchJson.responseCode === "E402";
+      const isDispatchOk = Boolean(dispatchJson.success) || isAlreadyRegistered;
+
+      // 동기화 호출 (POST /api/v1/logistics/sync)
+      const syncRes = await fetch("/api/v1/logistics/sync", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ projectNo: item.projectNo }),
+      });
+      const syncJson = await syncRes.json();
+
+      // sync 응답 내에 배열 데이터가 있으면 즉시 병합
+      const syncDataList: Partial<DeliveryItem>[] = Array.isArray(syncJson?.data)
+        ? syncJson.data
+        : Array.isArray(syncJson?.raw?.data)
+        ? syncJson.raw.data
+        : [];
+      if (syncDataList.length > 0) {
+        setDeliveries((prev) => mergeDeliveriesFromGateway(prev, syncDataList));
+      }
+
+      // 이어서 게이트웨이 보관 목록 조회 (GET /api/v1/logistics/deliveries)
+      const { json: listJson, count: listCount } = await fetchGatewayDeliveries(undefined, true);
+
+      // 현재 행에 최근 응답코드 및 동기화 시각 표시
+      const nowStr = new Date().toLocaleTimeString("ko-KR", { hour12: false });
+      setDeliveries((prev) =>
+        prev.map((d) =>
+          d.trackingNo === item.trackingNo
+            ? {
+                ...d,
+                lastSyncedAt: nowStr,
+                gatewayResponseCode: dispatchJson.responseCode || (dispatchJson.success ? "S000" : String(dispatchJson.httpStatus)),
+              }
+            : d
+        )
+      );
+
+      setGwBanner({
+        title: `배송요청(위탁) & 실시간 동기화 결과 — [${item.trackingNo}] (${item.projectNo})`,
+        ok: isDispatchOk,
+        httpStatus: dispatchJson.httpStatus,
+        responseCode: dispatchJson.responseCode || (dispatchJson.success ? "S000" : undefined),
+        message: [
+          `① 위탁(POST /deliveries): ${dispatchJson.message || (dispatchJson.success ? "위탁 성공" : "실패")}${
+            dispatchJson.responseCode ? ` [응답코드: ${dispatchJson.responseCode}]` : ""
+          }`,
+          `② 동기화(POST /sync): ${syncJson.message || (syncJson.success ? "동기화 완료" : `HTTP ${syncJson.httpStatus}`)}`,
+          `③ 현황조회(GET /deliveries): 게이트웨이 보관 데이터 ${listCount}건 화면 동기화 반영`,
+        ].join("  |  "),
+        issues: dispatchJson.issues || syncJson.issues,
+        requestPayload: requestBody,
+        responsePayload: {
+          "1_POST_deliveries_response": dispatchJson.raw ?? dispatchJson,
+          "2_POST_sync_response": syncJson.raw ?? syncJson,
+          "3_GET_deliveries_response": listJson?.raw ?? listJson,
+        },
+        timestamp: nowStr,
+      });
+
+      if (isDispatchOk) {
+        showToast(
+          `✅ [${item.trackingNo}] 게이트웨이 배송건 위탁 및 실시간 데이터 동기화가 완료되었습니다.`
+        );
+      } else {
+        showToast(
+          `⚠️ [${item.trackingNo}] 게이트웨이 응답: ${dispatchJson.message} (${dispatchJson.responseCode || `HTTP ${dispatchJson.httpStatus}`})`
+        );
+      }
+    } catch (err: unknown) {
+      setGwBanner({
+        title: `배송요청 통신 오류 — ${item.trackingNo}`,
+        ok: false,
+        message: err instanceof Error ? err.message : "게이트웨이 호출 중 오류가 발생했습니다.",
+        requestPayload: requestBody,
+        timestamp: new Date().toLocaleTimeString("ko-KR", { hour12: false }),
+      });
+    } finally {
+      setRequestingTrackingNo(null);
+    }
+  };
+
+  // ④ [소프트러쉬 API 동기화 (Pull)] 버튼 클릭 -> POST /api/v1/logistics/sync + GET /api/v1/logistics/deliveries
+  const handleSyncExternalApi = async () => {
     setIsSyncing(true);
-    setTimeout(() => {
+    try {
+      // 검색어에 프로젝트번호(예: MI26001P0)가 입력되어 있으면 해당 프로젝트만, 아니면 전건 동기화({})
+      const trimmedKeyword = filterKeyword.trim();
+      const syncBody = /^MI\d+/i.test(trimmedKeyword) ? { projectNo: trimmedKeyword.toUpperCase() } : {};
+
+      const syncRes = await fetch("/api/v1/logistics/sync", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(syncBody),
+      });
+      const syncJson = await syncRes.json();
+
+      const syncItems: Partial<DeliveryItem>[] = Array.isArray(syncJson?.data)
+        ? syncJson.data
+        : Array.isArray(syncJson?.raw?.data)
+        ? syncJson.raw.data
+        : [];
+      if (syncItems.length > 0) {
+        setDeliveries((prev) => mergeDeliveriesFromGateway(prev, syncItems));
+      }
+
+      // 동기화 직후 게이트웨이 보관 목록(GET /api/v1/logistics/deliveries)을 읽어 최신 현황 반영
+      const { json: listJson, count: listCount } = await fetchGatewayDeliveries(undefined, true);
+      const totalSynced = Math.max(syncItems.length, listCount);
+
+      const isOk = Boolean(syncJson.success) || Boolean(listJson?.success);
+      setGwBanner({
+        title: "소프트러쉬 API 실시간 동기화 (POST /api/v1/logistics/sync → GET /api/v1/logistics/deliveries)",
+        ok: isOk,
+        httpStatus: syncJson.httpStatus,
+        responseCode: syncJson.responseCode || (syncJson.success ? "S000" : undefined),
+        message: `${syncJson.message || "동기화 요청 처리"} | 게이트웨이 보관 데이터 ${totalSynced}건을 그리드에 실시간 반영했습니다.`,
+        issues: syncJson.issues || listJson?.issues,
+        requestPayload: syncBody,
+        responsePayload: {
+          syncResponse: syncJson.raw ?? syncJson,
+          deliveriesListResponse: listJson?.raw ?? listJson,
+        },
+        timestamp: new Date().toLocaleTimeString("ko-KR", { hour12: false }),
+      });
+
+      if (isOk) {
+        showToast(
+          `✅ 소프트러쉬(SoftRush) 게이트웨이 실시간 동기화 완료! (총 ${totalSynced}건 최신 상태 반영)`
+        );
+      } else {
+        showToast(
+          `⚠️ 게이트웨이 동기화 응답 확인 필요: ${syncJson.message || `HTTP ${syncJson.httpStatus}`}`
+        );
+      }
+    } catch (err: unknown) {
+      showToast(
+        `❌ 게이트웨이 동기화 중 오류가 발생했습니다: ${err instanceof Error ? err.message : String(err)}`
+      );
+    } finally {
       setIsSyncing(false);
-      showToast("소프트러쉬(SoftRush) 물류 API 서버로부터 최신 배송 및 차량 위치 데이터를 성공적으로 가져왔습니다(Pull).");
-    }, 800);
+    }
+  };
+
+  // ③ 단건 상세 조회 (GET /api/v1/logistics/deliveries/{trackingNo}) 및 모달 오픈
+  const handleOpenDetail = async (item: DeliveryItem) => {
+    setSelectedItem(item);
+    setActiveModalTab("TIMELINE");
+    setIsDetailModalOpen(true);
+
+    try {
+      const res = await fetch(
+        `/api/v1/logistics/deliveries/${encodeURIComponent(item.trackingNo)}`,
+        { cache: "no-store" }
+      );
+      const json = await res.json();
+      const detail = (json?.data || json?.raw?.data) as Partial<DeliveryItem> | undefined;
+      if (json.success && detail && detail.trackingNo) {
+        setDeliveries((prev) => mergeDeliveriesFromGateway(prev, [detail]));
+        setSelectedItem((prev) => {
+          if (!prev || prev.trackingNo !== item.trackingNo) return prev;
+          const merged = mergeDeliveriesFromGateway([prev], [detail]);
+          return merged[0] || prev;
+        });
+      }
+    } catch {
+      // 게이트웨이에 아직 없는 단건(404 등)은 로컬 항목 유지
+    }
+  };
+
+  const handleSaveGwConfig = async () => {
+    setIsSavingGwConfig(true);
+    try {
+      const res = await fetch("/api/v1/logistics/config", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          baseUrl: gwBaseUrl.trim() || "https://mpsi-gw.a2lab.co.kr",
+          apiKey: gwInputKey.trim() || undefined,
+        }),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        setGwBaseUrl(data.baseUrl);
+        setGwHasKey(Boolean(data.hasApiKey));
+        setGwInputKey("");
+        setIsGwConfigOpen(false);
+        showToast("✅ 물류 게이트웨이(mpsi-gw) 주소 및 API 키 설정이 저장되었습니다.");
+      }
+    } finally {
+      setIsSavingGwConfig(false);
+    }
   };
 
   // 검색 및 상태 필터링
@@ -200,13 +679,6 @@ export default function DeliveryStatusPage() {
   const inTransitCount = deliveries.filter((d) => d.status === "배송중").length;
   const completedCount = deliveries.filter((d) => d.status === "배송완료").length;
   const readyCount = deliveries.filter((d) => d.status === "출하준비").length;
-  const otdRate = "98.5%"; // 정시 배송률 (On-Time Delivery)
-
-  const handleOpenDetail = (item: DeliveryItem) => {
-    setSelectedItem(item);
-    setActiveModalTab("TIMELINE");
-    setIsDetailModalOpen(true);
-  };
 
   const handleCopyJson = () => {
     if (!selectedItem) return;
@@ -217,7 +689,6 @@ export default function DeliveryStatusPage() {
 
   return (
     <div className="flex flex-col gap-4 text-xs font-sans">
-      
       {/* 토스트 알림 */}
       {toastMessage && (
         <div className="fixed top-4 right-6 z-50 flex items-center gap-2 px-4 py-2.5 rounded-lg shadow-xl bg-emerald-700 text-white text-xs font-medium animate-in fade-in">
@@ -236,20 +707,50 @@ export default function DeliveryStatusPage() {
             <Truck className="h-5 w-5" />
           </div>
           <div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <h2 className="text-base font-bold text-zinc-900 dark:text-zinc-100">
                 SCM 배송현황 (소프트러쉬 물류연계 관제)
               </h2>
-              
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-mono bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-zinc-300 border border-slate-200 dark:border-zinc-700">
+                GW: {gwBaseUrl}
+              </span>
+              <span
+                className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
+                  gwHasKey
+                    ? "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950 dark:text-emerald-300"
+                    : "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950 dark:text-amber-300"
+                }`}
+              >
+                {gwHasKey ? "● x-mpsi-api-key 설정됨" : "⚠️ MPSI_API_KEY 설정 필요"}
+              </span>
             </div>
             <p className="text-zinc-600 dark:text-zinc-400 text-xs mt-0.5">
-              • 외부 연계사 &apos;소프트러쉬&apos; 물류 API 서버에 접속하여 최신 배송 및 차량 위치 데이터를 조회(Pull 방식)합니다.
+              • 그리드의 <b>[배송요청]</b> 클릭 시 게이트웨이(<code>POST /api/v1/logistics/deliveries</code>)로 위탁 후 실시간 동기화하며, <b>[소프트러쉬 API 동기화 (Pull)]</b> 클릭 시 <code>POST /api/v1/logistics/sync</code> 및 목록 조회를 수행합니다.
             </p>
           </div>
         </div>
 
-        {/* 외부 API 동기화 버튼 */}
+        {/* 외부 API 동기화 및 게이트웨이 설정 버튼 */}
         <div className="flex items-center gap-2 shrink-0">
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => setIsGwConfigOpen(true)}
+            className="h-8 px-2.5 text-xs font-semibold gap-1 cursor-pointer border-slate-300 dark:border-zinc-700"
+            title="게이트웨이 주소 및 MPSI_API_KEY 설정"
+          >
+            <Settings className="h-3.5 w-3.5 text-slate-500" />
+            <span>게이트웨이 설정</span>
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => fetchGatewayDeliveries(undefined, false)}
+            className="h-8 px-3 text-xs font-bold gap-1 cursor-pointer border-sky-300 text-sky-700 hover:bg-sky-50"
+            title="GET /api/v1/logistics/deliveries (게이트웨이 보관 현황 조회)"
+          >
+            <span>목록 새로고침 (GET)</span>
+          </Button>
           <Button
             size="sm"
             onClick={handleSyncExternalApi}
@@ -262,8 +763,107 @@ export default function DeliveryStatusPage() {
         </div>
       </div>
 
-      {/* 2. SCM 핵심 KPI 요약 카드 4종 */}
-      
+      {/* 게이트웨이 실시간 송수신 결과 & 422 issues 검증 사유 표시 배너 */}
+      {gwBanner && (
+        <div
+          className={`rounded-xl border p-3.5 shadow-2xs flex flex-col gap-2 ${
+            gwBanner.ok
+              ? "bg-emerald-50/70 border-emerald-200 dark:bg-emerald-950/30 dark:border-emerald-800"
+              : "bg-rose-50/80 border-rose-200 dark:bg-rose-950/30 dark:border-rose-800"
+          }`}
+        >
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              {gwBanner.ok ? (
+                <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
+              ) : (
+                <AlertCircle className="h-4 w-4 text-rose-600 shrink-0" />
+              )}
+              <span className="font-bold text-xs text-zinc-900 dark:text-zinc-100">
+                {gwBanner.title}
+              </span>
+              {gwBanner.httpStatus && (
+                <span className="px-1.5 py-0.5 rounded text-[10px] font-mono font-bold bg-white/80 dark:bg-zinc-900 border border-slate-300 dark:border-zinc-700">
+                  HTTP {gwBanner.httpStatus}
+                </span>
+              )}
+              {gwBanner.responseCode && (
+                <span className="px-1.5 py-0.5 rounded text-[10px] font-mono font-bold bg-sky-100 text-sky-800 dark:bg-sky-950 dark:text-sky-300 border border-sky-300">
+                  responseCode: {gwBanner.responseCode}
+                </span>
+              )}
+              <span className="text-[10.5px] font-mono text-zinc-500">
+                ({gwBanner.timestamp})
+              </span>
+            </div>
+
+            <div className="flex items-center gap-1.5">
+              {(Boolean(gwBanner.requestPayload) || Boolean(gwBanner.responsePayload)) && (
+                <Button
+                  size="xs"
+                  variant="outline"
+                  onClick={() => setShowGwPayload((prev) => !prev)}
+                  className="h-6 px-2 text-[10.5px] gap-1 bg-white dark:bg-zinc-900 cursor-pointer"
+                >
+                  <FileJson className="h-3 w-3" />
+                  <span>{showGwPayload ? "송수신 전문 접기" : "송수신 JSON 전문 보기"}</span>
+                </Button>
+              )}
+              <button
+                onClick={() => setGwBanner(null)}
+                className="p-1 rounded text-zinc-400 hover:text-zinc-700"
+                title="배너 닫기"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          </div>
+
+          <div className="text-xs text-zinc-700 dark:text-zinc-300">
+            {gwBanner.message}
+          </div>
+
+          {/* 422 명사 검증 실패 시 issues 배열 그대로 표시 */}
+          {gwBanner.issues && gwBanner.issues.length > 0 && (
+            <div className="p-2.5 rounded-lg bg-white dark:bg-zinc-900 border border-rose-300 dark:border-rose-800 space-y-1">
+              <div className="font-bold text-[11px] text-rose-700 dark:text-rose-400">
+                • 명사 검증 실패 상세 사유 (issues):
+              </div>
+              <ul className="list-disc list-inside text-[11px] font-mono text-rose-600 dark:text-rose-300 space-y-0.5">
+                {gwBanner.issues.map((iss, idx) => (
+                  <li key={idx}>{iss}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {/* 송수신 JSON 전문 확인 */}
+          {showGwPayload && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2 pt-1">
+              {Boolean(gwBanner.requestPayload) && (
+                <div className="flex flex-col gap-1">
+                  <span className="text-[10.5px] font-bold text-zinc-600 dark:text-zinc-400">
+                    ▶ 게이트웨이 요청 전문 (Request JSON)
+                  </span>
+                  <pre className="p-2.5 rounded-lg bg-slate-900 text-sky-300 font-mono text-[10.5px] overflow-x-auto max-h-52 border border-slate-800">
+                    {JSON.stringify(gwBanner.requestPayload, null, 2)}
+                  </pre>
+                </div>
+              )}
+              {Boolean(gwBanner.responsePayload) && (
+                <div className="flex flex-col gap-1">
+                  <span className="text-[10.5px] font-bold text-zinc-600 dark:text-zinc-400">
+                    ◀ 게이트웨이 응답 전문 (Response JSON)
+                  </span>
+                  <pre className="p-2.5 rounded-lg bg-slate-900 text-emerald-300 font-mono text-[10.5px] overflow-x-auto max-h-52 border border-slate-800">
+                    {JSON.stringify(gwBanner.responsePayload, null, 2)}
+                  </pre>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* 3. 검색 및 필터 바 */}
       <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl p-3 flex flex-wrap items-center justify-between gap-3 shadow-2xs">
@@ -280,7 +880,9 @@ export default function DeliveryStatusPage() {
                   : "bg-slate-50 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 border-slate-200 dark:border-zinc-700 hover:bg-slate-100"
               }`}
             >
-              {st === "ALL" ? `전체 (${totalCount})` : `${st} (${st === "출하준비" ? readyCount : st === "배송중" ? inTransitCount : completedCount})`}
+              {st === "ALL"
+                ? `전체 (${totalCount})`
+                : `${st} (${st === "출하준비" ? readyCount : st === "배송중" ? inTransitCount : completedCount})`}
             </button>
           ))}
         </div>
@@ -326,7 +928,7 @@ export default function DeliveryStatusPage() {
                 <th className="py-2.5 px-3">출발일시</th>
                 <th className="py-2.5 px-3">도착예정(완료)</th>
                 <th className="py-2.5 px-3">현재 위치</th>
-                <th className="py-2.5 px-3 text-center w-24">상세 추적</th>
+                <th className="py-2.5 px-3 text-center w-40">게이트웨이 연동 / 추적</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-zinc-800 text-[11.5px]">
@@ -337,104 +939,140 @@ export default function DeliveryStatusPage() {
                   </td>
                 </tr>
               ) : (
-                filteredList.map((item, idx) => (
-                  <tr 
-                    key={item.id}
-                    onClick={() => handleOpenDetail(item)}
-                    className="hover:bg-slate-50 dark:hover:bg-zinc-800/50 cursor-pointer transition-colors"
-                  >
-                    {/* No */}
-                    <td className="py-2.5 px-3 text-center font-mono text-zinc-500">
-                      {idx + 1}
-                    </td>
+                filteredList.map((item, idx) => {
+                  const isRequesting = requestingTrackingNo === item.trackingNo;
+                  return (
+                    <tr
+                      key={item.trackingNo || item.id || idx}
+                      onClick={() => handleOpenDetail(item)}
+                      className="hover:bg-slate-50 dark:hover:bg-zinc-800/50 cursor-pointer transition-colors"
+                    >
+                      {/* No */}
+                      <td className="py-2.5 px-3 text-center font-mono text-zinc-500">
+                        {idx + 1}
+                      </td>
 
-                    {/* 운송장 번호 */}
-                    <td className="py-2.5 px-3 font-mono font-bold text-sky-700 dark:text-sky-400">
-                      {item.trackingNo}
-                    </td>
+                      {/* 운송장 번호 */}
+                      <td className="py-2.5 px-3">
+                        <div className="font-mono font-bold text-sky-700 dark:text-sky-400">
+                          {item.trackingNo}
+                        </div>
+                        {item.lastSyncedAt && (
+                          <div className="text-[9.5px] font-mono text-emerald-600 dark:text-emerald-400">
+                            동기화: {item.lastSyncedAt}
+                            {item.gatewayResponseCode ? ` (${item.gatewayResponseCode})` : ""}
+                          </div>
+                        )}
+                      </td>
 
-                    {/* 배송 상태 */}
-                    <td className="py-2.5 px-3 text-center">
-                      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold border ${
-                        item.status === "배송중"
-                          ? "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950 dark:text-blue-300 dark:border-blue-800"
-                          : item.status === "배송완료"
-                          ? "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950 dark:text-emerald-300 dark:border-emerald-800"
-                          : "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950 dark:text-amber-300 dark:border-amber-800"
-                      }`}>
-                        {item.status === "배송중" && <Truck className="h-3 w-3 animate-pulse" />}
-                        {item.status === "배송완료" && <Check className="h-3 w-3" />}
-                        {item.status}
-                      </span>
-                    </td>
-
-                    {/* 프로젝트번호 */}
-                    <td className="py-2.5 px-3 font-mono font-bold text-zinc-900 dark:text-zinc-100">
-                      {item.projectNo}
-                    </td>
-
-                    {/* 고객사 / 납품처 */}
-                    <td className="py-2.5 px-3">
-                      <div className="font-bold text-zinc-800 dark:text-zinc-200">{item.customerName}</div>
-                      <div className="text-[10px] text-zinc-400 truncate max-w-[150px]">{item.destination}</div>
-                    </td>
-
-                    {/* 품목명 (품번) */}
-                    <td className="py-2.5 px-3">
-                      <div className="font-medium text-zinc-800 dark:text-zinc-200">{item.productName}</div>
-                      <div className="text-[10px] font-mono text-zinc-400">{item.partNo}</div>
-                    </td>
-
-                    {/* 수량 */}
-                    <td className="py-2.5 px-3 text-right font-mono font-bold text-zinc-800 dark:text-zinc-200">
-                      {item.qty.toLocaleString()} <span className="text-[10px] text-zinc-400 font-normal">{item.unit}</span>
-                    </td>
-
-                    {/* 운송사 (차량번호) */}
-                    <td className="py-2.5 px-3">
-                      <div className="font-medium text-zinc-800 dark:text-zinc-200">{item.carrierName}</div>
-                      <div className="text-[10px] text-zinc-400 font-mono">{item.vehicleNo}</div>
-                    </td>
-
-                    {/* 출발일시 */}
-                    <td className="py-2.5 px-3 font-mono text-zinc-600 dark:text-zinc-400 text-[10.5px]">
-                      {item.departureTime}
-                    </td>
-
-                    {/* 도착예정일시 */}
-                    <td className="py-2.5 px-3 font-mono text-[10.5px]">
-                      {item.actualArrival ? (
-                        <span className="font-bold text-emerald-700 dark:text-emerald-400">
-                          {item.actualArrival}
+                      {/* 배송 상태 */}
+                      <td className="py-2.5 px-3 text-center">
+                        <span
+                          className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold border ${
+                            item.status === "배송중"
+                              ? "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950 dark:text-blue-300 dark:border-blue-800"
+                              : item.status === "배송완료"
+                              ? "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950 dark:text-emerald-300 dark:border-emerald-800"
+                              : "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950 dark:text-amber-300 dark:border-amber-800"
+                          }`}
+                        >
+                          {item.status === "배송중" && <Truck className="h-3 w-3 animate-pulse" />}
+                          {item.status === "배송완료" && <Check className="h-3 w-3" />}
+                          {item.status}
                         </span>
-                      ) : (
-                        <span className="text-zinc-600 dark:text-zinc-400">
-                          {item.estimatedArrival}
+                      </td>
+
+                      {/* 프로젝트번호 */}
+                      <td className="py-2.5 px-3 font-mono font-bold text-zinc-900 dark:text-zinc-100">
+                        {item.projectNo}
+                      </td>
+
+                      {/* 고객사 / 납품처 */}
+                      <td className="py-2.5 px-3">
+                        <div className="font-bold text-zinc-800 dark:text-zinc-200">{item.customerName}</div>
+                        <div className="text-[10px] text-zinc-400 truncate max-w-[150px]">{item.destination}</div>
+                      </td>
+
+                      {/* 품목명 (품번) */}
+                      <td className="py-2.5 px-3">
+                        <div className="font-medium text-zinc-800 dark:text-zinc-200">{item.productName}</div>
+                        <div className="text-[10px] font-mono text-zinc-400">{item.partNo}</div>
+                      </td>
+
+                      {/* 수량 */}
+                      <td className="py-2.5 px-3 text-right font-mono font-bold text-zinc-800 dark:text-zinc-200">
+                        {item.qty.toLocaleString()}{" "}
+                        <span className="text-[10px] text-zinc-400 font-normal">{item.unit}</span>
+                      </td>
+
+                      {/* 운송사 (차량번호) */}
+                      <td className="py-2.5 px-3">
+                        <div className="font-medium text-zinc-800 dark:text-zinc-200">
+                          {item.carrierName || "소프트러쉬 운송"}
+                        </div>
+                        <div className="text-[10px] text-zinc-400 font-mono">
+                          {item.vehicleNo || "(배차 대기)"}
+                        </div>
+                      </td>
+
+                      {/* 출발일시 */}
+                      <td className="py-2.5 px-3 font-mono text-zinc-600 dark:text-zinc-400 text-[10.5px]">
+                        {item.departureTime || "-"}
+                      </td>
+
+                      {/* 도착예정일시 */}
+                      <td className="py-2.5 px-3 font-mono text-[10.5px]">
+                        {item.actualArrival ? (
+                          <span className="font-bold text-emerald-700 dark:text-emerald-400">
+                            {item.actualArrival}
+                          </span>
+                        ) : (
+                          <span className="text-zinc-600 dark:text-zinc-400">
+                            {item.estimatedArrival || item.requestedDeliveryDate || "-"}
+                          </span>
+                        )}
+                      </td>
+
+                      {/* 현재 위치 */}
+                      <td className="py-2.5 px-3">
+                        <span className="inline-flex items-center gap-1 text-[11px] text-slate-700 dark:text-slate-300 font-medium">
+                          <MapPin className="h-3 w-3 text-rose-500 shrink-0" />
+                          <span className="truncate max-w-[140px]">
+                            {item.currentLocation || "배차/출하 대기"}
+                          </span>
                         </span>
-                      )}
-                    </td>
+                      </td>
 
-                    {/* 현재 위치 */}
-                    <td className="py-2.5 px-3">
-                      <span className="inline-flex items-center gap-1 text-[11px] text-slate-700 dark:text-slate-300 font-medium">
-                        <MapPin className="h-3 w-3 text-rose-500 shrink-0" />
-                        <span className="truncate max-w-[140px]">{item.currentLocation}</span>
-                      </span>
-                    </td>
-
-                    {/* 상세 추적 버튼 */}
-                    <td className="py-2.5 px-3 text-center" onClick={(e) => e.stopPropagation()}>
-                      <Button
-                        size="xs"
-                        variant="outline"
-                        onClick={() => handleOpenDetail(item)}
-                        className="h-6 px-2 text-[10.5px] font-bold text-sky-700 border-sky-300 hover:bg-sky-50 dark:hover:bg-zinc-800 cursor-pointer"
-                      >
-                        배송추적
-                      </Button>
-                    </td>
-                  </tr>
-                ))
+                      {/* 배송요청 & 배송추적 버튼 */}
+                      <td className="py-2.5 px-3 text-center" onClick={(e) => e.stopPropagation()}>
+                        <div className="flex items-center justify-center gap-1.5">
+                          <Button
+                            size="xs"
+                            disabled={isRequesting}
+                            onClick={() => handleRequestDelivery(item, idx)}
+                            className="h-6 px-2 text-[10.5px] font-bold bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer gap-1"
+                            title="중간 게이트웨이(POST /api/v1/logistics/deliveries)로 배송건 위탁 전송 및 동기화"
+                          >
+                            {isRequesting ? (
+                              <RefreshCw className="h-3 w-3 animate-spin" />
+                            ) : (
+                              <Send className="h-2.5 w-2.5" />
+                            )}
+                            <span>배송요청</span>
+                          </Button>
+                          <Button
+                            size="xs"
+                            variant="outline"
+                            onClick={() => handleOpenDetail(item)}
+                            className="h-6 px-2 text-[10.5px] font-bold text-sky-700 border-sky-300 hover:bg-sky-50 dark:hover:bg-zinc-800 cursor-pointer"
+                          >
+                            배송추적
+                          </Button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>
@@ -445,7 +1083,6 @@ export default function DeliveryStatusPage() {
       {isDetailModalOpen && selectedItem && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-in fade-in">
           <div className="bg-white dark:bg-zinc-900 w-full max-w-2xl rounded-xl shadow-2xl border overflow-hidden flex flex-col max-h-[90vh]">
-            
             {/* 모달 상단 헤더 */}
             <div className="flex items-center justify-between px-4 py-3 bg-slate-900 text-white">
               <div className="flex items-center gap-2">
@@ -454,7 +1091,7 @@ export default function DeliveryStatusPage() {
                   배송 상세 정보 & 추적 관제 ({selectedItem.trackingNo})
                 </h3>
               </div>
-              <button 
+              <button
                 onClick={() => setIsDetailModalOpen(false)}
                 className="p-1 rounded text-slate-400 hover:text-white hover:bg-slate-800 cursor-pointer"
               >
@@ -495,28 +1132,38 @@ export default function DeliveryStatusPage() {
 
             {/* 모달 본문 */}
             <div className="p-4 overflow-y-auto flex flex-col gap-3 text-xs">
-              
               {/* 상단 기본 제원 요약 카드 */}
               <div className="p-3 rounded-lg bg-slate-50 dark:bg-zinc-800/50 border border-slate-200 dark:border-zinc-700 grid grid-cols-2 sm:grid-cols-4 gap-2">
                 <div>
                   <span className="text-zinc-400 text-[10px]">운송장번호</span>
-                  <div className="font-mono font-bold text-sky-700 dark:text-sky-400">{selectedItem.trackingNo}</div>
+                  <div className="font-mono font-bold text-sky-700 dark:text-sky-400">
+                    {selectedItem.trackingNo}
+                  </div>
                 </div>
                 <div>
                   <span className="text-zinc-400 text-[10px]">프로젝트 / 품목</span>
-                  <div className="font-bold text-zinc-800 dark:text-zinc-200 truncate">{selectedItem.projectNo}</div>
+                  <div className="font-bold text-zinc-800 dark:text-zinc-200 truncate">
+                    {selectedItem.projectNo}
+                  </div>
                 </div>
                 <div>
                   <span className="text-zinc-400 text-[10px]">납품 고객사</span>
-                  <div className="font-bold text-zinc-800 dark:text-zinc-200 truncate">{selectedItem.customerName}</div>
+                  <div className="font-bold text-zinc-800 dark:text-zinc-200 truncate">
+                    {selectedItem.customerName}
+                  </div>
                 </div>
                 <div>
                   <span className="text-zinc-400 text-[10px]">배송 상태</span>
                   <div>
-                    <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold ${
-                      selectedItem.status === "배송중" ? "bg-blue-100 text-blue-800" :
-                      selectedItem.status === "배송완료" ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800"
-                    }`}>
+                    <span
+                      className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold ${
+                        selectedItem.status === "배송중"
+                          ? "bg-blue-100 text-blue-800"
+                          : selectedItem.status === "배송완료"
+                          ? "bg-emerald-100 text-emerald-800"
+                          : "bg-amber-100 text-amber-800"
+                      }`}
+                    >
                       {selectedItem.status}
                     </span>
                   </div>
@@ -533,17 +1180,23 @@ export default function DeliveryStatusPage() {
                       </div>
                       <div>
                         <div className="font-bold text-xs text-zinc-800 dark:text-zinc-200 flex items-center gap-2">
-                          <span>{selectedItem.carrierName}</span>
+                          <span>{selectedItem.carrierName || "소프트러쉬 운송"}</span>
                           <span className="text-zinc-400 font-normal">|</span>
-                          <span className="font-mono">{selectedItem.vehicleNo}</span>
-                          <span className="text-[10px] text-zinc-500 font-normal">({selectedItem.vehicleType})</span>
+                          <span className="font-mono">{selectedItem.vehicleNo || "배차 대기"}</span>
+                          {selectedItem.vehicleType && (
+                            <span className="text-[10px] text-zinc-500 font-normal">
+                              ({selectedItem.vehicleType})
+                            </span>
+                          )}
                         </div>
                         <div className="text-[11px] text-zinc-500 flex items-center gap-2 mt-0.5">
-                          <span>기사: <b>{selectedItem.driverName}</b></span>
+                          <span>
+                            기사: <b>{selectedItem.driverName || "배차 후 확정"}</b>
+                          </span>
                           <span className="text-zinc-400 font-normal">|</span>
                           <span className="flex items-center gap-1 font-mono text-sky-600">
                             <Phone className="h-3 w-3" />
-                            {selectedItem.driverPhone}
+                            {selectedItem.driverPhone || "-"}
                           </span>
                         </div>
                       </div>
@@ -553,7 +1206,7 @@ export default function DeliveryStatusPage() {
                       <span className="text-[10px] text-zinc-400">현재 위치</span>
                       <div className="font-bold text-xs text-rose-600 flex items-center gap-1">
                         <MapPin className="h-3.5 w-3.5" />
-                        <span>{selectedItem.currentLocation}</span>
+                        <span>{selectedItem.currentLocation || "배차/출하 대기"}</span>
                       </div>
                     </div>
                   </div>
@@ -563,45 +1216,65 @@ export default function DeliveryStatusPage() {
                     <h4 className="font-bold text-xs text-zinc-700 dark:text-zinc-300">
                       배송 진행 타임라인
                     </h4>
-                    
-                    <div className="flex flex-col gap-2.5 pt-1">
-                      {(selectedItem.transitSteps || []).map((step, idx) => (
-                        <div key={idx} className="flex items-start gap-3">
-                          <div className="flex flex-col items-center">
-                            <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 ${
-                              step.isCompleted 
-                                ? "bg-emerald-600 text-white" 
-                                : "bg-slate-200 dark:bg-zinc-700 text-zinc-500"
-                            }`}>
-                              {step.isCompleted ? <Check className="h-3 w-3" /> : idx + 1}
-                            </div>
-                            {idx < (selectedItem.transitSteps?.length ?? 0) - 1 && (
-                              <div className={`w-0.5 h-6 ${step.isCompleted ? "bg-emerald-400" : "bg-slate-200 dark:bg-zinc-700"}`} />
-                            )}
-                          </div>
 
-                          <div className="flex-1 pb-1">
-                            <div className="flex items-center justify-between">
-                              <span className={`font-bold text-xs ${step.isCompleted ? "text-zinc-900 dark:text-zinc-100" : "text-zinc-400"}`}>
-                                {step.step}
-                              </span>
-                              <span className="font-mono text-[10px] text-zinc-400">
-                                {step.time}
-                              </span>
-                            </div>
-                            <div className="text-[11px] text-zinc-500 flex items-center gap-1 mt-0.5">
-                              <MapPin className="h-3 w-3 text-zinc-400" />
-                              <span>{step.location}</span>
-                            </div>
-                            {step.note && (
-                              <div className="text-[10px] text-slate-400 mt-0.5 bg-slate-50 dark:bg-zinc-800 px-2 py-0.5 rounded border border-slate-100 dark:border-zinc-700">
-                                • {step.note}
+                    {(selectedItem.transitSteps || []).length === 0 ? (
+                      <div className="py-6 text-center text-zinc-400 text-xs">
+                        아직 물류사에서 전송된 경유 이력(transitSteps)이 없습니다. (배차 및 출발 후 갱신됩니다)
+                      </div>
+                    ) : (
+                      <div className="flex flex-col gap-2.5 pt-1">
+                        {(selectedItem.transitSteps || []).map((step, idx) => (
+                          <div key={idx} className="flex items-start gap-3">
+                            <div className="flex flex-col items-center">
+                              <div
+                                className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 ${
+                                  step.isCompleted
+                                    ? "bg-emerald-600 text-white"
+                                    : "bg-slate-200 dark:bg-zinc-700 text-zinc-500"
+                                }`}
+                              >
+                                {step.isCompleted ? <Check className="h-3 w-3" /> : idx + 1}
                               </div>
-                            )}
+                              {idx < (selectedItem.transitSteps?.length ?? 0) - 1 && (
+                                <div
+                                  className={`w-0.5 h-6 ${
+                                    step.isCompleted
+                                      ? "bg-emerald-400"
+                                      : "bg-slate-200 dark:bg-zinc-700"
+                                  }`}
+                                />
+                              )}
+                            </div>
+
+                            <div className="flex-1 pb-1">
+                              <div className="flex items-center justify-between">
+                                <span
+                                  className={`font-bold text-xs ${
+                                    step.isCompleted
+                                      ? "text-zinc-900 dark:text-zinc-100"
+                                      : "text-zinc-400"
+                                  }`}
+                                >
+                                  {step.step}
+                                </span>
+                                <span className="font-mono text-[10px] text-zinc-400">
+                                  {step.time}
+                                </span>
+                              </div>
+                              <div className="text-[11px] text-zinc-500 flex items-center gap-1 mt-0.5">
+                                <MapPin className="h-3 w-3 text-zinc-400" />
+                                <span>{step.location}</span>
+                              </div>
+                              {step.note && (
+                                <div className="text-[10px] text-slate-400 mt-0.5 bg-slate-50 dark:bg-zinc-800 px-2 py-0.5 rounded border border-slate-100 dark:border-zinc-700">
+                                  • {step.note}
+                                </div>
+                              )}
+                            </div>
                           </div>
-                        </div>
-                      ))}
-                    </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 </>
               ) : (
@@ -609,7 +1282,7 @@ export default function DeliveryStatusPage() {
                 <div className="flex flex-col gap-2">
                   <div className="flex items-center justify-between bg-slate-100 dark:bg-zinc-800 p-2 rounded text-zinc-600 dark:text-zinc-300">
                     <span className="text-[11px] font-medium">
-                      * 외부 물류사 API 연동 규격 샘플 Payload (REST Response 구조)
+                      * 게이트웨이(GET /api/v1/logistics/deliveries/&#123;trackingNo&#125;) 연동 데이터 구조
                     </span>
                     <Button
                       size="xs"
@@ -617,7 +1290,11 @@ export default function DeliveryStatusPage() {
                       onClick={handleCopyJson}
                       className="h-6 px-2 text-[10px] gap-1 cursor-pointer"
                     >
-                      {copiedJson ? <Check className="h-3 w-3 text-emerald-600" /> : <Copy className="h-3 w-3" />}
+                      {copiedJson ? (
+                        <Check className="h-3 w-3 text-emerald-600" />
+                      ) : (
+                        <Copy className="h-3 w-3" />
+                      )}
                       <span>{copiedJson ? "복사완료" : "JSON 복사"}</span>
                     </Button>
                   </div>
@@ -627,13 +1304,12 @@ export default function DeliveryStatusPage() {
                   </pre>
                 </div>
               )}
-
             </div>
 
             {/* 모달 푸터 */}
             <div className="px-4 py-2.5 bg-slate-50 dark:bg-zinc-800 border-t flex items-center justify-between text-xs">
               <span className="text-[10px] text-zinc-500">
-                * MPSI 시스템에서 소프트러쉬(SoftRush) API 서버로 요청하여 데이터를 조회하는 Pull 방식으로 연동됩니다.
+                * MPSI SCM ↔ 물류 게이트웨이({gwBaseUrl}) KS X 9101 BOD 표준 연계
               </span>
               <Button
                 size="sm"
@@ -643,12 +1319,87 @@ export default function DeliveryStatusPage() {
                 닫기
               </Button>
             </div>
-
           </div>
         </div>
       )}
 
+      {/* 6. 물류 게이트웨이 주소 및 MPSI_API_KEY 설정 모달 */}
+      {isGwConfigOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-in fade-in">
+          <div className="bg-white dark:bg-zinc-900 w-full max-w-md rounded-xl shadow-2xl border border-slate-200 dark:border-zinc-800 overflow-hidden flex flex-col">
+            <div className="flex items-center justify-between px-4 py-3 bg-slate-900 text-white">
+              <div className="flex items-center gap-2">
+                <Key className="h-4 w-4 text-sky-400" />
+                <h3 className="font-bold text-sm">물류 게이트웨이 (mpsi-gw) 연동 설정</h3>
+              </div>
+              <button
+                onClick={() => setIsGwConfigOpen(false)}
+                className="p-1 rounded text-slate-400 hover:text-white"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="p-4 space-y-3 text-xs">
+              <div>
+                <label className="block font-bold text-zinc-700 dark:text-zinc-300 mb-1">
+                  게이트웨이 기준 주소 (MPSI_GW_BASE_URL)
+                </label>
+                <Input
+                  value={gwBaseUrl}
+                  onChange={(e) => setGwBaseUrl(e.target.value)}
+                  placeholder="https://mpsi-gw.a2lab.co.kr"
+                  className="h-8 text-xs font-mono"
+                />
+              </div>
+
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="font-bold text-zinc-700 dark:text-zinc-300">
+                    게이트웨이 인증키 (x-mpsi-api-key / MPSI_API_KEY)
+                  </label>
+                  <span
+                    className={`text-[10px] font-bold ${
+                      gwHasKey ? "text-emerald-600" : "text-amber-600"
+                    }`}
+                  >
+                    {gwHasKey ? "● 서버에 키 설정됨 (비공개)" : "미설정"}
+                  </span>
+                </div>
+                <Input
+                  type="password"
+                  value={gwInputKey}
+                  onChange={(e) => setGwInputKey(e.target.value)}
+                  placeholder="새 MPSI_API_KEY 입력 (비워두면 기존 키 유지)"
+                  className="h-8 text-xs font-mono"
+                />
+                <p className="text-[10.5px] text-zinc-500 mt-1">
+                  • 서버 환경변수(<code>MPSI_API_KEY</code>)로 두거나 이곳에서 저장하면 서버 측에서만 안전하게 보관되어 모든 게이트웨이 호출 시 <code>x-mpsi-api-key</code> 헤더로 전송됩니다.
+                </p>
+              </div>
+            </div>
+
+            <div className="px-4 py-2.5 bg-slate-50 dark:bg-zinc-800 border-t flex items-center justify-end gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setIsGwConfigOpen(false)}
+                className="h-7 px-3 text-xs cursor-pointer"
+              >
+                취소
+              </Button>
+              <Button
+                size="sm"
+                disabled={isSavingGwConfig}
+                onClick={handleSaveGwConfig}
+                className="h-7 px-4 text-xs font-bold bg-sky-600 hover:bg-sky-700 text-white cursor-pointer"
+              >
+                저장
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
-

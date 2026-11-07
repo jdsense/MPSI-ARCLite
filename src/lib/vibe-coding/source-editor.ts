@@ -59,6 +59,7 @@ const sha = (s: string) => crypto.createHash("sha1").update(s).digest("hex");
 const DENIED_FILES = new Set([
   "lib/auth-crypto.ts",
   "lib/db.ts",
+  "lib/logistics-gateway.ts",
   "lib/role-store.ts",
   "lib/permission-store.ts",
   "lib/user-store.ts",
