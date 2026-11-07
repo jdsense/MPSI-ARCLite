@@ -140,7 +140,8 @@ function PortalHeader({
       
       {/* 우측: 타임 컨트롤러 및 포탈 액션 */}
       <div className="flex items-center gap-3 shrink-0 pl-4">
-        {/* 시스템 최고 관리자 전용 AI Usage 토큰 사용량 & 잔여량 표시 */}
+        {/* 시스템 최고 관리자 전용 AI Usage 토큰 사용량 & 잔여량 표시 (주석 처리) */}
+        {/*
         {isAdmin && aiUsage && (
           <div className="relative">
             <button
@@ -229,6 +230,7 @@ function PortalHeader({
             )}
           </div>
         )}
+        */}
 
         {/* 상단 업무 메모 알림 센터 */}
         <NotificationCenter />
