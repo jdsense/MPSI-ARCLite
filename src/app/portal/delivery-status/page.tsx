@@ -787,6 +787,8 @@ export default function DeliveryStatusPage() {
             <Plus className="h-3.5 w-3.5" />
             <span>신규 배송 등록</span>
           </Button>
+          {/* [게이트웨이 설정] 및 [목록 새로고침 (GET)] 버튼 임시 주석 처리 */}
+          {/*
           <Button
             size="sm"
             variant="outline"
@@ -806,6 +808,7 @@ export default function DeliveryStatusPage() {
           >
             <span>목록 새로고침 (GET)</span>
           </Button>
+          */}
           <Button
             size="sm"
             onClick={handleSyncExternalApi}
