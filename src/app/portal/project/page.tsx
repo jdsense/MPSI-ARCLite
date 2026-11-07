@@ -1862,7 +1862,7 @@ export default function ProjectStatus13StepsPage() {
         <div className="flex items-center justify-between px-3 py-2 bg-zinc-50 dark:bg-zinc-800/50 border-b">
           <div className="flex items-center gap-2 font-bold text-zinc-800 dark:text-zinc-100">
             <Briefcase className="h-4 w-4 text-sky-600" />
-            <span>2. 3사 연계 프로젝트 현황 관리대장 (공정 0~13 총괄 관제)</span>
+            <span>2. 프로젝트 현황</span> 
             <span className="text-[11px] font-normal text-zinc-500 ml-1">
               (조회 결과: <b className="text-sky-600 font-mono">{filteredProjects.length}</b>건 / 전체 {projects.length}건)
             </span>
