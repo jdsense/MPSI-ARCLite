@@ -154,11 +154,15 @@ export default function MassValidationPage() {
     return record.checklist.filter((item) => Boolean(item.attachedReport)).length;
   };
 
-  // 1-3, 7) 양산성 검증상태 판정 (검증완료, 검증 대기, 검증 진행 중)
+  // 1-3, 7) 양산성 검증상태 판정 (6대 보고서 완비 및 Cpk 기준치 충족 또는 MPSI 내부승인 시 검증완료)
   const getValidationStatus = (record?: MassValidationRecord): "검증완료" | "검증 대기" | "검증 진행 중" => {
+    if (!record) return "검증 대기";
+    if (record.status === "양산승인(내부)") return "검증완료";
     const count = getReportCount(record);
     if (count === 0) return "검증 대기";
-    if (count >= 6) return "검증완료";
+    const targetCpk = record.targetCpk ?? 1.33;
+    const isCpkPassed = record.measuredCpk !== undefined && record.measuredCpk >= targetCpk;
+    if (count >= 6 && isCpkPassed) return "검증완료";
     return "검증 진행 중";
   };
 

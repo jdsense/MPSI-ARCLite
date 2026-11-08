@@ -209,6 +209,7 @@ export default function MoldDevQuotationPage() {
     cavity: "",
     gateType: "",
     moldSteel: "",
+    resin: "",
     targetT1Date: "",
     moldDeliveryDate: "",
     targetMfgDays: 0,
@@ -255,6 +256,7 @@ export default function MoldDevQuotationPage() {
         cavity: "",
         gateType: "",
         moldSteel: "",
+        resin: "",
         targetT1Date: "",
         moldDeliveryDate: "",
         targetMfgDays: 0,
@@ -282,6 +284,7 @@ export default function MoldDevQuotationPage() {
       const cavity = rfq.cavity || found.cavity || "";
       const hrs = rfq.hrs || (found as any).hrsSpec || "";
       const moldSteel = rfq.moldSteel || found.material || "";
+      const resin = (found as any).resinSpec || rfq.resin || "";
 
       setNewForm((prev) => ({
         ...prev,
@@ -298,6 +301,7 @@ export default function MoldDevQuotationPage() {
         cavity: cavity,
         gateType: hrs,
         moldSteel: moldSteel,
+        resin: resin,
         targetT1Date: found.targetT1Date || "",
         moldDeliveryDate: found.moldDeliveryDate || "",
         targetMfgDays: Number(found.targetMoldDays || 0),
@@ -431,6 +435,7 @@ export default function MoldDevQuotationPage() {
       cavity: newForm.cavity,
       gateType: newForm.gateType,
       moldSteel: newForm.moldSteel,
+      resin: newForm.resin,
       targetT1Date: newForm.targetT1Date || today,
       moldDeliveryDate: newForm.moldDeliveryDate || "",
       targetMfgDays: Number(newForm.targetMfgDays || 0),

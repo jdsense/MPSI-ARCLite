@@ -143,10 +143,13 @@ export default function MassProductionQuotationPage() {
         else matchedVendor = found.massVendor;
       }
 
-      const resin = found.material || "PP-TD20";
+      const resin = (found as any).resinSpec || found.material || "PP-TD20";
       const cav = found.cavity ? (found.cavity.includes("Cavity") ? found.cavity : `${found.cavity} Cavity`) : "1*2 Cavity";
       const monthlyVol = found.orderQty ? Math.round(found.orderQty / 12) : 25000;
-      const calc = calculateCosts(2800, 320, 35, cav, 36);
+      const partW = Number(String((found as any).partWeight || "").replace(/[^0-9.]/g, "")) || 320;
+      const runnerW = 35;
+      const resinPrice = 2800;
+      const calc = calculateCosts(resinPrice, partW, runnerW, cav, 36);
 
       // 프로젝트 번호는 항상 M으로 시작 보장
       const pjtDisplayName = found.projectNo.toUpperCase().startsWith("M")
@@ -160,12 +163,15 @@ export default function MassProductionQuotationPage() {
         productName: found.productName,
         customerName: found.customerName,
         vendorName: found.massProductionType === "IN_HOUSE" ? "MPSI 자체사출공장" : matchedVendor,
-        assignedVendors: found.massProductionType === "IN_HOUSE" ? ["MPSI 자체사출공장"] : ["전체 업체"],
+        assignedVendors: found.massProductionType === "IN_HOUSE" ? ["MPSI 자체사출공장"] : [matchedVendor],
         productionType: found.massProductionType === "IN_HOUSE" ? "IN_HOUSE" : "OUTSOURCING",
         targetMassApprovalDate: found.targetMassDate || "2026-08-30",
         targetCycleTime: 36,
         machineTonnage: found.facilityEvent?.includes("T") ? found.facilityEvent : "650T",
         resinSpec: resin,
+        resinPricePerKg: resinPrice,
+        partWeightGram: partW,
+        runnerWeightGram: runnerW,
         cavity: cav,
         monthlyVolume: monthlyVol,
         materialCost: calc.materialCost,

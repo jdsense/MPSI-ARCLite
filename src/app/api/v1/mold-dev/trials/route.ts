@@ -65,15 +65,26 @@ export async function GET(req: Request) {
     // 1. MpsiMoldManufacture 또는 ProjectMaster에서 실제 프로젝트(MI26005P0 등) 자동 동기화 확인
     try {
       const pmRows = await query(`
-        SELECT p."ProjectID", p."ProjectName", p."CustomerName", p."TargetT1Date", p."PartName"
+        SELECT p."ProjectID", p."ProjectName", p."ItemID", p."Note"
         FROM "ProjectMaster" p
         WHERE p."ProjectID" NOT IN ('MI25001P1', 'MI25001P2', 'MI26001P0', 'MI26002P0', 'MI26003P0')
           AND p."ProjectID" IS NOT NULL
+          AND p."ProjectID" NOT LIKE 'Q%'
       `);
 
       for (const p of pmRows.rows) {
         const pid = p.ProjectID;
         if (!pid) continue;
+
+        let pmMeta: any = {};
+        try {
+          pmMeta = JSON.parse(p.Note || "{}");
+        } catch {}
+
+        // 더미 프로젝트 건너뛰기
+        if (pmMeta.projectName?.includes("NQ5") || pmMeta.projectName?.includes("현대 NT5")) {
+          continue;
+        }
 
         // MpsiMoldTrial에 이미 있는지 확인
         const existTrial = await query(
@@ -94,21 +105,21 @@ export async function GET(req: Request) {
             }
           } catch (e) {}
 
-          const targetT1 = mfgMeta.targetT1Date || (p.TargetT1Date ? new Date(p.TargetT1Date).toISOString().slice(0, 10) : "2026-11-06");
+          const targetT1 = mfgMeta.targetT1Date || pmMeta.targetT1Date || "2026-11-20";
           
           const initialTrialProject = {
             id: 1,
             projectNo: pid,
-            moldNo: mfgMeta.moldNo || `${pid}M`,
-            moldDegree: mfgMeta.moldDegree || "M1",
-            changeType: mfgMeta.changeType || "N001",
-            projectName: mfgMeta.projectName || p.ProjectName || "Door Armrest Base",
-            productName: mfgMeta.productName || p.PartName || "Main Part",
-            customerName: mfgMeta.customerName || p.CustomerName || "현대자동차 (1차사)",
-            moldVendor: mfgMeta.moldVendor || "우성정공(주)",
-            massVendor: "(주)뉴몰드",
-            cavity: mfgMeta.cavity || "1*2 Cavity",
-            material: mfgMeta.material || "NAK80 / KP4M",
+            moldNo: mfgMeta.moldNo || pmMeta.moldNo || `${pid}M`,
+            moldDegree: mfgMeta.moldDegree || pmMeta.moldDegree || "M1",
+            changeType: mfgMeta.changeType || pmMeta.changeType || "N001",
+            projectName: mfgMeta.projectName || pmMeta.projectName || p.ProjectName || "양산 프로젝트",
+            productName: mfgMeta.productName || pmMeta.productName || p.ProjectName || "사출 성형 부품",
+            customerName: mfgMeta.customerName || pmMeta.customerName || "원청 고객사",
+            moldVendor: mfgMeta.moldVendor || pmMeta.moldVendor || "우성정공(주)",
+            massVendor: mfgMeta.massVendor || pmMeta.massVendor || "(주)뉴몰드",
+            cavity: mfgMeta.cavity || pmMeta.cavity || "1*2 Cavity",
+            material: mfgMeta.material || pmMeta.material || pmMeta.resinSpec || "NAK80 / KP4M",
             targetT1Date: targetT1,
             currentTrial: "T1",
             transferPlanDate: "2026-12-20",
@@ -271,7 +282,7 @@ export async function GET(req: Request) {
           massVendor: meta.massVendor || "(주)뉴몰드",
           cavity: meta.cavity || "1*2 Cavity",
           material: meta.material || "NAK80 / KP4M",
-          targetT1Date: meta.targetT1Date || (r.TrialDate ? new Date(r.TrialDate).toISOString().slice(0, 10) : ""),
+          targetT1Date: meta.targetT1Date || (r.TrialDate ? String(r.TrialDate).slice(0, 10) : ""),
           currentTrial: meta.currentTrial || r.TrialDegree || "T1",
           isMoldApproved: Boolean(meta.isMoldApproved),
           transferPlanDate: meta.transferPlanDate || "",
@@ -300,6 +311,7 @@ export async function GET(req: Request) {
 
 export async function PUT(req: Request) {
   try {
+    await ensureTrialSchema();
     const body = await req.json();
     const { projectNo, trialData } = body;
 
@@ -339,18 +351,23 @@ export async function PUT(req: Request) {
       seqNo
     ]);
 
-    // ProjectMaster 공정 상태 동기화
-    try {
-      const nextStage = merged.isMoldApproved ? "Step 9: 금형 승인 및 이관" : "Step 7: T1 시사출 및 육성";
-      await query(`
-        UPDATE "ProjectMaster"
-        SET 
-          "CurrentProcessStage" = $1,
-          "ModificationDateTime" = NOW()
-        WHERE "ProjectID" = $2
-      `, [nextStage, projectNo]);
-    } catch (e) {
-      console.warn("[Trial PUT ProjectMaster sync warning]", e);
+    // 금형 승인 또는 이관 완료 시 시양산(MpsiMassValidation)의 moldTransferConfirmed 동기화
+    if (merged.isMoldApproved || merged.transferActualDate || merged.currentStep >= 10) {
+      try {
+        const valRes = await query(`SELECT "ValidationSequenceNo", "Note" FROM "MpsiMassValidation" WHERE "ProjectID" = $1`, [projectNo]);
+        if (valRes.rows.length > 0) {
+          let vNote: any = {};
+          try { vNote = JSON.parse(valRes.rows[0].Note || "{}"); } catch {}
+          vNote.moldTransferConfirmed = true;
+          if (merged.transferActualDate) vNote.moldTransferDate = merged.transferActualDate;
+          await query(
+            `UPDATE "MpsiMassValidation" SET "Note" = $1, "ModificationDateTime" = NOW() WHERE "ValidationSequenceNo" = $2`,
+            [JSON.stringify(vNote), valRes.rows[0].ValidationSequenceNo]
+          );
+        }
+      } catch (e) {
+        console.warn("[Trial PUT MassValidation sync warning]", e);
+      }
     }
 
     return NextResponse.json({ success: true, message: "Trial updated successfully", data: merged });

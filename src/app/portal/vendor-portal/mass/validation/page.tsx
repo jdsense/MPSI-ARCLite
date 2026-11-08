@@ -466,8 +466,7 @@ export default function VendorMassValidationPage() {
     const dateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")} ${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
 
     const reportCount = getReportCount(latestTrial);
-    const calculatedStatus: "검증완료" | "검증 대기" | "검증 진행 중" = 
-      reportCount >= 6 ? "검증완료" : reportCount === 0 ? "검증 대기" : "검증 진행 중";
+    const calculatedStatus = getValidationStatus(latestTrial);
 
     // 1. MassValidationStore 업데이트
     updateValidationProject(selectedProject.id, {

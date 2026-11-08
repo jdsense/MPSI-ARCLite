@@ -413,13 +413,14 @@ function triggerActualFileDownload(
   const ext = fileName.split(".").pop()?.toLowerCase();
   if (ext === "xlsx" || ext === "xls" || ext === "csv") {
     mimeType = "application/vnd.ms-excel;charset=utf-8";
+    const nowLocal = new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().split("T")[0];
     // 엑셀에서 완벽히 열리는 UTF-8 BOM 포함 TSV/CSV 견적서 데이터 생성
     const csvContent = "\uFEFF" + [
       `[MPSI 스마트공장 원청사 공식 견적서 (수주 원가 명세서)]`,
       `프로젝트 관리번호\t${metaInfo?.projectNo || "MI26001P0"}`,
       `원청 고객사명\t${metaInfo?.customer || "현대자동차 (남양연구소)"}`,
       `견적 버전 차수\tRev.${metaInfo?.version || 1} (${metaInfo?.label || "공식 견적서"})`,
-      `공식 발행일자\t${new Date().toISOString().split("T")[0]}`,
+      `공식 발행일자\t${nowLocal}`,
       `견적 발행처\tMPSI 본사 개발/영업본부 관제센터`,
       `--------------------------------------------------------------------------------`,
       `구분코드\t세부 항목명\t규격/사양\t수량\t단가(원)\t공급가액(원)\t비고`,
@@ -626,7 +627,7 @@ export default function QuotationPage() {
     if (!files || files.length === 0) return;
     setIsUploadingFiles(true);
     const newHistory: QuotationFileHistoryItem[] = [];
-    const today = new Date().toISOString().split("T")[0];
+    const today = new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().split("T")[0];
 
     for (let i = 0; i < files.length; i++) {
       const f = files[i];
@@ -675,7 +676,7 @@ export default function QuotationPage() {
     setIsUploadingFiles(true);
     const file = selectedReplaceFile;
     const sizeStr = (file.size / (1024 * 1024)).toFixed(2) + " MB";
-    const today = new Date().toISOString().split("T")[0];
+    const today = new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().split("T")[0];
     const newFileId = `f-${Date.now()}`;
 
     // 1. 메모리 캐시 저장
@@ -750,7 +751,7 @@ export default function QuotationPage() {
       alert("선택된 프로젝트의 원청사(고객사)와 제품명을 확인해주세요.");
       return;
     }
-    const today = new Date().toISOString().split("T")[0];
+    const today = new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().split("T")[0];
 
     const initialMemos: QuotationMemoItem[] = [];
     if (newForm.initialMemo.trim()) {
@@ -804,7 +805,8 @@ export default function QuotationPage() {
   const handleAddMemo = () => {
     if (!newMemoText.trim() || !selectedItem) return;
     const now = new Date();
-    const timeStr = `${now.toISOString().split("T")[0]} ${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+    const localDate = new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().split("T")[0];
+    const timeStr = `${localDate} ${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
     const newMemoItem: QuotationMemoItem = {
       id: `memo-${Date.now()}`,
       author: "MPSI 영업담당",
@@ -823,7 +825,7 @@ export default function QuotationPage() {
 
   // 상태 변경
   const handleUpdateStatus = (id: number, nextStatus: PrimeQuotationStatus) => {
-    const today = new Date().toISOString().split("T")[0];
+    const today = new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().split("T")[0];
     const updatedList = data.map((item) => {
       if (item.id === id) {
         // 프로젝트 마스터와도 상태 동기화

@@ -651,7 +651,7 @@ export default function VendorMoldQuotationPage() {
 
                     {/* 8. 2-3) 레진 */}
                     <td className="py-2 px-2 text-center font-mono font-medium text-emerald-700 dark:text-emerald-400 whitespace-nowrap">
-                      {item.resin || "PP-EPDM"}
+                      {item.resin || "PP-TD20"}
                     </td>
 
                     {/* 9. 2-4) 출고 납기 */}

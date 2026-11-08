@@ -238,10 +238,10 @@ export async function GET(req: Request) {
           moldVendor: meta.moldVendor || "우성정공(주)",
           cavity: meta.cavity || "1*2 Cavity",
           material: meta.material || "NAK80 / KP4M",
-          targetT1Date: r.TargetT1Date ? new Date(r.TargetT1Date).toISOString().slice(0, 10) : (meta.targetT1Date || ""),
-          moldDeliveryDate: r.MoldDeliveryDate ? new Date(r.MoldDeliveryDate).toISOString().slice(0, 10) : (meta.moldDeliveryDate || ""),
+          targetT1Date: r.TargetT1Date ? String(r.TargetT1Date).slice(0, 10) : (meta.targetT1Date || ""),
+          moldDeliveryDate: r.MoldDeliveryDate ? String(r.MoldDeliveryDate).slice(0, 10) : (meta.moldDeliveryDate || ""),
           moldPoNo: r.MoldPoNo || meta.moldPoNo || "-",
-          orderDate: r.OrderDate ? new Date(r.OrderDate).toISOString().slice(0, 10) : (meta.orderDate || ""),
+          orderDate: r.OrderDate ? String(r.OrderDate).slice(0, 10) : (meta.orderDate || ""),
           orderAmount: Number(r.OrderAmount ?? meta.orderAmount ?? 0),
           manufactureStatus: manufactureStatus,
           scheduleFile: meta.scheduleFile || undefined,
@@ -274,6 +274,7 @@ export async function GET(req: Request) {
 
 export async function PUT(req: Request) {
   try {
+    await ensureManufactureSchema();
     const body = await req.json();
     const {
       projectNo,

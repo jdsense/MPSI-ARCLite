@@ -113,20 +113,20 @@ function mapRowToProject(row: any): MassValidationProject {
     id: Number(row.ValidationSequenceNo),
     projectNo: row.ProjectID || note.projectNo,
     officialProjectNo: note.officialProjectNo || row.ProjectID,
-    projectName: note.projectName || "Door Armrest Base",
-    productName: note.productName || "Main Part",
-    customerName: note.customerName || "현대자동차 (1차사)",
+    projectName: note.projectName || row.ProjectID || "양산 프로젝트",
+    productName: note.productName || "사출 성형 부품",
+    customerName: note.customerName || "원청 고객사",
     moldVendor: note.moldVendor || "우성정공(주)",
     massVendor: row.MassVendorID || note.massVendor || "(주)뉴몰드",
     currentTrial: row.CurrentTrial || note.currentTrial || "T1",
-    moldTransferDate: note.moldTransferDate || "2026-12-05",
+    moldTransferDate: note.moldTransferDate || "",
     targetMassApprovalDate: note.targetMassApprovalDate || "2026-12-20",
     overallStatus: row.OverallStatus || note.overallStatus || "시양산 대기",
     currentStep: Number(row.CurrentStep) || note.currentStep || 11,
-    moldTransferConfirmed: note.moldTransferConfirmed ?? true,
+    moldTransferConfirmed: Boolean(note.moldTransferConfirmed),
     urgentMoldRevision: note.urgentMoldRevision,
     urgentRevisionDetail: note.urgentRevisionDetail,
-    mpsiWitnessInspector: note.mpsiWitnessInspector || "이인배 품질차장 (MPSI 기술품질팀)",
+    mpsiWitnessInspector: note.mpsiWitnessInspector || "MPSI 품질팀",
     trials,
     updatedAt: note.updatedAt || new Date().toISOString().replace("T", " ").slice(0, 16),
   };
@@ -195,22 +195,36 @@ export async function GET(req: NextRequest) {
           const validationId = `VAL-${pid}`;
           const dateStr = new Date().toISOString().slice(0, 10);
 
+          let isMoldTransferred = false;
+          let transferDate = qMeta.massStartDate || "";
+          try {
+            const tRes = await query(`SELECT "TrialStatus", "Note" FROM "MpsiMoldTrial" WHERE "ProjectID" = $1 LIMIT 1`, [pid]);
+            if (tRes.rows.length > 0) {
+              let tMeta: any = {};
+              try { tMeta = JSON.parse(tRes.rows[0].Note || "{}"); } catch {}
+              if (tMeta.isMoldApproved || tMeta.transferActualDate || tRes.rows[0].TrialStatus === "양산승인완료") {
+                isMoldTransferred = true;
+                if (tMeta.transferActualDate) transferDate = tMeta.transferActualDate;
+              }
+            }
+          } catch {}
+
           const initialProjectMeta: MassValidationProject = {
             id: 0,
             projectNo: pid,
             officialProjectNo: pid,
-            projectName: qMeta.projectName || "Door Armrest Base",
-            productName: qMeta.productName || "Main Part",
-            customerName: qMeta.customerName || "현대자동차 (1차사)",
+            projectName: qMeta.projectName || pid,
+            productName: qMeta.productName || "사출 성형 부품",
+            customerName: qMeta.customerName || "원청 고객사",
             moldVendor: "우성정공(주)",
             massVendor: selectedVendor,
             currentTrial: "T1",
-            moldTransferDate: qMeta.massStartDate || "2026-12-05",
+            moldTransferDate: transferDate,
             targetMassApprovalDate: qMeta.targetMassApprovalDate || "2026-12-20",
             overallStatus: "시양산 대기",
             currentStep: 11,
-            moldTransferConfirmed: true,
-            mpsiWitnessInspector: "이인배 품질차장 (MPSI 기술품질팀)",
+            moldTransferConfirmed: isMoldTransferred,
+            mpsiWitnessInspector: "MPSI 품질팀",
             trials: [
               {
                 trialDegree: "T1",

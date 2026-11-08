@@ -125,9 +125,13 @@ export async function GET(request: NextRequest) {
       [enterpriseId]
     );
 
-    // 1. MpsiMoldDesign 및 MpsiMoldQuotation 실시간 동기화 데이터 조회
+    // 1. MpsiMoldDesign, MpsiMoldQuotation, MpsiMoldManufacture, MpsiMoldTrial, MpsiMassValidation, MpsiMassPpap 실시간 동기화 데이터 조회
     let designsByProject: Record<string, any> = {};
     let quotesByProject: Record<string, any> = {};
+    let mfgByProject: Record<string, any> = {};
+    let trialsByProject: Record<string, any> = {};
+    let validationsByProject: Record<string, any> = {};
+    let ppapsByProject: Record<string, any> = {};
 
     try {
       const designRes = await query(`SELECT * FROM "MpsiMoldDesign"`);
@@ -162,6 +166,42 @@ export async function GET(request: NextRequest) {
     } catch (e) {
       console.warn('Failed to load MpsiMoldQuotation for project sync:', e);
     }
+
+    try {
+      const mfgRes = await query(`SELECT * FROM "MpsiMoldManufacture"`);
+      for (const m of mfgRes.rows) {
+        let mNote: any = {};
+        try { mNote = typeof m.Note === 'string' ? JSON.parse(m.Note) : (m.Note || {}); } catch {}
+        if (m.ProjectID) mfgByProject[m.ProjectID] = { ...m, note: mNote };
+      }
+    } catch {}
+
+    try {
+      const trialRes = await query(`SELECT * FROM "MpsiMoldTrial"`);
+      for (const t of trialRes.rows) {
+        let tNote: any = {};
+        try { tNote = typeof t.Note === 'string' ? JSON.parse(t.Note) : (t.Note || {}); } catch {}
+        if (t.ProjectID) trialsByProject[t.ProjectID] = { ...t, note: tNote };
+      }
+    } catch {}
+
+    try {
+      const valRes = await query(`SELECT * FROM "MpsiMassValidation"`);
+      for (const v of valRes.rows) {
+        let vNote: any = {};
+        try { vNote = typeof v.Note === 'string' ? JSON.parse(v.Note) : (v.Note || {}); } catch {}
+        if (v.ProjectID) validationsByProject[v.ProjectID] = { ...v, note: vNote };
+      }
+    } catch {}
+
+    try {
+      const ppapRes = await query(`SELECT * FROM "MpsiMassPpap"`);
+      for (const pp of ppapRes.rows) {
+        let ppNote: any = {};
+        try { ppNote = typeof pp.Note === 'string' ? JSON.parse(pp.Note) : (pp.Note || {}); } catch {}
+        if (pp.ProjectID) ppapsByProject[pp.ProjectID] = { ...pp, note: ppNote };
+      }
+    } catch {}
 
     let existingRows = [...res.rows];
     const existingProjectIds = new Set(existingRows.map((r) => r.ProjectID));
@@ -251,15 +291,20 @@ export async function GET(request: NextRequest) {
 
       const mergedMemos: Record<number, string> = { ...(p.stepMemos || {}), ...dbMemos };
 
-      // 3. 실시간 MpsiMoldDesign 및 MpsiMoldQuotation DB 데이터와 완전 동기화
+      // 3. 실시간 공정 테이블(견적, 설계, 제작, 시사출, 시양산, PPAP) DB 데이터와 완전 동기화
       const matchedDesign = designsByProject[pId];
       const matchedQuote = quotesByProject[pId] || quotesByProject[p.estimateNo];
+      const matchedMfg = mfgByProject[pId];
+      const matchedTrial = trialsByProject[pId];
+      const matchedVal = validationsByProject[pId];
+      const matchedPpap = ppapsByProject[pId];
 
       let finalStep = p.currentStep;
       let isConfirmed = p.isContractConfirmed;
       let qStatus = p.quotationStatus;
       let moldVendor = p.moldVendor;
       let targetT1 = p.targetT1Date;
+      let actualT1 = p.actualT1Date;
       let targetDays = p.targetMoldDays;
       let stepStatus = p.stepStatus;
 
@@ -300,14 +345,60 @@ export async function GET(request: NextRequest) {
         if (q.TargetMoldDays && !targetDays) targetDays = q.TargetMoldDays;
       }
 
+      if (matchedMfg) {
+        const mProg = Number(matchedMfg.OverallProgressRate ?? matchedMfg.note?.overallProgress ?? 0);
+        if (mProg > 0 || matchedMfg.ManufactureStatus === '제작 완료') {
+          finalStep = Math.max(finalStep, mProg >= 100 || matchedMfg.ManufactureStatus === '제작 완료' ? 7 : 6);
+        }
+      }
+
+      if (matchedTrial) {
+        const tNote = matchedTrial.note || {};
+        const firstTrialDate = Array.isArray(tNote.trials) ? tNote.trials.find((tr: any) => tr.trialDate)?.trialDate : '';
+        if (firstTrialDate && !actualT1) actualT1 = firstTrialDate;
+        if (tNote.transferActualDate) {
+          finalStep = Math.max(finalStep, 11);
+        } else if (tNote.isMoldApproved || matchedTrial.TrialStatus === '양산승인완료') {
+          finalStep = Math.max(finalStep, 10);
+        } else if (firstTrialDate || Number(tNote.currentStep || 0) > 7) {
+          finalStep = Math.max(finalStep, Number(tNote.currentStep || 7));
+        }
+      }
+
+      if (matchedVal) {
+        const vNote = matchedVal.note || {};
+        const hasValProgress = Number(matchedVal.ReportCount || 0) > 0 || (Array.isArray(vNote.trials) && vNote.trials.some((tr: any) => tr.totalShotCount > 0));
+        if (matchedVal.OverallStatus === '검증완료' || vNote.overallStatus === '검증완료') {
+          finalStep = Math.max(finalStep, 12);
+        } else if (hasValProgress) {
+          finalStep = Math.max(finalStep, 11);
+        }
+      }
+
+      if (matchedPpap) {
+        const ppNote = matchedPpap.note || {};
+        if (matchedPpap.PpapStatus === '승인완료' || matchedPpap.PpapStatus === '양산 승인 (Pass)' || ppNote.ppapStatus === '승인완료' || ppNote.ppapStatus === '양산 승인 (Pass)') {
+          finalStep = Math.max(finalStep, 13);
+          stepStatus = '완료';
+        } else if (Array.isArray(ppNote.packageSubmissions) && ppNote.packageSubmissions.length > 0) {
+          finalStep = Math.max(finalStep, 12);
+        }
+      }
+
+      const cleanedStepNameCustom = (finalStep > 0 && (p.stepNameCustom === '고객 답변 대기' || p.stepNameCustom === '수주 미성사'))
+        ? undefined
+        : p.stepNameCustom;
+
       return {
         ...p,
         currentStep: finalStep,
+        stepNameCustom: cleanedStepNameCustom,
         isContractConfirmed: isConfirmed,
         isQuotePending: !isConfirmed,
         quotationStatus: qStatus,
         moldVendor,
         targetT1Date: targetT1,
+        actualT1Date: actualT1,
         targetMoldDays: targetDays,
         stepStatus,
         stepAttachments: mergedAttachments,

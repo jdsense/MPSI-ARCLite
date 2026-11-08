@@ -33,6 +33,13 @@ function mapRowToItem(row: any): MoldDevEstimateItem {
         : String(row.SubmissionDate).split('T')[0])
     : '';
 
+  let projectNote: any = {};
+  if (row.ProjectNote) {
+    try {
+      projectNote = typeof row.ProjectNote === 'string' ? JSON.parse(row.ProjectNote) : row.ProjectNote;
+    } catch {}
+  }
+
   return {
     id: Number(row.QuotationSequenceNo),
     estimateNo: row.QuotationID,
@@ -54,7 +61,7 @@ function mapRowToItem(row: any): MoldDevEstimateItem {
     cavity: note.cavity || '',
     gateType: note.gateType || '',
     moldSteel: note.moldSteel || '',
-    resin: note.resin || '',
+    resin: note.resin || projectNote.resinSpec || projectNote.rfqSpec?.resin || '',
     targetT1Date: note.targetT1Date || '',
     moldDeliveryDate: note.moldDeliveryDate || '',
     targetMfgDays: row.TargetMoldDays !== null ? Number(row.TargetMoldDays) : (note.targetMfgDays || 40),
@@ -215,42 +222,44 @@ export async function GET(request: NextRequest) {
 
     let sql = `
       SELECT 
-        "QuotationSequenceNo",
-        "QuotationID",
-        "ProjectID",
-        "EstimateNumber",
-        "MoldVendorID",
-        "MaterialCost",
-        "MachiningCost",
-        "DesignCost",
-        "ManagementCost",
-        "TotalQuotationAmount",
-        "FinalNegotiatedAmount",
-        "TargetMoldDays",
-        "QuotationStatus",
-        "SubmissionDate",
-        "ConfirmedDate",
-        "CreatorID",
-        "CreationDateTime",
-        "ModifierID",
-        "ModificationDateTime",
-        "Note"
-      FROM "MpsiMoldQuotation"
+        q."QuotationSequenceNo",
+        q."QuotationID",
+        q."ProjectID",
+        q."EstimateNumber",
+        q."MoldVendorID",
+        q."MaterialCost",
+        q."MachiningCost",
+        q."DesignCost",
+        q."ManagementCost",
+        q."TotalQuotationAmount",
+        q."FinalNegotiatedAmount",
+        q."TargetMoldDays",
+        q."QuotationStatus",
+        q."SubmissionDate",
+        q."ConfirmedDate",
+        q."CreatorID",
+        q."CreationDateTime",
+        q."ModifierID",
+        q."ModificationDateTime",
+        q."Note",
+        pm."Note" AS "ProjectNote"
+      FROM "MpsiMoldQuotation" q
+      LEFT JOIN "ProjectMaster" pm ON pm."ProjectID" = q."ProjectID"
       WHERE 1=1
     `;
     const params: any[] = [];
 
     if (estimateNo) {
       params.push(estimateNo);
-      sql += ` AND "QuotationID" = $${params.length}`;
+      sql += ` AND q."QuotationID" = $${params.length}`;
     }
 
     if (projectNo) {
       params.push(projectNo);
-      sql += ` AND "ProjectID" = $${params.length}`;
+      sql += ` AND q."ProjectID" = $${params.length}`;
     }
 
-    sql += ` ORDER BY "QuotationSequenceNo" DESC`;
+    sql += ` ORDER BY q."QuotationSequenceNo" DESC`;
 
     const res = await query(sql, params);
     const data = res.rows.map(mapRowToItem);

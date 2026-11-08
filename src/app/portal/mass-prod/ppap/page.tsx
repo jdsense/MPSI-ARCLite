@@ -188,27 +188,34 @@ export default function MassProdPPAPPage() {
     setIsModalOpen(true);
   };
 
-  // 회차별 승인/반려 모달 인라인 열기
+  // 회차별 승인/반려 모달 인라인 열기 (기본 문구 자동기입 제거 및 하단 사유 입력칸과 연동)
   const handleStartRoundReview = (round: number, action: "승인" | "반려") => {
     setReviewingRound(round);
     setReviewingAction(action);
     const existing = selectedItem?.packageSubmissions.find(s => s.round === round);
     if (action === "승인") {
-      setRoundComment(existing?.reviewComment || `${round}회차 양산승인 서류 패키지 전 항목 적합 판정 및 승인 완료.`);
+      setRoundComment(existing?.reviewComment || mpsiOpinionText.trim() || "");
     } else {
-      setRoundComment(existing?.reviewComment || `${round}회차 성적서 보완 및 금형/사출조건 수정 요청.`);
+      setRoundComment(existing?.reviewComment || rejectReasonText.trim() || "");
     }
   };
 
   // 회차별 승인/반려 확정
   const handleConfirmRoundReview = async () => {
     if (!selectedItem || reviewingRound === null || reviewingAction === null) return;
-    if (!roundComment.trim()) {
-      alert("심사 메모 및 의견을 입력해 주세요.");
+    const finalComment = roundComment.trim() || (reviewingAction === "반려" ? rejectReasonText.trim() : mpsiOpinionText.trim());
+    if (!finalComment) {
+      alert("심사 메모 및 보완 요청 사유를 입력해 주세요.");
       return;
     }
 
-    await reviewRoundSubmission(selectedItem.id, reviewingRound, reviewingAction, roundComment.trim(), "MPSI");
+    if (reviewingAction === "반려") {
+      setRejectReasonText(finalComment);
+    } else {
+      setMpsiOpinionText(finalComment);
+    }
+
+    await reviewRoundSubmission(selectedItem.id, reviewingRound, reviewingAction, finalComment, "MPSI");
     showToast(`[${selectedItem.projectNo}] ${reviewingRound}회차 서류 패키지가 [${reviewingAction}] 처리되었습니다.`);
 
     // 외주사(뉴몰드)로 알림 발송
@@ -216,7 +223,7 @@ export default function MassProdPPAPPage() {
       menuName: "양산외주 - 양산승인 (PPAP)",
       menuPath: "/portal/vendor-portal/mass/ppap",
       senderCompany: "MPSI",
-      content: `[${selectedItem.projectNo}] ${reviewingRound}회차 서류 패키지 [${reviewingAction}] 판정: ${roundComment.trim()}`,
+      content: `[${selectedItem.projectNo}] ${reviewingRound}회차 서류 패키지 [${reviewingAction}] 판정: ${finalComment}`,
       projectNo: selectedItem.projectNo,
       targetRole: "VENDOR_MASS",
       targetVendorName: selectedItem.massVendor,

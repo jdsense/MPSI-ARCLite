@@ -102,6 +102,18 @@ export default function ProductReviewAndMoldDesignPage() {
   const [manualNoteAuthor, setManualNoteAuthor] = useState("MPSI 김양훈 부장");
   const [manualNoteContent, setManualNoteContent] = useState("");
 
+  // 스토어의 designs 상태 변경 시 열려있는 모달 아이템 실시간 동기화
+  React.useEffect(() => {
+    if (productReviewItem) {
+      const updated = designs.find((d) => d.id === productReviewItem.id);
+      if (updated) setProductReviewItem(updated);
+    }
+    if (moldDesignItem) {
+      const updated = designs.find((d) => d.id === moldDesignItem.id);
+      if (updated) setMoldDesignItem(updated);
+    }
+  }, [designs]);
+
   // 필터링된 데이터
   const filteredData = designs.filter((item) => {
     const matchProject = filterProjectNo
@@ -906,7 +918,7 @@ export default function ProductReviewAndMoldDesignPage() {
                               title="첨부파일 다운로드"
                             >
                               <Paperclip className="h-3 w-3" />
-                              <span className="truncate max-w-xs">{log.fileName}</span>
+                              <span className="truncate max-w-xs">{getDisplayFileName(log.fileName)}</span>
                             </button>
                           )}
                           <div className="text-slate-200 text-[11px]">{log.content}</div>
@@ -1334,7 +1346,7 @@ export default function ProductReviewAndMoldDesignPage() {
                               title="첨부파일 다운로드"
                             >
                               <Paperclip className="h-3 w-3" />
-                              <span className="truncate max-w-xs">{log.fileName}</span>
+                              <span className="truncate max-w-xs">{getDisplayFileName(log.fileName)}</span>
                             </button>
                           )}
                           <div className="text-slate-200 text-[11px]">{log.content}</div>

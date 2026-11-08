@@ -3327,7 +3327,7 @@ export default function ProjectStatus13StepsPage() {
                             if (val && formState.kickoffDate) {
                               const d = new Date(formState.kickoffDate);
                               d.setDate(d.getDate() + Number(val));
-                              newT1 = d.toISOString().split("T")[0];
+                              newT1 = new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().split("T")[0];
                             }
                             setFormState({ ...formState, targetMoldDays: val, targetT1Date: newT1 });
                           }}
@@ -4600,7 +4600,7 @@ export default function ProjectStatus13StepsPage() {
                 onClick={async () => {
                   if (!stepAttachModal.uploadedFile) return;
                   const f = stepAttachModal.uploadedFile;
-                  const today = new Date().toISOString().split("T")[0];
+                  const today = new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().split("T")[0];
 
                   setIsUploadingAttach(true);
                   try {
