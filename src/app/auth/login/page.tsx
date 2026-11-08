@@ -147,7 +147,7 @@ export default function LoginPage() {
       (role === "MPSI"
         ? "MPSI 총괄 관제"
         : role === "ADMIN"
-        ? "SCM / 통합제어"
+        ? "시스템 / 통합제어"
         : role === "VENDOR_MOLD"
         ? "우성정공(주) 기술개발팀"
         : "(주)뉴몰드 사출품질팀");
@@ -195,17 +195,17 @@ export default function LoginPage() {
 
           {/* 상단: 로고 영역 */}
           <div className="relative z-10 flex items-center gap-3">
-            <div className="flex h-11 items-center justify-center rounded-xl bg-white/10 px-3 py-1.5 backdrop-blur-md border border-white/15 shadow-inner">
+            <div className="flex h-11 items-center justify-center rounded-xl bg-white px-3 py-1.5 border border-white">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src="/api/v1/assets/logo"
                 alt="ARCFORGE LOGO"
-                className="h-7 w-auto object-contain filter drop-shadow"
+                className="h-7 w-auto object-contain"
               />
             </div>
             <div className="flex flex-col">
               <span className="text-xs font-black tracking-widest text-sky-400 uppercase">
-                Enterprise SCM
+                Enterprise Platform
               </span>
               <span className="text-[10px] text-blue-200/70 font-mono">
                 v2.6 Cloud Connected
