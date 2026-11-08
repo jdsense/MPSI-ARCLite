@@ -647,7 +647,7 @@ export default function ProjectStatus13StepsPage() {
       updatedAt: `${dateStr} 09:00`,
     });
 
-    showToast(`프로젝트 [${trimmedNo}] (견적: ${estimateNo}, 구분 필터 ${formState.changeType || "N001"}) 등록 완료`, "success");
+    showToast(`프로젝트 [${trimmedNo}] (견적: ${estimateNo}, 구분 ${formState.changeType || "N001"}) 등록 완료`, "success");
     setIsNewProjectModalOpen(false);
   };
 
@@ -1497,7 +1497,7 @@ export default function ProjectStatus13StepsPage() {
         {/* [0열]: *견적/수주 관리 & *개발/양산 관리 탭 + 체크박스 분리 필터 (사용자 피드백 3 반영) */}
         <div className="flex flex-wrap items-center justify-between pb-2.5 border-b border-zinc-100 dark:border-zinc-800 gap-2.5">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="font-bold text-zinc-700 dark:text-zinc-300 text-xs shrink-0">구분 필터</span>
+            <span className="font-bold text-zinc-700 dark:text-zinc-300 text-xs shrink-0">구분</span>
             
             {/* 원클릭 프리셋 버튼 탭 */}
             <div className="inline-flex rounded-lg border border-zinc-200 dark:border-zinc-700 p-0.5 bg-zinc-100 dark:bg-zinc-800 text-xs">
@@ -1928,15 +1928,20 @@ export default function ProjectStatus13StepsPage() {
                 filteredProjects.map((row, idx) => {
                   const currentStepObj = PROCESS_13_STEPS.find((s) => s.step === row.currentStep);
                   
-                  // 스텝 표시 명칭 결정 (기존 "수주미성사" ➔ "고객 답변 대기")
-                  const isWaitCustomer = row.quotationStatus === "고객 답변 대기" || row.stepNameCustom === "고객 답변 대기" || (row.isQuotePending && row.projectNo.startsWith("Q") && row.quotationStatus !== "수주 미성사" && row.stepNameCustom !== "수주 미성사");
-                  const isFailedQuote = row.quotationStatus === "수주 미성사" || row.stepNameCustom === "수주 미성사";
+                  // 스텝 표시 명칭 결정 (수주 확정되어 currentStep > 0 진행 중인 프로젝트는 실제 공정 스텝 표시)
+                  const isProjectInProcess = row.currentStep > 0 && !row.projectNo.startsWith("Q");
+                  const isWaitCustomer = !isProjectInProcess && (row.quotationStatus === "고객 답변 대기" || row.stepNameCustom === "고객 답변 대기" || (row.isQuotePending && row.projectNo.startsWith("Q") && row.quotationStatus !== "수주 미성사" && row.stepNameCustom !== "수주 미성사") || row.currentStep === 0);
+                  const isFailedQuote = (row.quotationStatus === "수주 미성사" || row.stepNameCustom === "수주 미성사") && !isProjectInProcess;
 
-                  let stepDisplayName = row.stepNameCustom || currentStepObj?.name || (row.currentStep === 0 ? "고객 답변 대기" : `Step ${row.currentStep}`);
-                  if (isWaitCustomer || stepDisplayName === "수주미성사" || row.quotationStatus === "수주미성사") {
-                    stepDisplayName = "고객 답변 대기";
+                  let stepDisplayName = "";
+                  if (isProjectInProcess) {
+                    stepDisplayName = (row.stepNameCustom && row.stepNameCustom !== "고객 답변 대기" && row.stepNameCustom !== "수주 미성사")
+                      ? row.stepNameCustom
+                      : (currentStepObj?.name || `Step ${row.currentStep}`);
                   } else if (isFailedQuote) {
                     stepDisplayName = "수주 미성사";
+                  } else {
+                    stepDisplayName = "고객 답변 대기";
                   }
 
                   // 상태 뱃지 스타일 (스크린샷 알약 형태)
@@ -2659,12 +2664,18 @@ export default function ProjectStatus13StepsPage() {
                         </div>
                         <div className="flex items-center justify-between">
                           <span className="text-zinc-500">실제 T1 완료 (Actual):</span>
-                          <b className="font-mono text-emerald-600 font-bold">{selectedItem.actualT1Date || selectedItem.targetT1Date || "-"}</b>
+                          <b className={`font-mono font-bold ${selectedItem.actualT1Date ? "text-emerald-600" : "text-amber-600"}`}>
+                            {selectedItem.actualT1Date || "미완료 (진행중)"}
+                          </b>
                         </div>
                         <div className="flex items-center justify-between pt-1 border-t">
                           <span className="text-zinc-500">일정 준수 편차:</span>
-                          <span className="font-mono text-[10px] px-1.5 py-0.2 rounded bg-emerald-100 text-emerald-800 font-bold">
-                            정상 완료 (±0일)
+                          <span className={`font-mono text-[10px] px-1.5 py-0.2 rounded font-bold ${
+                            selectedItem.actualT1Date 
+                              ? "bg-emerald-100 text-emerald-800" 
+                              : "bg-amber-100 text-amber-800"
+                          }`}>
+                            {selectedItem.actualT1Date ? "정상 완료 (±0일)" : "T1 시사출 대기"}
                           </span>
                         </div>
                       </div>

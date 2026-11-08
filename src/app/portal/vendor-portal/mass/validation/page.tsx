@@ -142,11 +142,14 @@ export default function VendorMassValidationPage() {
     return record.checklist.filter((item) => Boolean(item.attachedReport)).length;
   };
 
-  // 1-3, 7) 양산성 검증 상태 판정
+  // 1-3, 7) 양산성 검증 상태 판정 (6대 보고서 완비 및 Cpk 기준치 충족 시에만 검증완료)
   const getValidationStatus = (record?: MassValidationRecord): "검증완료" | "검증 대기" | "검증 진행 중" => {
+    if (!record) return "검증 대기";
     const count = getReportCount(record);
     if (count === 0) return "검증 대기";
-    if (count >= 6) return "검증완료";
+    const targetCpk = record.targetCpk ?? 1.33;
+    const isCpkPassed = record.measuredCpk !== undefined && record.measuredCpk >= targetCpk;
+    if (count >= 6 && isCpkPassed) return "검증완료";
     return "검증 진행 중";
   };
 
@@ -800,16 +803,26 @@ export default function VendorMassValidationPage() {
 
             {/* 모달 본문 */}
             <div className="flex-1 overflow-y-auto p-4 space-y-4">
-              {/* 4) 금형처 시사출 결과 공유 안내 바 (5대 승인서류 및 최종 샘플 인계 완료) */}
-              <div className="bg-blue-50/70 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-900 p-2.5 rounded-lg flex items-center justify-between text-xs text-blue-950 dark:text-blue-200">
+              {/* 4) 금형처 시사출 결과 공유 안내 바 (금형인수인계 확인 여부 연동) */}
+              <div className={`border p-2.5 rounded-lg flex items-center justify-between text-xs ${
+                selectedProject.moldTransferConfirmed
+                  ? "bg-blue-50/70 dark:bg-blue-950/30 border-blue-200 dark:border-blue-900 text-blue-950 dark:text-blue-200"
+                  : "bg-amber-50/70 dark:bg-amber-950/30 border-amber-200 dark:border-amber-900 text-amber-950 dark:text-amber-200"
+              }`}>
                 <div className="flex items-center gap-2">
-                  <ShieldCheck className="h-4 w-4 text-blue-600 shrink-0" />
+                  <ShieldCheck className={`h-4 w-4 shrink-0 ${selectedProject.moldTransferConfirmed ? "text-blue-600" : "text-amber-600"}`} />
                   <span>
-                    <b>금형처 이관 결과 공유</b>: 금형처({selectedProject.moldVendor})의 5대 승인서류 및 최종 시사출 샘플이 금형 이관 시 인계 완료되었습니다.
+                    <b>금형처 이관 결과 공유</b>: {selectedProject.moldTransferConfirmed 
+                      ? `금형처(${selectedProject.moldVendor})의 5대 승인서류 및 최종 시사출 샘플이 금형 이관 시 인계 완료되었습니다.`
+                      : `금형처(${selectedProject.moldVendor})로부터 금형 인수인계 및 서류 접수 대기 중입니다.`}
                   </span>
                 </div>
-                <span className="text-[10px] text-blue-700 bg-blue-100 dark:bg-blue-900/60 px-2 py-0.5 rounded font-bold shrink-0">
-                  금형 인수인계 확인됨
+                <span className={`text-[10px] px-2 py-0.5 rounded font-bold shrink-0 ${
+                  selectedProject.moldTransferConfirmed
+                    ? "text-blue-700 bg-blue-100 dark:bg-blue-900/60"
+                    : "text-amber-700 bg-amber-100 dark:bg-amber-900/60"
+                }`}>
+                  {selectedProject.moldTransferConfirmed ? "금형 인수인계 확인됨" : "인수인계 확인 대기"}
                 </span>
               </div>
 

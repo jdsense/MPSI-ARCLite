@@ -12,8 +12,24 @@ const DEFAULT_PROCESSES = [
   { code: "ASSY", name: "금형 조립/래핑", planDate: "12-08", actualDate: "", progress: 0, status: "대기" },
 ];
 
+let mfgSchemaEnsured = false;
+async function ensureManufactureSchema() {
+  if (mfgSchemaEnsured) return;
+  try {
+    await query(`
+      ALTER TABLE IF EXISTS "MpsiMoldManufacture" 
+        ADD COLUMN IF NOT EXISTS "Note" TEXT,
+        ADD COLUMN IF NOT EXISTS "ModificationDateTime" TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
+    `);
+    mfgSchemaEnsured = true;
+  } catch (e) {
+    console.warn("[Manufacture Schema Warning]", e);
+  }
+}
+
 export async function GET(req: Request) {
   try {
+    await ensureManufactureSchema();
     const { searchParams } = new URL(req.url);
     const projectId = searchParams.get("projectId");
 
@@ -166,7 +182,21 @@ export async function GET(req: Request) {
       params = [projectId];
     }
 
-    const { rows } = await query(sql, params);
+    let rows: any[] = [];
+    try {
+      const res = await query(sql, params);
+      rows = res.rows;
+    } catch (queryErr) {
+      console.warn("[Manufacture GET Query Warning - retrying with SELECT *]", queryErr);
+      try {
+        const fallbackSql = `SELECT * FROM "MpsiMoldManufacture"` + (projectId ? ` WHERE "ProjectID" = $1` : ``);
+        const resFallback = await query(fallbackSql, params);
+        rows = resFallback.rows;
+      } catch (fatalErr) {
+        console.error("[Manufacture GET Fatal DB Query Error]", fatalErr);
+        rows = [];
+      }
+    }
 
     // DTO 변환
     const items = rows

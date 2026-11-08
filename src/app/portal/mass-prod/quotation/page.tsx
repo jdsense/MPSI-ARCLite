@@ -1569,13 +1569,13 @@ export default function MassProductionQuotationPage() {
                                           <div className="p-2 bg-zinc-50 dark:bg-zinc-800 rounded border">
                                             <span className="text-[10px] text-zinc-400 block">일반관리비</span>
                                             <span className="font-mono font-bold text-zinc-800 dark:text-zinc-200">
-                                              {vq.overheadCost ? `${vq.overheadCost.toLocaleString()}원` : `${Math.round(vq.processingCost * 0.08)}원`}
+                                              {vq.overheadCost ? `${vq.overheadCost.toLocaleString()}원` : "-"}
                                             </span>
                                           </div>
                                           <div className="p-2 bg-zinc-50 dark:bg-zinc-800 rounded border">
                                             <span className="text-[10px] text-zinc-400 block">이윤</span>
                                             <span className="font-mono font-bold text-zinc-800 dark:text-zinc-200">
-                                              {vq.profitCost ? `${vq.profitCost.toLocaleString()}원` : `${Math.round(vq.processingCost * 0.05)}원`}
+                                              {vq.profitCost ? `${vq.profitCost.toLocaleString()}원` : "-"}
                                             </span>
                                           </div>
                                           <div className="p-2 bg-zinc-50 dark:bg-zinc-800 rounded border">

@@ -464,7 +464,7 @@ export default function MassValidationPage() {
         body: JSON.stringify({
           projectNo: currentProject.projectNo,
           ppapNo: `PPAP-${currentProject.projectNo}`,
-          partNo: (currentProject as any).partNo || "84710-MI260-01",
+          partNo: (currentProject as any).partNo || (currentProject as any).partNumber || "-",
           projectName: currentProject.projectName,
           productName: currentProject.productName,
           moldVendor: currentProject.moldVendor,

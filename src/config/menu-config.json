@@ -307,24 +307,6 @@
           "ADMIN",
           "MPSI"
         ]
-      },
-      {
-        "id": "basic-process",
-        "title": "공정정보",
-        "url": "/portal/basic-info/process",
-        "roles": [
-          "ADMIN",
-          "MPSI"
-        ]
-      },
-      {
-        "id": "basic-warehouse",
-        "title": "창고정보",
-        "url": "/portal/basic-info/warehouse",
-        "roles": [
-          "ADMIN",
-          "MPSI"
-        ]
       }
     ]
   },
@@ -354,14 +336,6 @@
         "roles": [
           "ADMIN"
         ]
-      },
-      {
-        "id": "admin-blank",
-        "title": "빈 페이지",
-        "url": "/portal/admin/blank",
-        "roles": [
-          "ADMIN"
-        ]
       }
     ]
   },
@@ -377,29 +351,5 @@
       "MPSI"
     ],
     "submenus": []
-  },
-  {
-    "id": "menu-mw4kixja",
-    "groupTitle": "MPSI 메인 공정 메뉴",
-    "title": "대시보드(테스트)",
-    "icon": "Gauge",
-    "isGroupMenu": true,
-    "baseUrl": "/portal/custom/group-is4u",
-    "url": "/portal/custom/group-is4u",
-    "roles": [
-      "ADMIN",
-      "MPSI"
-    ],
-    "submenus": [
-      {
-        "id": "sub-mw4kixja",
-        "title": "대시보드 관리",
-        "url": "/portal/custom/group-is4u",
-        "roles": [
-          "ADMIN",
-          "MPSI"
-        ]
-      }
-    ]
   }
 ]

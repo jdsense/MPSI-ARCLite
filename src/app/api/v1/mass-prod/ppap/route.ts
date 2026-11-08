@@ -37,9 +37,9 @@ function mapRowToPpapItem(row: any): PPAPApprovalItem {
     id: Number(row.PpapSequenceNo),
     ppapNo: row.PpapID || note.ppapNo || `PPAP-${row.ProjectID}`,
     projectNo: row.ProjectID || note.projectNo,
-    partNo: note.partNo || "84710-MI260-01",
-    projectName: note.projectName || "Door Armrest Base",
-    productName: note.productName || "Main Part",
+    partNo: note.partNo || "-",
+    projectName: note.projectName || row.ProjectID || "양산 프로젝트",
+    productName: note.productName || "사출 성형 부품",
     moldVendor: note.moldVendor || "우성정공(주)",
     massVendor: row.MassVendorID || note.massVendor || "(주)뉴몰드",
     moldNo: note.moldNo || "MI26005P0M",
@@ -121,13 +121,21 @@ export async function GET(req: NextRequest) {
           const ppapId = `PPAP-${pid}`;
           const dateStr = new Date().toISOString().slice(0, 10);
 
+          let pmInfo: any = {};
+          try {
+            const pmRes = await query(`SELECT "ItemID", "ProjectName", "PartName" FROM "ProjectMaster" WHERE "ProjectID" = $1 LIMIT 1`, [pid]);
+            if (pmRes.rows.length > 0) {
+              pmInfo = pmRes.rows[0];
+            }
+          } catch {}
+
           const initialPpapMeta: Partial<PPAPApprovalItem> = {
             id: 0,
             ppapNo: ppapId,
             projectNo: pid,
-            partNo: vMeta.partNo || "84710-MI260-01",
-            projectName: vMeta.projectName || "Door Armrest Base",
-            productName: vMeta.productName || "Main Part",
+            partNo: vMeta.partNo || pmInfo.ItemID || "-",
+            projectName: vMeta.projectName || pmInfo.ProjectName || pid,
+            productName: vMeta.productName || pmInfo.PartName || "사출 성형 부품",
             moldVendor: vMeta.moldVendor || "우성정공(주)",
             massVendor: massVendor,
             moldNo: vMeta.moldNo || `${pid}M`,

@@ -42,8 +42,23 @@ function createServerDefaultFinalDocs() {
   ];
 }
 
+let trialSchemaEnsured = false;
+async function ensureTrialSchema() {
+  if (trialSchemaEnsured) return;
+  try {
+    await query(`
+      ALTER TABLE IF EXISTS "MpsiMoldTrial" 
+        ADD COLUMN IF NOT EXISTS "Note" TEXT;
+    `);
+    trialSchemaEnsured = true;
+  } catch (e) {
+    console.warn("[Trial Schema Warning]", e);
+  }
+}
+
 export async function GET(req: Request) {
   try {
+    await ensureTrialSchema();
     const { searchParams } = new URL(req.url);
     const projectId = searchParams.get("projectId");
 
@@ -203,7 +218,21 @@ export async function GET(req: Request) {
       params = [projectId];
     }
 
-    const { rows } = await query(sql, params);
+    let rows: any[] = [];
+    try {
+      const res = await query(sql, params);
+      rows = res.rows;
+    } catch (queryErr) {
+      console.warn("[Trial GET Query Warning - retrying with SELECT *]", queryErr);
+      try {
+        const fallbackSql = `SELECT * FROM "MpsiMoldTrial"` + (projectId ? ` WHERE "ProjectID" = $1` : ``);
+        const resFallback = await query(fallbackSql, params);
+        rows = resFallback.rows;
+      } catch (fatalErr) {
+        console.error("[Trial GET Fatal DB Query Error]", fatalErr);
+        rows = [];
+      }
+    }
 
     const items = rows
       .map((r: any) => {

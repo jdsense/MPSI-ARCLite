@@ -12,6 +12,19 @@ function isValidDate(d?: any): boolean {
   return !isNaN(parsed);
 }
 
+// 날짜 객체 또는 문자열을 KST 로컬 기준 YYYY-MM-DD 로 안전하게 변환 (Timezone 밀림 방지)
+function formatDateOnly(val: any): string {
+  if (!val) return '';
+  if (typeof val === 'string') return val.split('T')[0];
+  if (val instanceof Date) {
+    const year = val.getFullYear();
+    const month = String(val.getMonth() + 1).padStart(2, '0');
+    const day = String(val.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  }
+  return String(val).split('T')[0];
+}
+
 // DB 행(Row) 데이터를 프론트엔드 전체 실무 ProjectItem 인터페이스로 완벽히 복원하는 매퍼
 function mapRowToProject(row: any): any {
   let noteObj: any = {};
@@ -23,13 +36,13 @@ function mapRowToProject(row: any): any {
 
   const projectNo = row.ProjectID || noteObj.projectNo || '';
   const orderDate = row.ProjectContractDate
-    ? new Date(row.ProjectContractDate).toISOString().split('T')[0]
+    ? formatDateOnly(row.ProjectContractDate)
     : noteObj.orderDate || '';
   const kickoffDate = row.ExpectedStartDate
-    ? new Date(row.ExpectedStartDate).toISOString().split('T')[0]
+    ? formatDateOnly(row.ExpectedStartDate)
     : noteObj.kickoffDate || '';
   const targetMassDate = row.ExpectedEndDate
-    ? new Date(row.ExpectedEndDate).toISOString().split('T')[0]
+    ? formatDateOnly(row.ExpectedEndDate)
     : noteObj.targetMassDate || '';
 
   return {
@@ -87,9 +100,9 @@ function mapRowToProject(row: any): any {
     deliveredQty: Number(noteObj.deliveredQty || 0),
     notes: noteObj.notes || '',
     updatedAt: row.ModificationDateTime
-      ? new Date(row.ModificationDateTime).toISOString().split('T')[0]
+      ? formatDateOnly(row.ModificationDateTime)
       : row.CreationDateTime
-      ? new Date(row.CreationDateTime).toISOString().split('T')[0]
+      ? formatDateOnly(row.CreationDateTime)
       : '',
     stepAttachments: noteObj.stepAttachments || {},
     stepMemos: noteObj.stepMemos || {},

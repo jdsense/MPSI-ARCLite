@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { 
   Briefcase, Factory, Gauge, FileCheck2, PackageCheck, CheckCircle2, 
@@ -174,7 +175,7 @@ export default function VendorMassProjectsPage() {
               </span>
             </div>
             <p className="text-[11px] text-zinc-500 mt-0.5">
-              * MPSI 자사 배정 공식 프로젝트(MI) 목록입니다. 견적 단계(Q)는 제외되며 12H 연속사출 및 출하/납품 실적을 직접 등록할 수 있습니다.
+              * MPSI 자사 배정 공식 프로젝트(MI) 목록입니다. 각 단계별 상세 현황을 조회할 수 있으며, 12H 연속사출 검증 및 출하/납품 실적은 해당 전용 메뉴에서 등록 가능합니다.
             </p>
           </div>
         </div>
@@ -560,11 +561,11 @@ export default function VendorMassProjectsPage() {
                     <div className="flex items-center gap-2">
                       <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
                       <span className="text-zinc-700 dark:text-zinc-300">
-                        <b>시양산 검증 의견:</b> {validation?.trials[0]?.opinion || "12H 연속사출간 치수안정도 우수하며, 슬라이드 버 및 가스 발생 없이 Cpk 1.45 확보하여 양산 승인(PPAP) 단계로 진행합니다."}
+                        <b>시양산 검증 의견:</b> {validation?.trials[0]?.opinion || (selectedProject.currentStep >= 11 ? "시양산 12H 연속 가동 검증 진행 대기" : "시양산 단계 착수 전")}
                       </span>
                     </div>
                     <span className="text-[10px] text-zinc-400 shrink-0 font-mono">
-                      검증 참관: {validation?.mpsiWitnessInspector || "이인배 품질차장 (MPSI)"}
+                      검증 참관: {validation?.mpsiWitnessInspector || "MPSI 품질팀"}
                     </span>
                   </div>
                 </div>
@@ -619,11 +620,11 @@ export default function VendorMassProjectsPage() {
                     <div className="flex items-center gap-2">
                       <ShieldAlert className="h-4 w-4 text-emerald-600 shrink-0" />
                       <span className="text-zinc-700 dark:text-zinc-300">
-                        <b>MPSI 승인 소견:</b> {ppap?.mpsiOpinion || "전 항목 고객사 요구품질 만족 및 Cpk 1.45 충족으로 최종 양산(PPAP) 승인 판정함."}
+                        <b>MPSI 승인 소견:</b> {ppap?.mpsiOpinion || (selectedProject.currentStep >= 12 ? "양산 승인(PPAP) 종합 심사 진행 중" : "서류 제출 및 심사 대기")}
                       </span>
                     </div>
                     <div className="text-[10px] text-right text-zinc-500 shrink-0 font-mono">
-                      <div>승인권자: {ppap?.approvalOfficer || "이진수 품질본부장 (MPSI 전결)"}</div>
+                      <div>승인권자: {ppap?.approvalOfficer || "MPSI 품질본부"}</div>
                       {ppap?.partPoNo && <div className="text-emerald-700 font-bold">발주 PO: {ppap.partPoNo}</div>}
                     </div>
                   </div>
@@ -730,8 +731,24 @@ export default function VendorMassProjectsPage() {
                 </div>
               </div>
 
-              {/* 모달 푸터 */}
-              <div className="flex items-center justify-end p-3.5 bg-zinc-100 dark:bg-zinc-800 border-t">
+              {/* 모달 푸터: 출하/납품 및 시양산 실적 등록 바로가기 버튼 제공 */}
+              <div className="flex flex-col sm:flex-row items-center justify-between p-3.5 bg-zinc-100 dark:bg-zinc-800 border-t gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <Link
+                    href={`/portal/vendor-portal/mass/delivery`}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-emerald-700 hover:bg-emerald-800 text-white shadow-xs transition-colors"
+                  >
+                    <Truck className="h-3.5 w-3.5" />
+                    <span>출하/납품 실적 등록 화면 이동</span>
+                  </Link>
+                  <Link
+                    href={`/portal/vendor-portal/mass/validation`}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-sky-700 hover:bg-sky-800 text-white shadow-xs transition-colors"
+                  >
+                    <CheckCircle2 className="h-3.5 w-3.5" />
+                    <span>시양산 검증 실적 등록 화면 이동</span>
+                  </Link>
+                </div>
                 <Button onClick={() => setIsEditModalOpen(false)} variant="outline" className="h-8 px-5 text-xs cursor-pointer">
                   닫기
                 </Button>
