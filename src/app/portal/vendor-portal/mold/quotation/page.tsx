@@ -101,8 +101,8 @@ export default function VendorMoldQuotationPage() {
   };
 
   const getQuoteNoDisplay = (item: MoldDevEstimateItem) => {
-    if (item.estimateNo) return item.estimateNo;
     const pNo = getProjectNoDisplay(item);
+    if (item.estimateNo && item.estimateNo.includes("금형견적")) return item.estimateNo;
     return `${pNo}금형견적`;
   };
 

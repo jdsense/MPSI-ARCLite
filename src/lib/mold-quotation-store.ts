@@ -82,7 +82,7 @@ export interface MoldQuoteSubmissionHistoryItem {
 // 금형 견적 데이터 인터페이스
 export interface MoldDevEstimateItem {
   id: number;
-  estimateNo: string;                     // 견적식별자 (예: M-EST-2026-006, M-EST-2026-007)
+  estimateNo: string;                     // 견적식별자 (예: MI26001P0금형견적)
   projectNo: string;                      // PJT 관리번호 (예: MI26004P0, MI26005P0)
   officialProjectNo?: string;             // 수주 확정 시 정식 PJT 관리번호
   moldNo?: string;                        // 금형번호 (예: MI26001M)
@@ -262,18 +262,23 @@ export function useMoldQuotationStore() {
     const now = new Date();
     const dateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
 
-    // 채번 계산 (기존 DB 데이터의 최대 번호 + 1)
-    let nextSeq = 1;
-    estimatesRef.current.forEach((it) => {
-      const match = it.estimateNo?.match(/M-EST-\d{4}-(\d+)/);
-      if (match) {
-        const num = parseInt(match[1], 10);
-        if (!isNaN(num) && num >= nextSeq) nextSeq = num + 1;
-      }
-    });
+    // 채번 규칙: 프로젝트번호 + 금형견적 (예: MI26001P0금형견적)
+    const basePjtNo = (item.officialProjectNo || item.projectNo || "MI26001P0").trim();
+    const baseEstimateNo = `${basePjtNo}금형견적`;
 
-    const id = nextSeq;
-    const estimateNo = `M-EST-${now.getFullYear()}-${String(id).padStart(3, "0")}`;
+    // 동일 프로젝트로 등록된 금형견적 일련번호 확인 및 중복 방지
+    const existingMatches = estimatesRef.current.filter((it) => 
+      it.estimateNo === baseEstimateNo || it.estimateNo.startsWith(`${baseEstimateNo}-`)
+    );
+    const estimateNo = existingMatches.length === 0
+      ? baseEstimateNo
+      : `${baseEstimateNo}-${String(existingMatches.length + 1).padStart(2, "0")}`;
+
+    let maxId = 0;
+    estimatesRef.current.forEach((it) => {
+      if (typeof it.id === "number" && it.id > maxId) maxId = it.id;
+    });
+    const id = maxId + 1;
     const status: MoldQuotationStatus = item.productionType === "OUTSOURCING" ? "견적요청" : "자체진행";
 
     const newItem: MoldDevEstimateItem = {

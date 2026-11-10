@@ -207,6 +207,22 @@ export default function MoldDevQuotationPage() {
     loadInitialData();
   }, []);
 
+  // 프로젝트 관리번호 및 견적 관리번호 포맷 헬퍼 (예시: MI26001P0금형견적)
+  const getProjectNoDisplay = (item: MoldDevEstimateItem) => {
+    const raw = item.officialProjectNo || item.projectNo;
+    if (raw && raw.toUpperCase().startsWith("M")) return raw;
+    if (raw && raw.toUpperCase().startsWith("Q")) {
+      return raw.toUpperCase().replace(/^Q/, "MI").replace(/-0?(\d+)/, "P$1");
+    }
+    return raw ? `MI${raw}` : "MI26001P0";
+  };
+
+  const getQuoteNoDisplay = (item: MoldDevEstimateItem) => {
+    const pNo = getProjectNoDisplay(item);
+    if (item.estimateNo && item.estimateNo.includes("금형견적")) return item.estimateNo;
+    return `${pNo}금형견적`;
+  };
+
   // 일반 MPSI 검토 메모 작성
   const [newMemoText, setNewMemoText] = useState("");
 
@@ -405,9 +421,9 @@ export default function MoldDevQuotationPage() {
   // 금형 견적 항목 삭제 핸들러
   const handleDeleteEstimate = async (item: MoldDevEstimateItem) => {
     if (!item.estimateNo) return;
-    const displayName = item.projectName || item.productName || item.estimateNo;
+    const displayName = item.projectName || item.productName || getQuoteNoDisplay(item);
     const ok = window.confirm(
-      `[${item.estimateNo}] ${displayName} 금형 견적 항목을 삭제하시겠습니까?\n삭제된 견적 및 협력사 제출 내역은 복구되지 않습니다.`
+      `[${getQuoteNoDisplay(item)}] ${displayName} 금형 견적 항목을 삭제하시겠습니까?\n삭제된 견적 및 협력사 제출 내역은 복구되지 않습니다.`
     );
     if (!ok) return;
 
@@ -772,6 +788,7 @@ export default function MoldDevQuotationPage() {
       const q = filterKeyword.toLowerCase();
       const match = 
         item.estimateNo.toLowerCase().includes(q) ||
+        getQuoteNoDisplay(item).toLowerCase().includes(q) ||
         item.projectNo.toLowerCase().includes(q) ||
         item.projectName.toLowerCase().includes(q) ||
         item.productName.toLowerCase().includes(q) ||
@@ -1087,7 +1104,7 @@ export default function MoldDevQuotationPage() {
 
                       {/* 3. 견적번호 */}
                       <td className="py-2 px-2.5 font-mono font-bold text-center text-indigo-700 dark:text-indigo-300 whitespace-nowrap">
-                        {item.estimateNo}
+                        {getQuoteNoDisplay(item)}
                       </td>
 
                       {/* 4. 진행상태 */}
@@ -1700,7 +1717,7 @@ export default function MoldDevQuotationPage() {
             <div className="shrink-0 flex items-center justify-between px-5 py-3.5 bg-gradient-to-r from-purple-800 to-indigo-900 text-white border-b">
               <div className="flex items-center gap-2.5">
                 <span className="font-bold text-sm font-mono text-purple-200">
-                  [{selectedItem.estimateNo}]
+                  [{getQuoteNoDisplay(selectedItem)}]
                 </span>
                 <span className="font-bold text-sm text-white">
                   {selectedItem.productName} 금형 견적 상세 및 심의

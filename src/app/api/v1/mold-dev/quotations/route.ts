@@ -289,7 +289,10 @@ export async function POST(request: NextRequest) {
     const results: MoldDevEstimateItem[] = [];
 
     for (const item of items) {
-      if (!item.estimateNo) continue;
+      if (!item.estimateNo) {
+        const basePjt = (item.officialProjectNo || item.projectNo || 'MI26001P0').trim();
+        item.estimateNo = `${basePjt}금형견적`;
+      }
       const saved = await saveQuotationItem(item);
       results.push(saved);
     }
