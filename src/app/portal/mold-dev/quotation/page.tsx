@@ -32,6 +32,7 @@ export default function MoldDevQuotationPage() {
     estimates, 
     isLoading,
     addEstimate, 
+    deleteEstimate,
     updateStatus, 
     updateVendorQuoteStatus,
     addMpsiReplyToVendorQuote,
@@ -397,6 +398,24 @@ export default function MoldDevQuotationPage() {
         targetBudgetWon,
         notes: found.notes || ""
       }));
+    }
+  };
+
+  // 금형 견적 항목 삭제 핸들러
+  const handleDeleteEstimate = async (item: MoldDevEstimateItem) => {
+    if (!item.estimateNo) return;
+    const displayName = item.projectName || item.productName || item.estimateNo;
+    const ok = window.confirm(
+      `[${item.estimateNo}] ${displayName} 금형 견적 항목을 삭제하시겠습니까?\n삭제된 견적 및 협력사 제출 내역은 복구되지 않습니다.`
+    );
+    if (!ok) return;
+
+    const success = await deleteEstimate(item.estimateNo);
+    if (success) {
+      if (selectedItem?.estimateNo === item.estimateNo) {
+        setIsDetailModalOpen(false);
+        setSelectedItem(null);
+      }
     }
   };
 
@@ -1177,18 +1196,30 @@ export default function MoldDevQuotationPage() {
 
                       {/* 15. 관리 */}
                       <td className="py-2 px-2.5 text-center whitespace-nowrap">
-                        <Button 
-                          onClick={() => {
-                            setSelectedItem(item);
-                            setIsDetailModalOpen(true);
-                          }}
-                          variant="outline" 
-                          size="xs" 
-                          className="h-6 text-[11px] px-2 gap-1 text-purple-700 hover:bg-purple-50 border-purple-300"
-                        >
-                          <Eye className="h-3 w-3" />
-                          상세/심의
-                        </Button>
+                        <div className="flex items-center justify-center gap-1">
+                          <Button 
+                            onClick={() => {
+                              setSelectedItem(item);
+                              setIsDetailModalOpen(true);
+                            }}
+                            variant="outline" 
+                            size="xs" 
+                            className="h-6 text-[11px] px-2 gap-1 text-purple-700 hover:bg-purple-50 border-purple-300"
+                          >
+                            <Eye className="h-3 w-3" />
+                            상세/심의
+                          </Button>
+                          <Button 
+                            onClick={() => handleDeleteEstimate(item)}
+                            variant="outline" 
+                            size="xs" 
+                            className="h-6 text-[11px] px-2 gap-1 text-rose-600 hover:bg-rose-50 border-rose-300 hover:border-rose-400"
+                            title="금형 견적 의뢰 내역 삭제"
+                          >
+                            <Trash2 className="h-3 w-3" />
+                            삭제
+                          </Button>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -2164,7 +2195,15 @@ export default function MoldDevQuotationPage() {
             </div>
 
             {/* 모달 하단 푸터 */}
-            <div className="shrink-0 px-5 py-3 bg-zinc-50 dark:bg-zinc-800 border-t flex justify-end">
+            <div className="shrink-0 px-5 py-3 bg-zinc-50 dark:bg-zinc-800 border-t flex items-center justify-between">
+              <Button 
+                onClick={() => handleDeleteEstimate(selectedItem)}
+                variant="outline"
+                className="h-8 text-xs text-rose-600 hover:bg-rose-50 border-rose-300 hover:border-rose-400 gap-1 font-semibold"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+                견적 삭제
+              </Button>
               <Button onClick={() => setIsDetailModalOpen(false)} className="h-8 text-xs px-5">
                 닫기
               </Button>

@@ -755,10 +755,39 @@ export function useMoldQuotationStore() {
     });
   };
 
+  // 9. 금형 견적 항목 삭제 (PostgreSQL DB DELETE 및 UI 즉각 반영)
+  const deleteEstimate = async (estimateNo: string) => {
+    if (!estimateNo) return false;
+
+    // UI 즉각 반영
+    setEstimates((prev) => prev.filter((it) => it.estimateNo !== estimateNo));
+    estimatesRef.current = estimatesRef.current.filter((it) => it.estimateNo !== estimateNo);
+
+    // PostgreSQL DB API 호출
+    try {
+      const res = await fetch(`/api/v1/mold-dev/quotations?estimateNo=${encodeURIComponent(estimateNo)}`, {
+        method: "DELETE",
+      });
+      if (res.ok) {
+        const json = await res.json();
+        if (json.success) {
+          if (typeof window !== "undefined") {
+            window.dispatchEvent(new CustomEvent(EVENT_NAME));
+          }
+          return true;
+        }
+      }
+    } catch (err) {
+      console.error("[deleteEstimate] Error:", err);
+    }
+    return false;
+  };
+
   return {
     estimates,
     isLoading,
     addEstimate,
+    deleteEstimate,
     submitVendorQuote,
     updateVendorQuoteStatus,
     addMpsiReplyToVendorQuote,
