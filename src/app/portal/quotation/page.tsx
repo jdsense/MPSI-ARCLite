@@ -484,6 +484,56 @@ export default function QuotationPage() {
     });
   };
 
+  // DB 비동기 영구 저장 헬퍼 (PostgreSQL "MpsiPrimeQuotation" 테이블)
+  const saveQuotationToDB = async (item: PrimeQuotationItem) => {
+    try {
+      const res = await fetch("/api/v1/prime-quotations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(item),
+      });
+      const json = await res.json();
+      if (json.success && json.data?.id) {
+        setDataState((prev) =>
+          prev.map((q) => (q.quotationNo === item.quotationNo ? { ...q, id: json.data.id } : q))
+        );
+      }
+    } catch (e) {
+      console.error("[PrimeQuotation] DB Save Error:", e);
+    }
+  };
+
+  const updateQuotationInDB = async (item: PrimeQuotationItem, originalNo?: string) => {
+    try {
+      await fetch("/api/v1/prime-quotations", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...item, originalQuotationNo: originalNo || item.quotationNo }),
+      });
+    } catch (e) {
+      console.error("[PrimeQuotation] DB Update Error:", e);
+    }
+  };
+
+  // 마운트 시 PostgreSQL DB 데이터 실시간 동기화
+  useEffect(() => {
+    let isMounted = true;
+    fetch("/api/v1/prime-quotations")
+      .then((res) => res.json())
+      .then((json) => {
+        if (isMounted && json.success && Array.isArray(json.data) && json.data.length > 0) {
+          setDataState(json.data);
+          savePrimeQuotationsToStorage(json.data);
+        }
+      })
+      .catch((err) => {
+        console.warn("[PrimeQuotation] Could not load from DB, using fallback", err);
+      });
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
   // 검색 상태
   const [filterKeyword, setFilterKeyword] = useState("");
   const [filterCustomer, setFilterCustomer] = useState("ALL");
@@ -628,6 +678,7 @@ export default function QuotationPage() {
     if (selectedItem?.id === item.id) {
       setSelectedItem(updatedItem);
     }
+    updateQuotationInDB(updatedItem, item.quotationNo);
 
     // 2. 프로젝트 관리대장에 자동 추가 (생산/외주업체 등록 대기 상태)
     addProject({
@@ -828,6 +879,7 @@ export default function QuotationPage() {
 
     setSelectedItem(updated);
     setData(prev => prev.map(item => item.id === selectedItem.id ? updated : item));
+    updateQuotationInDB(updated);
     setReplaceReason("");
     setReplaceLabel("");
     setSelectedReplaceFile(null);
@@ -894,8 +946,9 @@ export default function QuotationPage() {
     };
 
     setData([newItem, ...data]);
+    saveQuotationToDB(newItem);
     setIsNewModalOpen(false);
-    alert(`[${newItem.quotationNo}] 원청사 견적이 성공적으로 등록되었습니다.\n(고객사: ${newItem.customerName}, 제품: ${newItem.productName})`);
+    alert(`[${newItem.quotationNo}] 원청사 견적이 성공적으로 등록되었습니다.\n(고객사: ${newItem.customerName}, 제품: ${newItem.productName})\nPostgreSQL DB("MpsiPrimeQuotation")에 영구 보관됩니다.`);
   };
 
   // 메모 추가
@@ -917,6 +970,7 @@ export default function QuotationPage() {
     };
     setSelectedItem(updated);
     setData((prev) => prev.map((item) => (item.id === selectedItem.id ? updated : item)));
+    updateQuotationInDB(updated);
     setNewMemoText("");
   };
 
@@ -973,6 +1027,10 @@ export default function QuotationPage() {
       return item;
     });
     setData(updatedList);
+    const targetItem = updatedList.find((item) => item.id === id);
+    if (targetItem) {
+      updateQuotationInDB(targetItem);
+    }
     if (selectedItem && selectedItem.id === id) {
       setSelectedItem({
         ...selectedItem,
