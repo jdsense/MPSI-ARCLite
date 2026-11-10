@@ -338,14 +338,14 @@ function getStoredPrimeQuotations(): PrimeQuotationItem[] {
   if (typeof window === "undefined") return initialPrimeQuotations;
   try {
     const raw = localStorage.getItem(PRIME_STORAGE_KEY);
-    if (!raw) {
+    if (raw === null) {
       localStorage.setItem(PRIME_STORAGE_KEY, JSON.stringify(initialPrimeQuotations));
       return initialPrimeQuotations;
     }
     const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) && parsed.length > 0 ? parsed : initialPrimeQuotations;
+    return Array.isArray(parsed) ? parsed : [];
   } catch (e) {
-    return initialPrimeQuotations;
+    return [];
   }
 }
 
@@ -542,7 +542,7 @@ export default function QuotationPage() {
     fetch("/api/v1/prime-quotations")
       .then((res) => res.json())
       .then((json) => {
-        if (isMounted && json.success && Array.isArray(json.data) && json.data.length > 0) {
+        if (isMounted && json.success && Array.isArray(json.data)) {
           setDataState(json.data);
           savePrimeQuotationsToStorage(json.data);
         }
