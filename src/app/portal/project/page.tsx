@@ -3639,11 +3639,11 @@ export default function ProjectStatus13StepsPage() {
                       />
                     </div>
                     <div>
-                      <label className="block text-zinc-600 dark:text-zinc-400 mb-0.5">4. 사출기 톤수</label>
+                      <label className="block text-zinc-600 dark:text-zinc-400 mb-0.5">4. 사출기 타입 / 톤수</label>
                       <Input 
                         value={formState.machineTon || ""} 
                         onChange={(e) => setFormState({ ...formState, machineTon: e.target.value })}
-                        placeholder="예: 650T"
+                        placeholder="예: 유압식 650T 또는 500"
                         className="h-7 text-xs bg-white font-mono"
                       />
                     </div>
@@ -4168,11 +4168,11 @@ export default function ProjectStatus13StepsPage() {
                     />
                   </div>
                   <div>
-                    <label className="block text-zinc-600 dark:text-zinc-400 mb-0.5">4. 사출기 톤수</label>
+                    <label className="block text-zinc-600 dark:text-zinc-400 mb-0.5">4. 사출기 타입 / 톤수</label>
                     <Input 
                       value={editFormState.machineTon || ""} 
                       onChange={(e) => setEditFormState({ ...editFormState, machineTon: e.target.value })}
-                      placeholder="예: 650T"
+                      placeholder="예: 유압식 650T 또는 500"
                       className="h-7 text-xs bg-white font-mono"
                     />
                   </div>

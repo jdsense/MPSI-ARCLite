@@ -164,9 +164,11 @@ export default function MoldDevQuotationPage() {
 
   // DB 거래처 마스터에서 금형 협력사 목록 동적 로드
   const [vendorList, setVendorList] = useState<{ id: string; name: string }[]>(MOLD_VENDOR_LIST);
+  // 원청사 견적 목록 (원청사 견적가/파일/메모 연동용)
+  const [primeQuotes, setPrimeQuotes] = useState<any[]>([]);
 
   useEffect(() => {
-    async function loadVendorsFromDb() {
+    async function loadInitialData() {
       try {
         const res = await fetch("/api/v1/basic-info/vendors");
         if (res.ok) {
@@ -187,8 +189,20 @@ export default function MoldDevQuotationPage() {
       } catch (e) {
         console.warn("DB vendor fetch error, fallback to default vendor list:", e);
       }
+
+      try {
+        const qRes = await fetch("/api/v1/prime-quotations");
+        if (qRes.ok) {
+          const qJson = await qRes.json();
+          if (qJson.success && Array.isArray(qJson.data)) {
+            setPrimeQuotes(qJson.data);
+          }
+        }
+      } catch (e) {
+        console.warn("Prime quotations fetch error:", e);
+      }
     }
-    loadVendorsFromDb();
+    loadInitialData();
   }, []);
 
   // 일반 MPSI 검토 메모 작성
@@ -278,13 +292,87 @@ export default function MoldDevQuotationPage() {
         targetVendors = [found.moldVendor];
       }
 
-      // 2. 프로젝트에서 입력된 실제 RFQ 스펙 추출
+      // 2. 연결된 원청사 견적 조회
+      const matchedPrimeQuote = primeQuotes.find(
+        (q) => q.quotationNo === found.estimateNo || q.officialProjectNo === found.projectNo || q.quotationNo === found.projectNo
+      );
+
+      // 3. 프로젝트 및 원청사 견적에서 사출기 타입 & 톤수 조합 추출
       const rfq = (found as any).rfqSpec || {};
-      const tonnage = rfq.tonnage || (found.facilityEvent?.includes("T") ? found.facilityEvent : "");
-      const cavity = rfq.cavity || found.cavity || "";
-      const hrs = rfq.hrs || (found as any).hrsSpec || "";
-      const moldSteel = rfq.moldSteel || found.material || "";
-      const resin = (found as any).resinSpec || rfq.resin || "";
+      let machineTypeTonnage = (found as any).machineTypeTonnage || "";
+      const rawTon = found.machineTon || rfq.tonnage || (found as any).tonnage || "";
+      const rawType = (found as any).machineType || (found as any).injectionType || rfq.machineType || "";
+
+      if (!machineTypeTonnage) {
+        if (rawTon && rawType) {
+          const tonStr = String(rawTon).toUpperCase().includes("T") ? String(rawTon) : `${rawTon}T`;
+          machineTypeTonnage = `${rawType} ${tonStr}`;
+        } else if (rawTon) {
+          const tonStr = String(rawTon).toUpperCase().includes("T") ? String(rawTon) : `${rawTon}T`;
+          if (String(rawTon).includes("유압") || String(rawTon).includes("전동") || String(rawTon).includes("하이브리드")) {
+            machineTypeTonnage = String(rawTon);
+          } else {
+            machineTypeTonnage = `유압식 ${tonStr}`;
+          }
+        } else if (rawType) {
+          machineTypeTonnage = rawType;
+        } else if (found.facilityEvent && found.facilityEvent.includes("T")) {
+          machineTypeTonnage = found.facilityEvent;
+        } else {
+          machineTypeTonnage = "유압식 450T";
+        }
+      }
+
+      // 4. 원판일체 / 코어삽입
+      const coreStructure = (found as any).coreStructure || (found as any).moldStructure || "코어삽입형";
+
+      // 5. 금형 코어 강재 및 원판 재질 추출
+      let coreSteel = (found as any).moldSteel || (found as any).moldMaterial || rfq.moldSteel || "";
+      if (!coreSteel || coreSteel === "11") {
+        if (found.material) {
+          const parts = found.material.split("/");
+          if (parts.length > 1) {
+            const first = parts[0].trim();
+            if (first.includes("NAK") || first.includes("SKD") || first.includes("KP") || first.includes("HP") || first.includes("718") || first.includes("P20") || first.includes("S55C") || first.includes("STAVAX")) {
+              coreSteel = first;
+            }
+          } else if (!found.material.includes("PP") && !found.material.includes("ABS") && !found.material.includes("PC") && !found.material.includes("PA")) {
+            coreSteel = found.material.trim();
+          }
+        }
+      }
+      if (!coreSteel || coreSteel === "11") {
+        coreSteel = "NAK80";
+      }
+      const moldMaterial = `상하원판: S55C / 메인코어: ${coreSteel}`;
+
+      // 6. 캐비티
+      let cavity = rfq.cavity || found.cavity || "";
+      if (!cavity) {
+        cavity = "1*2";
+      }
+
+      // 7. GATE 형식
+      let gateType = (found as any).hrsSpec || rfq.hrs || "";
+      if (!gateType || gateType === "11") {
+        gateType = "HRS+EDGE (밸브게이트 2-Drop)";
+      }
+
+      // 8. 레진(원자재)
+      const resin = (found as any).resinSpec || rfq.resin || (found.material?.includes("/") ? found.material.split("/")[1].trim() : found.material) || "PP-EPDM";
+
+      // 9. 목표 C/T (초)
+      const rawCt = Number((found as any).moldData?.t1CycleTime || (found as any).targetCycleTime || (found as any).cycleTime || 0);
+      const targetCycleTime = rawCt > 0 ? rawCt : 42;
+
+      // 10. 목표 제작일수
+      const targetMfgDays = Number(found.targetMoldDays) > 0 ? Number(found.targetMoldDays) : 45;
+
+      // 11. 금형 출고 납기
+      const moldDeliveryDate = found.moldDeliveryDate || found.targetT1Date || "";
+
+      // 12. MPSI 수주 목표가 (원청사 견적가 연동)
+      const targetBudgetWon = Number(matchedPrimeQuote?.moldEstimateWon || found.costEstimateDetails?.moldCost || 0);
 
       setNewForm((prev) => ({
         ...prev,
@@ -295,18 +383,18 @@ export default function MoldDevQuotationPage() {
         assignedVendors: targetVendors,
         productionType: found.moldProductionType === "IN_HOUSE" ? "IN_HOUSE" : "OUTSOURCING",
         moldDegree: found.moldDegree || "M1",
-        machineTypeTonnage: tonnage,
-        coreStructure: "",
-        moldMaterial: moldSteel ? `상하원판: S55C / 메인코어: ${moldSteel}` : "",
-        cavity: cavity,
-        gateType: hrs,
-        moldSteel: moldSteel,
-        resin: resin,
+        machineTypeTonnage,
+        coreStructure,
+        moldMaterial,
+        cavity,
+        gateType,
+        moldSteel: coreSteel,
+        resin,
         targetT1Date: found.targetT1Date || "",
-        moldDeliveryDate: found.moldDeliveryDate || "",
-        targetMfgDays: Number(found.targetMoldDays || 0),
-        targetCycleTime: 0,
-        targetBudgetWon: 0,
+        moldDeliveryDate,
+        targetMfgDays,
+        targetCycleTime,
+        targetBudgetWon,
         notes: found.notes || ""
       }));
     }
