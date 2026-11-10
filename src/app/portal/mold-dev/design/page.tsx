@@ -799,23 +799,13 @@ export default function ProductReviewAndMoldDesignPage() {
                           금형 제작 협의록
                         </span>
                         <div className="flex items-center gap-1">
-                          {/* 외주제작 프로젝트의 경우 MPSI는 업로드 불가 (외주 금형사 제출 전용) */}
-                          {productReviewItem.moldVendor?.includes("자체") ? (
-                            <button
-                              onClick={() => handleOpenFileUploadModal(productReviewItem.id, "moldMeetingReport", "금형 제작 협의록", `금형제작협의록_${productReviewItem.projectNo}.pdf`)}
-                              title="파일 업로드 (자체개발팀 전용)"
-                              className="p-1 hover:bg-sky-100 dark:hover:bg-sky-900/50 rounded text-sky-700"
-                            >
-                              <UploadCloud className="h-3.5 w-3.5" />
-                            </button>
-                          ) : (
-                            <span 
-                              title="금형 제작 협의록은 외주 금형처 전용 제출물입니다. (MPSI 업로드 제한)" 
-                              className="text-[9px] px-1.5 py-0.5 rounded bg-zinc-200 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 font-medium"
-                            >
-                              외주사 제출
-                            </span>
-                          )}
+                          <button
+                            onClick={() => handleOpenFileUploadModal(productReviewItem.id, "moldMeetingReport", "금형 제작 협의록", `금형제작협의록_${productReviewItem.projectNo}.pdf`)}
+                            title="파일 업로드 (MPSI/협력사 협의록 등록)"
+                            className="p-1 hover:bg-sky-100 dark:hover:bg-sky-900/50 rounded text-sky-700 cursor-pointer"
+                          >
+                            <UploadCloud className="h-3.5 w-3.5" />
+                          </button>
                           {productReviewItem.moldMeetingReportFile && (
                             <button
                               onClick={() => handleDownloadFile(productReviewItem.moldMeetingReportFile, `금형제작협의록_${productReviewItem.projectNo}.pdf`)}
@@ -828,14 +818,14 @@ export default function ProductReviewAndMoldDesignPage() {
                         </div>
                       </div>
                       <div className="mt-1 font-mono text-[11px] font-semibold text-sky-800 dark:text-sky-200 truncate" title={productReviewItem.moldMeetingReportFile}>
-                        {getDisplayFileName(productReviewItem.moldMeetingReportFile) || "미등록 (외주처 제출 대기)"}
+                        {getDisplayFileName(productReviewItem.moldMeetingReportFile) || "미등록 (MPSI/외주처 업로드 지원)"}
                       </div>
                       <p className="text-[10px] text-zinc-500 mt-0.5 line-clamp-2">
                         {productReviewItem.moldMeetingReportNote || "금형처 작성 DR 회의록 및 MPSI 검토 협의록"}
                       </p>
                     </div>
                     <div className="text-[9.5px] text-sky-700 font-medium pt-1.5 border-t border-sky-200/60 mt-2">
-                      {productReviewItem.moldVendor?.includes("자체") ? "* MPSI 자체개발팀 업다운로드 지원" : "* 외주 금형사 작성·제출 전용 (MPSI 열람 및 승인)"}
+                      * MPSI 및 금형제작처 협의록 상호 업로드 및 열람 지원 (메모 필수)
                     </div>
                   </div>
 
@@ -1243,22 +1233,13 @@ export default function ProductReviewAndMoldDesignPage() {
                           금형 제작 협의록
                         </span>
                         <div className="flex items-center gap-1">
-                          {moldDesignItem.moldVendor?.includes("자체") ? (
-                            <button
-                              onClick={() => handleOpenFileUploadModal(moldDesignItem.id, "moldMeetingReport", "금형 제작 협의록", `금형제작협의록_${moldDesignItem.projectNo}.pdf`)}
-                              title="파일 업로드 (자체개발팀 전용)"
-                              className="p-1 hover:bg-sky-100 dark:hover:bg-sky-900/50 rounded text-sky-700"
-                            >
-                              <UploadCloud className="h-3.5 w-3.5" />
-                            </button>
-                          ) : (
-                            <span 
-                              title="금형 제작 협의록은 외주 금형처 전용 제출물입니다. (MPSI 업로드 제한)" 
-                              className="text-[9px] px-1.5 py-0.5 rounded bg-zinc-200 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 font-medium"
-                            >
-                              외주사 제출
-                            </span>
-                          )}
+                          <button
+                            onClick={() => handleOpenFileUploadModal(moldDesignItem.id, "moldMeetingReport", "금형 제작 협의록", `금형제작협의록_${moldDesignItem.projectNo}.pdf`)}
+                            title="파일 업로드 (MPSI/협력사 협의록 등록)"
+                            className="p-1 hover:bg-sky-100 dark:hover:bg-sky-900/50 rounded text-sky-700 cursor-pointer"
+                          >
+                            <UploadCloud className="h-3.5 w-3.5" />
+                          </button>
                           {moldDesignItem.moldMeetingReportFile && (
                             <button
                               onClick={() => handleDownloadFile(moldDesignItem.moldMeetingReportFile, `금형제작협의록_${moldDesignItem.projectNo}.pdf`)}
@@ -1271,14 +1252,14 @@ export default function ProductReviewAndMoldDesignPage() {
                         </div>
                       </div>
                       <div className="mt-1 font-mono text-[11px] font-semibold text-sky-800 dark:text-sky-200 truncate" title={moldDesignItem.moldMeetingReportFile}>
-                        {getDisplayFileName(moldDesignItem.moldMeetingReportFile) || "미등록"}
+                        {getDisplayFileName(moldDesignItem.moldMeetingReportFile) || "미등록 (MPSI/외주처 업로드 지원)"}
                       </div>
                       <p className="text-[10px] text-zinc-500 mt-0.5 line-clamp-2">
                         {moldDesignItem.moldMeetingReportNote || "금형 구조/파팅라인 설계 협의록"}
                       </p>
                     </div>
                     <div className="text-[9.5px] text-sky-700 font-medium pt-1.5 border-t border-sky-200/60 mt-2">
-                      {moldDesignItem.moldVendor?.includes("자체") ? "* MPSI 자체개발팀 업다운로드 지원" : "* 외주 금형사 작성·제출 전용 (MPSI 열람 및 승인)"}
+                      * MPSI 및 금형제작처 협의록 상호 업로드 및 열람 지원 (메모 필수)
                     </div>
                   </div>
 
