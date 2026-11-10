@@ -397,6 +397,123 @@ export async function PUT(request: NextRequest) {
       console.warn("ProjectMaster sync warning in designs PUT:", syncErr);
     }
 
+    // 금형제작(MpsiMoldManufacture) 연동: 금형 설계 승인('검토완료') 또는 발주 승인 시 자동 등재
+    try {
+      const isDesignApproved = designApprovalStatus === '검토완료' || updatedNote.moldDesignStatus === '검토완료';
+      const isPoApproved = updatedNote.moldPoApproved === true;
+      const isMaterialApproved = updatedNote.materialOrderStatus === '승인완료';
+
+      if (isDesignApproved || isPoApproved || isMaterialApproved) {
+        const existMfg = await query(`SELECT "ProjectID", "Note" FROM "MpsiMoldManufacture" WHERE "ProjectID" = $1`, [designId]);
+        const mfgStatus = isDesignApproved ? '가공 중' : '금형 설계 중';
+        const stepNum = isDesignApproved ? 6 : 5;
+
+        if (existMfg.rows.length === 0) {
+          const initNote = {
+            id: 1,
+            projectNo: designId,
+            moldNo: updatedNote.moldNo || `${designId}M`,
+            moldDegree: updatedNote.moldDegree || "M1",
+            changeType: updatedNote.changeType || "N001",
+            projectName: updatedNote.projectName || "양산 신차 프로젝트",
+            productName: updatedNote.productName || "Main Mold Part",
+            customerName: updatedNote.customerName || "원청사",
+            moldVendor: updatedNote.moldVendor || "우성정공(주)",
+            cavity: updatedNote.cavity || "1*2 Cavity",
+            material: updatedNote.material || "NAK80 / KP4M",
+            targetT1Date: updatedNote.targetT1Date || "2026-11-06",
+            moldDeliveryDate: updatedNote.moldDeliveryDate || updatedNote.targetT1Date || "2026-12-15",
+            moldPoNo: updatedNote.moldPoNo || `MOLD-PO-${designId}`,
+            orderDate: updatedNote.moldPoApprovedDate ? updatedNote.moldPoApprovedDate.split(" ")[0] : new Date().toISOString().split("T")[0],
+            orderAmount: Number(updatedNote.moldPoAmount || 0),
+            manufactureStatus: mfgStatus,
+            scheduleFile: null,
+            memoLogs: [
+              {
+                id: `memo-${Date.now()}`,
+                authorId: "MPSI_HQ",
+                authorName: "MPSI 구매개발실",
+                company: "MPSI 본사",
+                tag: isDesignApproved ? "설계승인완료" : "금형발주완료",
+                content: isDesignApproved
+                  ? `[금형설계 승인 연동] 금형 3D 설계 검토 승인이 완료되어 금형제작 일정 관제 대장에 정식 등재되었습니다. (가공 착수)`
+                  : `[금형제작 착수 연동] 금형발주(PO: ${updatedNote.moldPoNo || `MOLD-PO-${designId}`})가 승인되어 금형제작 일정 관제 대장에 정식 등재되었습니다.`,
+                createdAt: new Date().toLocaleString("ko-KR", { hour12: false }).replace(/\./g, "-").slice(0, 16)
+              }
+            ],
+            processes: [
+              { code: "GUN", name: "건드릴(냉각홀)", planDate: "11-08", actualDate: "", progress: 0, status: "대기" },
+              { code: "ML", name: "황삭 밀링", planDate: "11-12", actualDate: "", progress: 0, status: "대기" },
+              { code: "HT", name: "코어 열처리", planDate: "11-16", actualDate: "", progress: 0, status: "대기" },
+              { code: "CNC", name: "CNC 정밀가공", planDate: "11-22", actualDate: "", progress: 0, status: "대기" },
+              { code: "PL", name: "방전(EDM)", planDate: "11-27", actualDate: "", progress: 0, status: "대기" },
+              { code: "WR", name: "와이어컷", planDate: "12-02", actualDate: "", progress: 0, status: "대기" },
+              { code: "ASSY", name: "금형 조립/래핑", planDate: "12-08", actualDate: "", progress: 0, status: "대기" },
+            ],
+            overallProgress: 0,
+            coreStatus: "대기",
+            coreProgress: 0,
+            assyStatus: "대기",
+            assyProgress: 0,
+            scheduleStatus: "정상",
+            currentStep: stepNum,
+            updatedAt: new Date().toLocaleString("ko-KR", { hour12: false }).replace(/\./g, "-").slice(0, 16),
+            notes: isDesignApproved ? "금형 3D 설계 승인 완료, 공정 가공 착수 대기" : "MPSI 발주 승인 완료, 금형 제작 일정표 엑셀 업로드 대기"
+          };
+
+          await query(`
+            INSERT INTO "MpsiMoldManufacture" (
+              "ManufactureID", "ProjectID", "MoldPoNo", "OrderAmount", "OrderDate", 
+              "TargetT1Date", "MoldDeliveryDate", "OverallProgressRate", "ManufactureStatus", 
+              "CreatorID", "CreationDateTime", "Note"
+            ) OVERRIDING USER VALUE VALUES (
+              $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW(), $11
+            )
+          `, [
+            `MFG-${designId}`,
+            designId,
+            updatedNote.moldPoNo || `MOLD-PO-${designId}`,
+            Number(updatedNote.moldPoAmount || 0),
+            updatedNote.moldPoApprovedDate ? updatedNote.moldPoApprovedDate.split(" ")[0] : new Date().toISOString().split("T")[0],
+            updatedNote.targetT1Date || "2026-11-06",
+            updatedNote.moldDeliveryDate || updatedNote.targetT1Date || "2026-12-15",
+            0,
+            mfgStatus,
+            "MPSI_HQ",
+            JSON.stringify(initNote)
+          ]);
+        } else if (isDesignApproved) {
+          let existingNote: any = {};
+          try { existingNote = JSON.parse(existMfg.rows[0].Note || "{}"); } catch {}
+          if (existingNote.manufactureStatus === "금형 설계 중") {
+            existingNote.manufactureStatus = "가공 중";
+            existingNote.currentStep = 6;
+            existingNote.updatedAt = new Date().toLocaleString("ko-KR", { hour12: false }).replace(/\./g, "-").slice(0, 16);
+            existingNote.memoLogs = [
+              {
+                id: `memo-${Date.now()}`,
+                authorId: "MPSI_HQ",
+                authorName: "MPSI 구매개발실",
+                company: "MPSI 본사",
+                tag: "설계승인완료",
+                content: `[금형설계 승인 연동] 금형 3D 설계 검토가 완료되어 제작 상태가 '가공 중'으로 전환되었습니다.`,
+                createdAt: new Date().toLocaleString("ko-KR", { hour12: false }).replace(/\./g, "-").slice(0, 16)
+              },
+              ...(existingNote.memoLogs || [])
+            ];
+            await query(
+              `UPDATE "MpsiMoldManufacture" 
+               SET "ManufactureStatus" = '가공 중', "Note" = $1, "ModificationDateTime" = NOW() 
+               WHERE "ProjectID" = $2`,
+              [JSON.stringify(existingNote), designId]
+            );
+          }
+        }
+      }
+    } catch (syncMfgErr) {
+      console.warn("MpsiMoldManufacture auto-sync warning in designs PUT:", syncMfgErr);
+    }
+
     if (!res.rows || res.rows.length === 0) {
       return NextResponse.json({ success: true, data: updatedNote });
     }

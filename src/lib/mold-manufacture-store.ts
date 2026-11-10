@@ -105,21 +105,11 @@ export function getManufactureStatusBadge(status: MoldManufactureStatus | string
 // 더미 데이터 초기값 전면 비움
 export const INITIAL_MOLD_MANUFACTURES: MoldManufactureItem[] = [];
 
-// 더미 판별 헬퍼
+// 더미 판별 헬퍼 (실제 프로젝트 MI26001 계열 포함 정상 보존)
 function isDummyManufacture(item: any): boolean {
   if (!item) return true;
-  const pNo = String(item.projectNo || "");
-  const pName = String(item.projectName || "");
-  if (
-    pNo.includes("MI25001") ||
-    pNo.includes("MI26001") ||
-    pNo.includes("MI26002") ||
-    pNo.includes("MI26003") ||
-    pName.includes("NQ5") ||
-    pName.includes("현대 NT5") ||
-    pName.includes("A2XT") ||
-    pName.includes("SPX")
-  ) {
+  const pNo = String(item.projectNo || "").trim();
+  if (!pNo || pNo === "undefined" || pNo === "null" || pNo === "DUMMY") {
     return true;
   }
   return false;

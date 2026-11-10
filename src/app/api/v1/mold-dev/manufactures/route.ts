@@ -33,10 +33,10 @@ export async function GET(req: Request) {
     const { searchParams } = new URL(req.url);
     const projectId = searchParams.get("projectId");
 
-    // 1. MpsiMoldDesign에서 Step 4(발주) 이상 진행된 실제 프로젝트 자동 동기화 확인
+    // 1. MpsiMoldDesign에서 Step 4(발주 완료) 및 Step 5~6(금형 설계 승인/소재발주)된 실제 프로젝트 자동 동기화 확인
     try {
       const designRows = await query(`
-        SELECT "ProjectID", "Note" 
+        SELECT "ProjectID", "DesignReviewStatus", "DesignApprovalStatus", "Note" 
         FROM "MpsiMoldDesign"
       `);
 
@@ -47,16 +47,27 @@ export async function GET(req: Request) {
         } catch (e) {}
 
         const pid = d.ProjectID || meta.projectNo;
-        if (!pid) continue;
+        if (!pid || pid === "DUMMY") continue;
 
-        // 더미 프로젝트 건너뛰기
-        if (pid.includes("MI25001") || pid.includes("MI26001") || pid.includes("MI26002") || pid.includes("MI26003") || meta.projectName?.includes("NQ5")) {
+        // 금형 발주 완료(moldPoApproved), 금형 설계 승인(검토완료), 또는 소재발주 승인 상태인 경우 제작 대장에 자동 등재
+        const isApprovedForManufacture = 
+          meta.moldPoApproved === true ||
+          d.DesignApprovalStatus === "검토완료" ||
+          meta.moldDesignStatus === "검토완료" ||
+          meta.materialOrderStatus === "승인완료" ||
+          (meta.currentStep && meta.currentStep >= 5);
+
+        if (!isApprovedForManufacture) {
           continue;
         }
 
         // MpsiMoldManufacture에 이미 있는지 확인
-        const existMfg = await query(`SELECT "ProjectID" FROM "MpsiMoldManufacture" WHERE "ProjectID" = $1`, [pid]);
+        const existMfg = await query(`SELECT "ProjectID", "Note" FROM "MpsiMoldManufacture" WHERE "ProjectID" = $1`, [pid]);
         if (existMfg.rows.length === 0) {
+          const isDesignDone = d.DesignApprovalStatus === "검토완료" || meta.moldDesignStatus === "검토완료";
+          const currentMfgStatus = isDesignDone ? "가공 중" : "금형 설계 중";
+          const currentStep = isDesignDone ? 6 : 5;
+
           const initNote = {
             id: 1,
             projectNo: pid,
@@ -67,14 +78,14 @@ export async function GET(req: Request) {
             productName: meta.productName || "Main Mold Part",
             customerName: meta.customerName || "원청사",
             moldVendor: meta.moldVendor || "우성정공(주)",
-            cavity: "1*2 Cavity",
-            material: "NAK80 / KP4M",
+            cavity: meta.cavity || "1*2 Cavity",
+            material: meta.material || "NAK80 / KP4M",
             targetT1Date: meta.targetT1Date || "2026-11-06",
-            moldDeliveryDate: "2026-12-15",
+            moldDeliveryDate: meta.moldDeliveryDate || meta.targetT1Date || "2026-12-15",
             moldPoNo: meta.moldPoNo || `MOLD-PO-${pid}`,
-            orderDate: meta.moldPoApprovedDate ? meta.moldPoApprovedDate.split(" ")[0] : "2026-11-05",
-            orderAmount: meta.moldPoAmount || 1000000,
-            manufactureStatus: "금형 설계 중",
+            orderDate: meta.moldPoApprovedDate ? meta.moldPoApprovedDate.split(" ")[0] : new Date().toISOString().split("T")[0],
+            orderAmount: Number(meta.moldPoAmount || 0),
+            manufactureStatus: currentMfgStatus,
             scheduleFile: null,
             memoLogs: [
               {
@@ -82,8 +93,10 @@ export async function GET(req: Request) {
                 authorId: "MPSI_HQ",
                 authorName: "MPSI 구매개발실",
                 company: "MPSI 본사",
-                tag: "금형발주완료",
-                content: `[금형제작 착수 연동] 금형발주(PO: ${meta.moldPoNo || `MOLD-PO-${pid}`})가 승인되어 금형제작 일정 관제 대장에 정식 등재되었습니다.`,
+                tag: isDesignDone ? "설계승인완료" : "금형발주완료",
+                content: isDesignDone
+                  ? `[금형설계 승인 연동] 금형 3D 설계 승인이 완료되어 금형제작 일정 관제 대장에 정식 등재되었습니다. (가공 착수)`
+                  : `[금형제작 착수 연동] 금형발주(PO: ${meta.moldPoNo || `MOLD-PO-${pid}`})가 승인되어 금형제작 일정 관제 대장에 정식 등재되었습니다.`,
                 createdAt: new Date().toLocaleString("ko-KR", { hour12: false }).replace(/\./g, "-").slice(0, 16)
               }
             ],
@@ -94,9 +107,9 @@ export async function GET(req: Request) {
             assyStatus: "대기",
             assyProgress: 0,
             scheduleStatus: "정상",
-            currentStep: 6,
+            currentStep: currentStep,
             updatedAt: new Date().toLocaleString("ko-KR", { hour12: false }).replace(/\./g, "-").slice(0, 16),
-            notes: "MPSI 발주 승인 완료, 금형 제작 일정표 엑셀 업로드 대기"
+            notes: isDesignDone ? "금형 3D 설계 승인 완료, 공정 가공 착수 대기" : "MPSI 발주 승인 완료, 금형 제작 일정표 엑셀 업로드 대기"
           };
 
           await query(`
@@ -111,15 +124,45 @@ export async function GET(req: Request) {
             `MFG-${pid}`,
             pid,
             meta.moldPoNo || `MOLD-PO-${pid}`,
-            meta.moldPoAmount || 1000000,
-            meta.moldPoApprovedDate ? meta.moldPoApprovedDate.split(" ")[0] : "2026-11-05",
+            Number(meta.moldPoAmount || 0),
+            meta.moldPoApprovedDate ? meta.moldPoApprovedDate.split(" ")[0] : new Date().toISOString().split("T")[0],
             meta.targetT1Date || "2026-11-06",
-            "2026-12-15",
+            meta.moldDeliveryDate || meta.targetT1Date || "2026-12-15",
             0,
-            "금형 설계 중",
+            currentMfgStatus,
             "MPSI_HQ",
             JSON.stringify(initNote)
           ]);
+        } else {
+          // 이미 존재하지만 설계 승인이 새로 되었을 경우 상태 갱신
+          const isDesignDone = d.DesignApprovalStatus === "검토완료" || meta.moldDesignStatus === "검토완료";
+          if (isDesignDone) {
+            let existingNote: any = {};
+            try { existingNote = JSON.parse(existMfg.rows[0].Note || "{}"); } catch {}
+            if (existingNote.manufactureStatus === "금형 설계 중") {
+              existingNote.manufactureStatus = "가공 중";
+              existingNote.currentStep = 6;
+              existingNote.updatedAt = new Date().toLocaleString("ko-KR", { hour12: false }).replace(/\./g, "-").slice(0, 16);
+              existingNote.memoLogs = [
+                {
+                  id: `memo-${Date.now()}`,
+                  authorId: "MPSI_HQ",
+                  authorName: "MPSI 구매개발실",
+                  company: "MPSI 본사",
+                  tag: "설계승인완료",
+                  content: `[금형설계 승인 연동] 금형 3D 설계 검토가 완료되어 제작 상태가 '가공 중'으로 전환되었습니다.`,
+                  createdAt: new Date().toLocaleString("ko-KR", { hour12: false }).replace(/\./g, "-").slice(0, 16)
+                },
+                ...(existingNote.memoLogs || [])
+              ];
+              await query(
+                `UPDATE "MpsiMoldManufacture" 
+                 SET "ManufactureStatus" = '가공 중', "Note" = $1, "ModificationDateTime" = NOW() 
+                 WHERE "ProjectID" = $2`,
+                [JSON.stringify(existingNote), pid]
+              );
+            }
+          }
         }
       }
     } catch (e) {
@@ -210,16 +253,8 @@ export async function GET(req: Request) {
 
         const projectNo = r.ProjectID || meta.projectNo;
 
-        // 더미 프로젝트 영구 배제
-        if (
-          projectNo === "MI25001P1" ||
-          projectNo === "MI25001P2" ||
-          projectNo === "MI26001P0" ||
-          projectNo === "MI26002P0" ||
-          projectNo === "MI26003P0" ||
-          meta.projectName === "현대 NT5" ||
-          meta.projectName === "NQ5"
-        ) {
+        // 유효하지 않은 항목만 제외 (실제 프로젝트 MI26001 등은 정상 표출)
+        if (!projectNo || projectNo === "DUMMY" || projectNo === "undefined") {
           return null;
         }
 

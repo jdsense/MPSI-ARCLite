@@ -67,8 +67,7 @@ export async function GET(req: Request) {
       const pmRows = await query(`
         SELECT p."ProjectID", p."ProjectName", p."ItemID", p."Note"
         FROM "ProjectMaster" p
-        WHERE p."ProjectID" NOT IN ('MI25001P1', 'MI25001P2', 'MI26001P0', 'MI26002P0', 'MI26003P0')
-          AND p."ProjectID" IS NOT NULL
+        WHERE p."ProjectID" IS NOT NULL
           AND p."ProjectID" NOT LIKE 'Q%'
       `);
 
@@ -256,16 +255,8 @@ export async function GET(req: Request) {
 
         const projectNo = r.ProjectID || meta.projectNo;
 
-        // 더미 프로젝트 영구 배제
-        if (
-          projectNo === "MI25001P1" ||
-          projectNo === "MI25001P2" ||
-          projectNo === "MI26001P0" ||
-          projectNo === "MI26002P0" ||
-          projectNo === "MI26003P0" ||
-          meta.projectName === "현대 NT5" ||
-          meta.projectName === "NQ5"
-        ) {
+        // 유효하지 않은 항목만 제외 (실제 프로젝트 MI26001 등은 정상 표출)
+        if (!projectNo || projectNo === "DUMMY" || projectNo === "undefined") {
           return null;
         }
 
