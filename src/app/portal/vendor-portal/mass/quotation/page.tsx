@@ -950,76 +950,90 @@ export default function VendorMassQuotationPage() {
                     </span>
                   </div>
 
-                  {/* 누적 관리 이력 리스트 */}
-                  {selectedItem.submissionHistory && selectedItem.submissionHistory.length > 0 && (
-                    <div className="mt-2 pt-2 border-t border-blue-200/80">
-                      <div className="text-[11px] font-bold text-blue-950 dark:text-blue-300 mb-1.5 flex items-center justify-between">
-                        <span>제출 메모 및 견적 관리 이력 ({selectedItem.submissionHistory.length}건)</span>
-                        <span className="text-[10px] text-zinc-400 font-normal">과거 제출 이력</span>
-                      </div>
-                      <div className="space-y-1.5 max-h-36 overflow-y-auto pr-1">
-                        {selectedItem.submissionHistory.map((hist) => (
-                          <div key={hist.id} className="p-2 rounded bg-white dark:bg-zinc-900 border border-blue-100 dark:border-zinc-700 text-[11px] shadow-2xs">
-                            <div className="flex items-center justify-between mb-1">
-                              <div className="flex items-center gap-1.5">
-                                <span className={`px-1.5 py-0.2 rounded text-[10px] font-bold ${
-                                  hist.submissionType === "수정 제출" ? "bg-amber-100 text-amber-800" : "bg-blue-100 text-blue-800"
-                                }`}>
-                                  [{hist.revisionNo}차] {hist.submissionType}
+                  {/* 누적 관리 이력 리스트 - 자사(currentVendor) 이력만 격리 필터링 */}
+                  {(() => {
+                    const myHistory = (selectedItem.submissionHistory || []).filter((hist) => 
+                      isMatchingVendor(hist.author, currentVendor)
+                    );
+                    if (myHistory.length === 0) return null;
+
+                    return (
+                      <div className="mt-2 pt-2 border-t border-blue-200/80">
+                        <div className="text-[11px] font-bold text-blue-950 dark:text-blue-300 mb-1.5 flex items-center justify-between">
+                          <span>[{currentVendor}] 제출 메모 및 견적 관리 이력 ({myHistory.length}건)</span>
+                          <span className="text-[10px] text-zinc-400 font-normal">자사 과거 제출 이력</span>
+                        </div>
+                        <div className="space-y-1.5 max-h-36 overflow-y-auto pr-1">
+                          {myHistory.map((hist) => (
+                            <div key={hist.id} className="p-2 rounded bg-white dark:bg-zinc-900 border border-blue-100 dark:border-zinc-700 text-[11px] shadow-2xs">
+                              <div className="flex items-center justify-between mb-1">
+                                <div className="flex items-center gap-1.5">
+                                  <span className={`px-1.5 py-0.2 rounded text-[10px] font-bold ${
+                                    hist.submissionType === "수정 제출" ? "bg-amber-100 text-amber-800" : "bg-blue-100 text-blue-800"
+                                  }`}>
+                                    [{hist.revisionNo}차] {hist.submissionType}
+                                  </span>
+                                  <span className="font-bold text-zinc-800 dark:text-zinc-200">{hist.author}</span>
+                                  <span className="text-zinc-400 font-mono text-[10px]">{hist.submittedAt}</span>
+                                </div>
+                                <div className="font-mono font-bold text-blue-700 dark:text-blue-300">
+                                  {hist.finalUnitPrice.toLocaleString()}원/EA
+                                  {hist.targetCycleTime && <span className="text-zinc-500 font-normal ml-1">({hist.targetCycleTime}초)</span>}
+                                </div>
+                              </div>
+                              <div className="bg-zinc-50 dark:bg-zinc-800 p-1.5 rounded text-zinc-700 dark:text-zinc-300 whitespace-pre-wrap">
+                                {hist.memo}
+                              </div>
+                              <div className="mt-1 flex items-center justify-between text-[10px] text-zinc-400">
+                                <span className="flex items-center gap-1">
+                                  <FileSpreadsheet className="h-3 w-3 text-emerald-600" />
+                                  당시 첨부: <b className="text-zinc-600 dark:text-zinc-300">{hist.fileName}</b> {hist.fileSize && `(${hist.fileSize})`}
                                 </span>
-                                <span className="font-bold text-zinc-800 dark:text-zinc-200">{hist.author}</span>
-                                <span className="text-zinc-400 font-mono text-[10px]">{hist.submittedAt}</span>
-                              </div>
-                              <div className="font-mono font-bold text-blue-700 dark:text-blue-300">
-                                {hist.finalUnitPrice.toLocaleString()}원/EA
-                                {hist.targetCycleTime && <span className="text-zinc-500 font-normal ml-1">({hist.targetCycleTime}초)</span>}
+                                <span className="text-blue-600 dark:text-blue-400">관리 이력</span>
                               </div>
                             </div>
-                            <div className="bg-zinc-50 dark:bg-zinc-800 p-1.5 rounded text-zinc-700 dark:text-zinc-300 whitespace-pre-wrap">
-                              {hist.memo}
-                            </div>
-                            <div className="mt-1 flex items-center justify-between text-[10px] text-zinc-400">
-                              <span className="flex items-center gap-1">
-                                <FileSpreadsheet className="h-3 w-3 text-emerald-600" />
-                                당시 첨부: <b className="text-zinc-600 dark:text-zinc-300">{hist.fileName}</b> {hist.fileSize && `(${hist.fileSize})`}
-                              </span>
-                              <span className="text-blue-600 dark:text-blue-400">관리 이력</span>
-                            </div>
-                          </div>
-                        ))}
+                          ))}
+                        </div>
                       </div>
-                    </div>
-                  )}
+                    );
+                  })()}
                 </div>
               </div>
 
-              {/* 4. MPSI ↔ 협력사 단가 협의 및 전체 소견 (MPSI 피드백 실시간 연동) */}
-              {Boolean(currentItem && currentItem.comments && currentItem.comments.length > 0) && (
-                <div className="border rounded-md p-3 bg-blue-50/40 dark:bg-blue-950/20 border-blue-200 dark:border-blue-900 space-y-2">
-                  <div className="font-bold text-xs text-blue-950 dark:text-blue-300 flex items-center justify-between pb-1 border-b border-blue-200/80">
-                    <span className="flex items-center gap-1.5">
-                      <MessageSquare className="h-3.5 w-3.5 text-blue-700 dark:text-blue-400" />
-                      4. MPSI 본사 단가 협의 및 검토 피드백 이력 ({currentItem?.comments?.length || 0}건)
-                    </span>
-                    <span className="text-[10px] text-blue-600 bg-blue-100 dark:bg-blue-900 px-1.5 py-0.5 rounded font-normal">
-                      MPSI 실시간 동기화
-                    </span>
-                  </div>
-                  <div className="flex flex-col gap-1.5 max-h-36 overflow-y-auto pr-1">
-                    {currentItem?.comments?.map((c) => (
-                      <div key={c.id} className="p-2 rounded border bg-white dark:bg-zinc-900 text-xs shadow-2xs">
-                        <div className="flex items-center justify-between font-bold mb-0.5">
-                          <span className={c.authorRole === "MPSI" ? "text-blue-700 dark:text-blue-300 font-bold" : "text-emerald-700 dark:text-emerald-300"}>
-                            {c.author}
-                          </span>
-                          <span className="text-[10px] text-zinc-400 font-mono">{c.createdAt}</span>
+              {/* 4. MPSI ↔ 협력사 단가 협의 및 전체 소견 (MPSI 및 자사 댓글만 필터링) */}
+              {(() => {
+                const visibleComments = (currentItem?.comments || []).filter((c) => 
+                  c.authorRole === "MPSI" || isMatchingVendor(c.author, currentVendor)
+                );
+                if (visibleComments.length === 0) return null;
+
+                return (
+                  <div className="border rounded-md p-3 bg-blue-50/40 dark:bg-blue-950/20 border-blue-200 dark:border-blue-900 space-y-2">
+                    <div className="font-bold text-xs text-blue-950 dark:text-blue-300 flex items-center justify-between pb-1 border-b border-blue-200/80">
+                      <span className="flex items-center gap-1.5">
+                        <MessageSquare className="h-3.5 w-3.5 text-blue-700 dark:text-blue-400" />
+                        4. MPSI 본사 단가 협의 및 검토 피드백 이력 ({visibleComments.length}건)
+                      </span>
+                      <span className="text-[10px] text-blue-600 bg-blue-100 dark:bg-blue-900 px-1.5 py-0.5 rounded font-normal">
+                        MPSI 실시간 동기화
+                      </span>
+                    </div>
+                    <div className="flex flex-col gap-1.5 max-h-36 overflow-y-auto pr-1">
+                      {visibleComments.map((c) => (
+                        <div key={c.id} className="p-2 rounded border bg-white dark:bg-zinc-900 text-xs shadow-2xs">
+                          <div className="flex items-center justify-between font-bold mb-0.5">
+                            <span className={c.authorRole === "MPSI" ? "text-blue-700 dark:text-blue-300 font-bold" : "text-emerald-700 dark:text-emerald-300"}>
+                              {c.author}
+                            </span>
+                            <span className="text-[10px] text-zinc-400 font-mono">{c.createdAt}</span>
+                          </div>
+                          <p className="text-zinc-700 dark:text-zinc-300 whitespace-pre-wrap">{c.content}</p>
                         </div>
-                        <p className="text-zinc-700 dark:text-zinc-300 whitespace-pre-wrap">{c.content}</p>
-                      </div>
-                    ))}
+                      ))}
+                    </div>
                   </div>
-                </div>
-              )}
+                );
+              })()}
             </div>
 
             {/* 3-6. 견적 제출 버튼 */}

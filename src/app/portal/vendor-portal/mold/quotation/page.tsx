@@ -1177,58 +1177,65 @@ export default function VendorMoldQuotationPage() {
                     </span>
                   </div>
 
-                  {/* 과거 메모 및 견적 제출 이력 */}
-                  {selectedItem.submissionHistory && selectedItem.submissionHistory.length > 0 && (
-                    <div className="mt-2 pt-2 border-t border-purple-200/80">
-                      <div className="text-[11px] font-bold text-purple-900 mb-1.5 flex items-center justify-between">
-                        <span>제출 메모 및 견적 관리 이력 ({selectedItem.submissionHistory.length}건)</span>
-                        <span className="text-[10px] text-zinc-400 font-normal">과거 제출 이력</span>
-                      </div>
-                      <div className="space-y-1.5 max-h-36 overflow-y-auto pr-1">
-                        {selectedItem.submissionHistory.map((hist) => (
-                          <div key={hist.id} className="p-2 rounded bg-white border border-purple-100 shadow-2xs text-[11px]">
-                            <div className="flex items-center justify-between mb-1">
-                              <div className="flex items-center gap-1.5">
-                                <span className={`px-1.5 py-0.2 rounded text-[10px] font-bold ${
-                                  hist.submissionType === "수정 제출" ? "bg-amber-100 text-amber-800" : "bg-blue-100 text-blue-800"
-                                }`}>
-                                  [{hist.revisionNo}차] {hist.submissionType}
+                  {/* 과거 메모 및 견적 제출 이력 - 철저히 자사(currentVendor) 이력만 격리 필터링 */}
+                  {(() => {
+                    const myHistory = (selectedItem.submissionHistory || []).filter((hist) => 
+                      isMatchingVendor(hist.author, currentVendor)
+                    );
+                    if (myHistory.length === 0) return null;
+
+                    return (
+                      <div className="mt-2 pt-2 border-t border-purple-200/80">
+                        <div className="text-[11px] font-bold text-purple-900 mb-1.5 flex items-center justify-between">
+                          <span>[{currentVendor}] 제출 메모 및 견적 관리 이력 ({myHistory.length}건)</span>
+                          <span className="text-[10px] text-zinc-400 font-normal">자사 과거 제출 이력</span>
+                        </div>
+                        <div className="space-y-1.5 max-h-36 overflow-y-auto pr-1">
+                          {myHistory.map((hist) => (
+                            <div key={hist.id} className="p-2 rounded bg-white border border-purple-100 shadow-2xs text-[11px]">
+                              <div className="flex items-center justify-between mb-1">
+                                <div className="flex items-center gap-1.5">
+                                  <span className={`px-1.5 py-0.2 rounded text-[10px] font-bold ${
+                                    hist.submissionType === "수정 제출" ? "bg-amber-100 text-amber-800" : "bg-blue-100 text-blue-800"
+                                  }`}>
+                                    [{hist.revisionNo}차] {hist.submissionType}
+                                  </span>
+                                  <span className="font-bold text-zinc-800">{hist.author}</span>
+                                  <span className="text-zinc-400 font-mono text-[10px]">{hist.submittedAt}</span>
+                                </div>
+                                <div className="font-mono font-bold text-purple-700">
+                                  {hist.amountWon.toLocaleString()}원
+                                  {hist.availableMfgDays && <span className="text-zinc-500 font-normal ml-1">({hist.availableMfgDays}일)</span>}
+                                </div>
+                              </div>
+                              <div className="bg-zinc-50 p-1.5 rounded text-zinc-700 whitespace-pre-wrap">
+                                {hist.memo}
+                              </div>
+                              <div className="mt-1 flex items-center justify-between text-[10px] text-zinc-400">
+                                <span className="flex items-center gap-1">
+                                  <FileSpreadsheet className="h-3 w-3 text-emerald-600" />
+                                  당시 파일: <b className="text-zinc-600">{hist.fileName}</b> {hist.fileSize && `(${hist.fileSize})`}
                                 </span>
-                                <span className="font-bold text-zinc-800">{hist.author}</span>
-                                <span className="text-zinc-400 font-mono text-[10px]">{hist.submittedAt}</span>
-                              </div>
-                              <div className="font-mono font-bold text-purple-700">
-                                {hist.amountWon.toLocaleString()}원
-                                {hist.availableMfgDays && <span className="text-zinc-500 font-normal ml-1">({hist.availableMfgDays}일)</span>}
-                              </div>
-                            </div>
-                            <div className="bg-zinc-50 p-1.5 rounded text-zinc-700 whitespace-pre-wrap">
-                              {hist.memo}
-                            </div>
-                            <div className="mt-1 flex items-center justify-between text-[10px] text-zinc-400">
-                              <span className="flex items-center gap-1">
-                                <FileSpreadsheet className="h-3 w-3 text-emerald-600" />
-                                당시 파일: <b className="text-zinc-600">{hist.fileName}</b> {hist.fileSize && `(${hist.fileSize})`}
-                              </span>
-                              <div className="flex items-center gap-2">
-                                {hist.fileName && (
-                                  <button
-                                    type="button"
-                                    onClick={() => triggerActualFileDownload(hist.fileName, hist.id, hist.downloadUrl, hist.fileUrl)}
-                                    className="text-purple-600 hover:text-purple-800 underline font-semibold flex items-center gap-0.5"
-                                  >
-                                    <Download className="h-2.5 w-2.5" />
-                                    다운로드
-                                  </button>
-                                )}
-                                <span className="text-purple-600">관리 이력</span>
+                                <div className="flex items-center gap-2">
+                                  {hist.fileName && (
+                                    <button
+                                      type="button"
+                                      onClick={() => triggerActualFileDownload(hist.fileName, hist.id, hist.downloadUrl, hist.fileUrl)}
+                                      className="text-purple-600 hover:text-purple-800 underline font-semibold flex items-center gap-0.5"
+                                    >
+                                      <Download className="h-2.5 w-2.5" />
+                                      다운로드
+                                    </button>
+                                  )}
+                                  <span className="text-purple-600">관리 이력</span>
+                                </div>
                               </div>
                             </div>
-                          </div>
-                        ))}
+                          ))}
+                        </div>
                       </div>
-                    </div>
-                  )}
+                    );
+                  })()}
                 </div>
 
                 <div>
@@ -1517,35 +1524,46 @@ export default function VendorMoldQuotationPage() {
                 );
               })()}
 
-              {/* 일반 메모 및 협의 이력 */}
-              <div className="border rounded-md p-3 flex flex-col gap-2">
-                <div className="font-bold text-zinc-800 flex items-center gap-1 pb-1 border-b">
-                  <MessageSquare className="h-3.5 w-3.5 text-purple-600" />
-                  <span>협의 메모 이력 ({selectedItem.memos.length})</span>
-                </div>
-                <div className="flex items-start gap-1.5 bg-zinc-50 p-2 rounded-md border">
-                  <textarea 
-                    value={newComment}
-                    onChange={(e) => setNewComment(e.target.value)}
-                    placeholder="MPSI에 전달할 문의 또는 협의 내용을 입력하세요..."
-                    className="w-full h-12 p-1.5 text-xs bg-white border rounded resize-none"
-                  />
-                  <Button onClick={handleAddComment} size="xs" className="h-12 px-3 bg-purple-600 hover:bg-purple-700 text-white text-xs">
-                    등록
-                  </Button>
-                </div>
-                <div className="flex flex-col gap-1.5 max-h-32 overflow-y-auto">
-                  {selectedItem.memos.map((m) => (
-                    <div key={m.id} className="p-2 rounded border bg-zinc-50 text-xs">
-                      <div className="flex items-center justify-between font-bold mb-0.5">
-                        <span className="text-purple-700">{m.author}</span>
-                        <span className="text-[10px] text-zinc-400">{m.createdAt}</span>
-                      </div>
-                      <p>{m.content}</p>
+              {/* 일반 메모 및 협의 이력 - MPSI 및 자사 작성 메모만 필터링 (타사 메모 비노출) */}
+              {(() => {
+                const visibleMemos = (selectedItem.memos || []).filter((m) => 
+                  m.author.includes("MPSI") || isMatchingVendor(m.author, currentVendor)
+                );
+                return (
+                  <div className="border rounded-md p-3 flex flex-col gap-2">
+                    <div className="font-bold text-zinc-800 flex items-center gap-1 pb-1 border-b">
+                      <MessageSquare className="h-3.5 w-3.5 text-purple-600" />
+                      <span>협의 메모 이력 ({visibleMemos.length})</span>
                     </div>
-                  ))}
-                </div>
-              </div>
+                    <div className="flex items-start gap-1.5 bg-zinc-50 p-2 rounded-md border">
+                      <textarea 
+                        value={newComment}
+                        onChange={(e) => setNewComment(e.target.value)}
+                        placeholder="MPSI에 전달할 문의 또는 협의 내용을 입력하세요..."
+                        className="w-full h-12 p-1.5 text-xs bg-white border rounded resize-none"
+                      />
+                      <Button onClick={handleAddComment} size="xs" className="h-12 px-3 bg-purple-600 hover:bg-purple-700 text-white text-xs">
+                        등록
+                      </Button>
+                    </div>
+                    <div className="flex flex-col gap-1.5 max-h-32 overflow-y-auto">
+                      {visibleMemos.length === 0 ? (
+                        <div className="p-2 text-center text-zinc-400 text-xs">등록된 협의 메모가 없습니다.</div>
+                      ) : (
+                        visibleMemos.map((m) => (
+                          <div key={m.id} className="p-2 rounded border bg-zinc-50 text-xs">
+                            <div className="flex items-center justify-between font-bold mb-0.5">
+                              <span className={m.author.includes("MPSI") ? "text-purple-700 font-bold" : "text-zinc-800"}>{m.author}</span>
+                              <span className="text-[10px] text-zinc-400">{m.createdAt}</span>
+                            </div>
+                            <p>{m.content}</p>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
 
             <div className="px-4 py-3 bg-zinc-50 border-t flex justify-end">
