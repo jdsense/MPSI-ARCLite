@@ -45,27 +45,32 @@ function mapRowToProject(row: any): any {
     ? formatDateOnly(row.ExpectedEndDate)
     : noteObj.targetMassDate || '';
 
+  const isPromotedFromQuote = Boolean(noteObj.isPromotedFromQuote);
+  const isRegistrationCompleted = Boolean(noteObj.isRegistrationCompleted);
+
   return {
     id: Number(row.ProjectMasterSequenceNo),
     projectNo: projectNo,
     estimateNo: row.SalesDocumentNumber || noteObj.estimateNo || `EST-${projectNo}`,
     projectName: noteObj.projectName || row.ProjectName || '',
     productName: noteObj.productName || row.ProjectName || '',
-    customerName: noteObj.customerName || noteObj.customer || row.PersonInChargeID || '현대자동차',
+    customerName: noteObj.customerName || noteObj.customer || row.PersonInChargeID || '고객사',
     partNo: row.ItemID || noteObj.partNo || '',
-    moldNo: noteObj.moldNo || `${projectNo}M`,
-    moldDegree: noteObj.moldDegree || 'M1',
+    moldNo: noteObj.moldNo !== undefined ? noteObj.moldNo : '',
+    moldDegree: noteObj.moldDegree !== undefined ? noteObj.moldDegree : '',
     changeType: row.DivisionID || noteObj.changeType || 'N001',
 
+    isPromotedFromQuote,
+    isRegistrationCompleted,
     isContractConfirmed: noteObj.isContractConfirmed !== undefined ? noteObj.isContractConfirmed : true,
     isQuotePending: noteObj.isQuotePending !== undefined ? noteObj.isQuotePending : false,
     quotationStatus: noteObj.quotationStatus || undefined,
-    stepNameCustom: noteObj.stepNameCustom || undefined,
+    stepNameCustom: noteObj.stepNameCustom || '',
 
     moldProductionType: noteObj.moldProductionType || row.ResponsibleDepartmentID || 'OUTSOURCING',
-    moldVendor: noteObj.moldVendor || '우성정공(주)',
+    moldVendor: noteObj.moldVendor !== undefined ? noteObj.moldVendor : '',
     massProductionType: noteObj.massProductionType || 'OUTSOURCING',
-    massVendor: noteObj.massVendor || '(주)뉴몰드',
+    massVendor: noteObj.massVendor !== undefined ? noteObj.massVendor : '',
 
     cavity: noteObj.cavity || '',
     material: noteObj.material || '',
@@ -435,8 +440,8 @@ export async function POST(request: NextRequest) {
     const customerName = body.customerName || body.customer || '고객사';
     const estimateNo = body.estimateNo || `Q26000-01`;
     const partNo = body.partNo || '';
-    const moldNo = body.moldNo || `${projectNo}M`;
-    const moldDegree = body.moldDegree || 'M1';
+    const moldNo = body.moldNo !== undefined ? body.moldNo : '';
+    const moldDegree = body.moldDegree !== undefined ? body.moldDegree : '';
     const changeType = body.changeType || 'N001';
 
     const orderDate = isValidDate(body.orderDate) ? new Date(body.orderDate) : null;
@@ -459,33 +464,35 @@ export async function POST(request: NextRequest) {
       moldNo,
       moldDegree,
       changeType,
+      isPromotedFromQuote: Boolean(body.isPromotedFromQuote),
+      isRegistrationCompleted: Boolean(body.isRegistrationCompleted),
       moldProductionType: body.moldProductionType || 'OUTSOURCING',
-      moldVendor: body.moldVendor || '우성정공(주)',
+      moldVendor: body.moldVendor !== undefined ? body.moldVendor : '',
       massProductionType: body.massProductionType || 'OUTSOURCING',
-      massVendor: body.massVendor || '(주)뉴몰드',
-      cavity: body.cavity || '1*2 Cavity',
-      material: body.material || 'NAK80 / PP',
-      partWeight: body.partWeight || '420g',
-      annualVolume: body.annualVolume || 50000,
-      machineTon: body.machineTon || '650T',
-      hrsSpec: body.hrsSpec || '밸브게이트 2-Drop',
-      moldMaterial: body.moldMaterial || 'NAK80',
-      resinSpec: body.resinSpec || 'PP-EPDM',
-      warrantyShots: body.warrantyShots || 500000,
+      massVendor: body.massVendor !== undefined ? body.massVendor : '',
+      cavity: body.cavity !== undefined ? body.cavity : '',
+      material: body.material !== undefined ? body.material : '',
+      partWeight: body.partWeight !== undefined ? body.partWeight : '',
+      annualVolume: body.annualVolume !== undefined ? body.annualVolume : '',
+      machineTon: body.machineTon !== undefined ? body.machineTon : '',
+      hrsSpec: body.hrsSpec !== undefined ? body.hrsSpec : '',
+      moldMaterial: body.moldMaterial !== undefined ? body.moldMaterial : '',
+      resinSpec: body.resinSpec !== undefined ? body.resinSpec : '',
+      warrantyShots: body.warrantyShots !== undefined ? body.warrantyShots : '',
       registeredDate: body.registeredDate || new Date().toISOString().split('T')[0],
-      quoteSubmitDate: body.quoteSubmitDate || body.registeredDate,
+      quoteSubmitDate: body.quoteSubmitDate || '',
       orderDate: body.orderDate || '',
       kickoffDate: body.kickoffDate || '',
-      targetMoldDays: body.targetMoldDays || 45,
+      targetMoldDays: body.targetMoldDays || '',
       targetT1Date: body.targetT1Date || '',
       actualT1Date: body.actualT1Date || '',
       moldDeliveryDate: body.moldDeliveryDate || '',
       targetMassDate: body.targetMassDate || '',
       massStartDate: body.massStartDate || '',
       currentStep: body.currentStep !== undefined ? Number(body.currentStep) : 0,
-      stepStatus: body.stepStatus || '진행중',
-      stepNameCustom: body.stepNameCustom,
-      trialDegree: body.trialDegree || 'T1 대기',
+      stepStatus: body.stepStatus || '',
+      stepNameCustom: body.stepNameCustom || '',
+      trialDegree: body.trialDegree || '',
       trialCompletionRate: body.trialCompletionRate || 0,
       facilityEvent: body.facilityEvent || '가동대기',
       orderQty: body.orderQty || 0,

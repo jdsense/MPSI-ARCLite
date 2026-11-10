@@ -3880,21 +3880,22 @@ export default function ProjectStatus13StepsPage() {
                     <label className="block text-zinc-600 dark:text-zinc-400 mb-1 font-bold flex items-center justify-between">
                       <span>금형번호 / 금형차수</span>
                       <span className="text-[10px] text-purple-700 font-mono font-bold bg-purple-50 px-1.5 py-0.2 rounded border border-purple-200">
-                        {editFormState.moldDegree || "M1"}
+                        {editFormState.moldDegree || "미지정"}
                       </span>
                     </label>
                     <div className="flex items-center gap-1.5">
                       <Input 
                         value={editFormState.moldNo || ""} 
                         onChange={(e) => setEditFormState({ ...editFormState, moldNo: e.target.value })}
-                        placeholder="예: MI26001M"
+                        placeholder="예: MI26001M (미지정 가능)"
                         className="h-7 text-xs bg-white font-mono flex-1 font-bold"
                       />
                       <select
-                        value={editFormState.moldDegree || "M1"}
+                        value={editFormState.moldDegree || ""}
                         onChange={(e) => setEditFormState({ ...editFormState, moldDegree: e.target.value })}
-                        className="h-7 w-20 rounded border border-purple-300 bg-purple-50 text-purple-800 font-bold px-1 text-xs"
+                        className="h-7 w-24 rounded border border-purple-300 bg-purple-50 text-purple-800 font-bold px-1 text-xs"
                       >
+                        <option value="">- 미지정 -</option>
                         <option value="M1">M1 (1차)</option>
                         <option value="M2">M2 (2차/증설)</option>
                         <option value="M3">M3 (3차/증설)</option>
@@ -3973,10 +3974,11 @@ export default function ProjectStatus13StepsPage() {
                       <div className="pt-1">
                         <label className="block text-[10px] text-zinc-500 mb-0.5">금형제작 외주업체 선택</label>
                         <select 
-                          value={editFormState.moldVendor || MOLD_VENDOR_LIST[0].name}
+                          value={editFormState.moldVendor || ""}
                           onChange={(e) => setEditFormState({ ...editFormState, moldVendor: e.target.value })}
                           className="h-7 w-full rounded border bg-white dark:bg-zinc-900 px-2 text-xs font-bold text-purple-800"
                         >
+                          <option value="">미지정 (외주업체 선택)</option>
                           {MOLD_VENDOR_LIST.map((v) => (
                             <option key={v.id} value={v.name}>{v.name} ({v.manager})</option>
                           ))}
@@ -4016,10 +4018,11 @@ export default function ProjectStatus13StepsPage() {
                       <div className="pt-1">
                         <label className="block text-[10px] text-zinc-500 mb-0.5">사출양산 외주업체 선택</label>
                         <select 
-                          value={editFormState.massVendor || MASS_VENDOR_LIST[0].name}
+                          value={editFormState.massVendor || ""}
                           onChange={(e) => setEditFormState({ ...editFormState, massVendor: e.target.value })}
                           className="h-7 w-full rounded border bg-white dark:bg-zinc-900 px-2 text-xs font-bold text-emerald-800"
                         >
+                          <option value="">미지정 (외주업체 선택)</option>
                           {MASS_VENDOR_LIST.map((v) => (
                             <option key={v.id} value={v.name}>{v.name} ({v.manager})</option>
                           ))}
