@@ -652,14 +652,19 @@ export default function QuotationPage() {
     }
   };
 
-  // 수주확정 견적 ➔ 프로젝트 승격 핸들러 (Q26001-01 ➔ MI26001-01)
+  // 수주확정 견적 ➔ 프로젝트 승격 핸들러 (Q26005-01 ➔ MI26005P0)
   const handlePromoteToProject = (item: PrimeQuotationItem) => {
-    // 5. 프로젝트 승격이 되면, 견적번호 시작문자가 "Q"에서 "MI"로 변경되어야 한다
-    const officialPjtNo = item.quotationNo.toUpperCase().startsWith("Q")
-      ? item.quotationNo.replace(/^Q/i, "MI")
-      : (item.quotationNo.toUpperCase().startsWith("M") ? item.quotationNo : `MI${item.quotationNo}`);
+    // 5. 프로젝트 승격이 되면, 견적번호 시작문자가 "Q"에서 "MI"로 변경되고 뒤의 차수(-01 등)는 "P0"로 전환된다 (예: Q26005-01 -> MI26005P0)
+    const withoutDash = item.quotationNo.trim().replace(/-[a-zA-Z0-9]+$/, "");
+    let officialPjtNo = withoutDash.toUpperCase().startsWith("Q")
+      ? withoutDash.replace(/^Q/i, "MI")
+      : (withoutDash.toUpperCase().startsWith("M") ? withoutDash : `MI${withoutDash}`);
 
-    if (!confirm(`[프로젝트 승격 확인]\n\n견적 [${item.quotationNo}] 건을 정식 프로젝트 [${officialPjtNo}]로 승격하시겠습니까?\n\n승격 시:\n1) 견적 상태가 '프로젝트 승격'으로 전환됩니다.\n2) 견적번호 시작문자가 'Q'에서 'MI'(${officialPjtNo})로 변경됩니다.\n3) 프로젝트 관리대장에 자동 등록되어 외주처/생산 사양을 확정할 수 있습니다.`)) {
+    if (!/P\d+$/i.test(officialPjtNo)) {
+      officialPjtNo = `${officialPjtNo}P0`;
+    }
+
+    if (!confirm(`[프로젝트 승격 확인]\n\n견적 [${item.quotationNo}] 건을 정식 프로젝트 [${officialPjtNo}]로 승격하시겠습니까?\n\n승격 시:\n1) 견적 상태가 '프로젝트 승격'으로 전환됩니다.\n2) 견적번호가 '${item.quotationNo}'에서 정식 프로젝트번호 '${officialPjtNo}'로 변경됩니다.\n3) 프로젝트 관리대장에 자동 등록되어 외주처/생산 사양을 확정할 수 있습니다.`)) {
       return;
     }
 
