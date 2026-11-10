@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { CurrencyInput } from "@/components/ui/currency-input";
 import { DateRangeFilter, isWithinDateRange, DatePresetType } from "@/components/common/date-range-filter";
 import { useProjectMaster } from "@/lib/project-store";
 
@@ -1769,12 +1770,11 @@ export default function QuotationPage() {
                 </div>
                 <div>
                   <label className="text-zinc-600 font-medium block mb-0.5">금형 견적가 (원) <span className="text-[10px] text-sky-600 font-bold">[일회성 투자비]</span></label>
-                  <Input 
-                    type="number"
-                    value={newForm.moldEstimateWon || ""}
-                    onChange={(e) => setNewForm({ ...newForm, moldEstimateWon: Number(e.target.value) })}
+                  <CurrencyInput 
+                    value={newForm.moldEstimateWon}
+                    onChange={(val) => setNewForm({ ...newForm, moldEstimateWon: val })}
                     placeholder="0"
-                    className="h-7 text-xs font-mono text-right font-bold text-sky-700"
+                    className="h-7 text-xs font-mono text-right font-bold text-sky-700 bg-white"
                   />
                 </div>
                 <div>
@@ -1849,12 +1849,11 @@ export default function QuotationPage() {
                       {/* 개당 단가 */}
                       <div className="col-span-2">
                         <div className="relative">
-                          <Input
-                            type="number"
-                            value={item.unitPriceWon || ""}
-                            onChange={(e) => handleUpdatePartPriceRow(item.id, { unitPriceWon: Number(e.target.value) })}
+                          <CurrencyInput
+                            value={item.unitPriceWon}
+                            onChange={(val) => handleUpdatePartPriceRow(item.id, { unitPriceWon: val })}
                             placeholder="단가(원)"
-                            className="h-6 text-[11px] font-mono text-right pr-4 font-bold text-emerald-700"
+                            className="h-6 text-[11px] font-mono text-right pr-4 font-bold text-emerald-700 bg-white"
                           />
                           <span className="absolute right-1 top-1 text-[9px] text-zinc-400 pointer-events-none">원</span>
                         </div>

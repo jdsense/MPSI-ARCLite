@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { CurrencyInput } from "@/components/ui/currency-input";
 import { DateRangeFilter, isWithinDateRange } from "@/components/common/date-range-filter";
 
 // 1. 품목 구분 타입 (8/14 엑셀 시트 8대 품목 마스터 기준)
@@ -659,10 +660,10 @@ export default function PurchaseProcurementPage() {
                   </div>
                   <div>
                     <label className="block text-zinc-600 mb-1 font-bold">확정 단가 (원)</label>
-                    <Input 
-                      type="number"
-                      value={formState.unitPrice || 0} 
-                      onChange={(e) => setFormState({ ...formState, unitPrice: Number(e.target.value) })}
+                    <CurrencyInput 
+                      value={formState.unitPrice} 
+                      onChange={(val) => setFormState({ ...formState, unitPrice: val })}
+                      placeholder="0"
                       className="h-7 text-xs bg-white font-mono text-right"
                     />
                   </div>

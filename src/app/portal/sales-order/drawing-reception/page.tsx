@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { CurrencyInput } from "@/components/ui/currency-input";
 import { DateRangeFilter, isWithinDateRange, DatePresetType } from "@/components/common/date-range-filter";
 import { FileUploader } from "@/components/common/file-uploader";
 
@@ -1161,10 +1162,10 @@ export default function SalesOrderDrawingReceptionPage() {
                   </div>
                   <div>
                     <label className="block text-zinc-700 dark:text-zinc-300 font-bold mb-1">수주 단가 (@원)*</label>
-                    <Input 
-                      type="number"
+                    <CurrencyInput 
                       value={formState.unitPrice || 0} 
-                      onChange={(e) => handleQtyPriceChange(Number(formState.orderQty || 0), Number(e.target.value))}
+                      onChange={(val) => handleQtyPriceChange(Number(formState.orderQty || 0), val)}
+                      placeholder="0"
                       className="h-7 text-xs font-mono font-bold text-right bg-white dark:bg-zinc-900 border-sky-300"
                     />
                   </div>

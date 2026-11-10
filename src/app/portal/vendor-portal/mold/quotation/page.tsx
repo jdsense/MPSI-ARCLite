@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { CurrencyInput } from "@/components/ui/currency-input";
 import { DateRangeFilter, isWithinDateRange, DatePresetType } from "@/components/common/date-range-filter";
 import { useAuthRole } from "@/lib/role-store";
 import { 
@@ -928,12 +929,11 @@ export default function VendorMoldQuotationPage() {
                     <label className="text-zinc-600 dark:text-zinc-400 text-[11px] font-medium block mb-1">
                       재료비 (원)
                     </label>
-                    <Input 
-                      type="number"
-                      value={submitForm.materialCostWon || ""}
-                      onChange={(e) => handleUpdateCost("materialCostWon", Number(e.target.value))}
+                    <CurrencyInput 
+                      value={submitForm.materialCostWon}
+                      onChange={(val) => handleUpdateCost("materialCostWon", val)}
                       placeholder="0"
-                      className="h-7 text-xs font-mono font-bold"
+                      className="h-7 text-xs font-mono font-bold bg-white dark:bg-zinc-900"
                     />
                     <span className="text-[10px] text-zinc-400 mt-0.5 block truncate">
                       {submitForm.materialCostWon ? `${(submitForm.materialCostWon / 10000).toLocaleString()}만원` : "-"}
@@ -944,12 +944,11 @@ export default function VendorMoldQuotationPage() {
                     <label className="text-zinc-600 dark:text-zinc-400 text-[11px] font-medium block mb-1">
                       가공비 (원)
                     </label>
-                    <Input 
-                      type="number"
-                      value={submitForm.processingCostWon || ""}
-                      onChange={(e) => handleUpdateCost("processingCostWon", Number(e.target.value))}
+                    <CurrencyInput 
+                      value={submitForm.processingCostWon}
+                      onChange={(val) => handleUpdateCost("processingCostWon", val)}
                       placeholder="0"
-                      className="h-7 text-xs font-mono font-bold"
+                      className="h-7 text-xs font-mono font-bold bg-white dark:bg-zinc-900"
                     />
                     <span className="text-[10px] text-zinc-400 mt-0.5 block truncate">
                       {submitForm.processingCostWon ? `${(submitForm.processingCostWon / 10000).toLocaleString()}만원` : "-"}
@@ -960,12 +959,11 @@ export default function VendorMoldQuotationPage() {
                     <label className="text-zinc-600 dark:text-zinc-400 text-[11px] font-medium block mb-1">
                       일반관리비 및 이윤 (원)
                     </label>
-                    <Input 
-                      type="number"
-                      value={submitForm.overheadProfitWon || ""}
-                      onChange={(e) => handleUpdateCost("overheadProfitWon", Number(e.target.value))}
+                    <CurrencyInput 
+                      value={submitForm.overheadProfitWon}
+                      onChange={(val) => handleUpdateCost("overheadProfitWon", val)}
                       placeholder="0"
-                      className="h-7 text-xs font-mono font-bold"
+                      className="h-7 text-xs font-mono font-bold bg-white dark:bg-zinc-900"
                     />
                     <span className="text-[10px] text-zinc-400 mt-0.5 block truncate">
                       {submitForm.overheadProfitWon ? `${(submitForm.overheadProfitWon / 10000).toLocaleString()}만원` : "-"}
@@ -976,12 +974,11 @@ export default function VendorMoldQuotationPage() {
                     <label className="text-zinc-600 dark:text-zinc-400 text-[11px] font-medium block mb-1">
                       특수사양 (HRS포함) (원)
                     </label>
-                    <Input 
-                      type="number"
-                      value={submitForm.specialSpecWon || ""}
-                      onChange={(e) => handleUpdateCost("specialSpecWon", Number(e.target.value))}
+                    <CurrencyInput 
+                      value={submitForm.specialSpecWon}
+                      onChange={(val) => handleUpdateCost("specialSpecWon", val)}
                       placeholder="0"
-                      className="h-7 text-xs font-mono font-bold text-purple-700"
+                      className="h-7 text-xs font-mono font-bold text-purple-700 bg-white dark:bg-zinc-900"
                     />
                     <span className="text-[10px] text-zinc-400 mt-0.5 block truncate">
                       {submitForm.specialSpecWon ? `${(submitForm.specialSpecWon / 10000).toLocaleString()}만원` : "-"}

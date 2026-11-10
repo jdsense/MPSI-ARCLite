@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { CurrencyInput } from "@/components/ui/currency-input";
 import { DateRangeFilter, isWithinDateRange, DatePresetType } from "@/components/common/date-range-filter";
 import { useAuthRole } from "@/lib/role-store";
 import { 
@@ -760,40 +761,36 @@ export default function VendorMassQuotationPage() {
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                     <div>
                       <label className="text-[10.5px] text-zinc-500 block mb-1">원재료비 (원)</label>
-                      <Input
-                        type="number"
-                        value={submitForm.materialCost || ""}
-                        onChange={(e) => handleUpdateCost("materialCost", Number(e.target.value))}
-                        placeholder="예: 1600"
+                      <CurrencyInput
+                        value={submitForm.materialCost}
+                        onChange={(val) => handleUpdateCost("materialCost", val)}
+                        placeholder="예: 1,600"
                         className="h-7 text-xs font-mono font-bold bg-white dark:bg-zinc-900"
                       />
                     </div>
                     <div>
                       <label className="text-[10.5px] text-zinc-500 block mb-1">사출가공비 (원)</label>
-                      <Input
-                        type="number"
-                        value={submitForm.processingCost || ""}
-                        onChange={(e) => handleUpdateCost("processingCost", Number(e.target.value))}
+                      <CurrencyInput
+                        value={submitForm.processingCost}
+                        onChange={(val) => handleUpdateCost("processingCost", val)}
                         placeholder="예: 700"
                         className="h-7 text-xs font-mono font-bold bg-white dark:bg-zinc-900"
                       />
                     </div>
                     <div>
                       <label className="text-[10.5px] text-zinc-500 block mb-1">포장비 (원)</label>
-                      <Input
-                        type="number"
-                        value={submitForm.packagingCost || ""}
-                        onChange={(e) => handleUpdateCost("packagingCost", Number(e.target.value))}
+                      <CurrencyInput
+                        value={submitForm.packagingCost}
+                        onChange={(val) => handleUpdateCost("packagingCost", val)}
                         placeholder="예: 150"
                         className="h-7 text-xs font-mono font-bold bg-white dark:bg-zinc-900"
                       />
                     </div>
                     <div>
                       <label className="text-[10.5px] text-zinc-500 block mb-1">물류/관리비 (원)</label>
-                      <Input
-                        type="number"
-                        value={submitForm.logisticsCost || ""}
-                        onChange={(e) => handleUpdateCost("logisticsCost", Number(e.target.value))}
+                      <CurrencyInput
+                        value={submitForm.logisticsCost}
+                        onChange={(val) => handleUpdateCost("logisticsCost", val)}
                         placeholder="예: 100"
                         className="h-7 text-xs font-mono font-bold bg-white dark:bg-zinc-900"
                       />
@@ -812,10 +809,9 @@ export default function VendorMassQuotationPage() {
                     </span>
                   </div>
                   <div className="flex items-center gap-2">
-                    <Input
-                      type="number"
-                      value={submitForm.finalUnitPrice || ""}
-                      onChange={(e) => setSubmitForm({ ...submitForm, finalUnitPrice: Number(e.target.value) })}
+                    <CurrencyInput
+                      value={submitForm.finalUnitPrice}
+                      onChange={(val) => setSubmitForm({ ...submitForm, finalUnitPrice: val })}
                       className="h-7 w-28 text-right font-mono font-bold text-blue-700 text-sm bg-white"
                     />
                     <span className="font-bold text-xs text-blue-900">원 / EA</span>

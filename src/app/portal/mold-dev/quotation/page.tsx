@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { CurrencyInput } from "@/components/ui/currency-input";
 import { DateRangeFilter, isWithinDateRange, DatePresetType } from "@/components/common/date-range-filter";
 import { MOLD_VENDOR_LIST } from "@/lib/role-store";
 import { useProjectMaster } from "@/lib/project-store";
@@ -1654,12 +1655,10 @@ export default function MoldDevQuotationPage() {
                   <label className="text-zinc-700 dark:text-zinc-300 font-bold block mb-1 text-[11px]">
                     MPSI 수주 목표가 (목표 예산)
                   </label>
-                  <Input 
-                    type="number"
-                    min={0}
-                    value={newForm.targetBudgetWon || ""}
-                    onChange={(e) => setNewForm({ ...newForm, targetBudgetWon: Number(e.target.value) })}
-                    placeholder="예: 82000000"
+                  <CurrencyInput 
+                    value={newForm.targetBudgetWon}
+                    onChange={(val) => setNewForm({ ...newForm, targetBudgetWon: val })}
+                    placeholder="예: 82,000,000"
                     className="h-8 text-xs font-mono font-bold text-emerald-700 dark:text-emerald-400 bg-white dark:bg-zinc-900"
                   />
                   <p className="text-[10px] text-zinc-500 mt-1">

@@ -6,6 +6,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { CurrencyInput } from "@/components/ui/currency-input";
 import { DateRangeFilter, isWithinDateRange } from "@/components/common/date-range-filter";
 import { ProjectSelector } from "@/components/project-selector";
 import { useProjectMaster } from "@/lib/project-store";
@@ -449,11 +450,10 @@ export default function OrderStatusPage() {
 
               <div>
                 <label className="block text-[11px] font-medium text-zinc-500 mb-1">발주 금액 (원) <span className="text-red-500">*</span></label>
-                <Input 
-                  type="number"
-                  value={formData.totalAmount || ""} 
-                  onChange={(e) => setFormData({...formData, totalAmount: Number(e.target.value)})} 
-                  placeholder="숫자만 입력" 
+                <CurrencyInput 
+                  value={formData.totalAmount || 0} 
+                  onChange={(val) => setFormData({...formData, totalAmount: val})} 
+                  placeholder="0" 
                   className="h-8 text-xs font-mono" 
                 />
               </div>
