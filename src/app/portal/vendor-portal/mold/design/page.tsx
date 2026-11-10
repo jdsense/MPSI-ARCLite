@@ -964,89 +964,85 @@ export default function VendorMoldDesignPage() {
                 </div>
               </div>
 
-              {/* [Step 4] 금형 발주서(PO) 수신 확인 */}
-              <div className="border border-indigo-200 rounded-lg p-3.5 bg-indigo-50/30 space-y-2.5">
-                <div className="flex items-center justify-between pb-1 border-b border-indigo-100">
-                  <span className="font-bold text-indigo-900 flex items-center gap-1.5 text-xs">
-                    <FileSpreadsheet className="h-4 w-4 text-indigo-600" />
-                    [Step 4] MPSI 금형제작 발주서(PO) 수신 확인
-                  </span>
-                  <div>
-                    {selectedReviewItem.moldPoApproved ? (
+              {/* [Step 4] 금형 발주서(PO) 수신 확인 - MPSI가 발주서를 정식 발송(승인)하기 전까지는 협력사 화면에 노출하지 않음 */}
+              {selectedReviewItem.moldPoApproved && (
+                <div className="border border-indigo-200 rounded-lg p-3.5 bg-indigo-50/30 space-y-2.5 animate-in fade-in">
+                  <div className="flex items-center justify-between pb-1 border-b border-indigo-100">
+                    <span className="font-bold text-indigo-900 flex items-center gap-1.5 text-xs">
+                      <FileSpreadsheet className="h-4 w-4 text-indigo-600" />
+                      [Step 4] MPSI 금형제작 발주서(PO) 수신 확인
+                    </span>
+                    <div>
                       <span className="text-[10px] px-2 py-0.5 rounded font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
                         ✓ 발주서 정식 수신 완료 ({selectedReviewItem.moldPoApprovedDate || "완료"})
                       </span>
-                    ) : (
-                      <span className="text-[10px] px-2 py-0.5 rounded font-bold bg-amber-100 text-amber-800 border border-amber-300">
-                        MPSI 발주 승인 대기중
-                      </span>
-                    )}
+                    </div>
                   </div>
-                </div>
 
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 bg-white p-2.5 rounded border border-indigo-100 text-[11px]">
-                  <div>
-                    <span className="text-zinc-400 block text-[10px]">금형 PO 번호</span>
-                    <span className="font-mono font-bold text-indigo-700">
-                      {selectedReviewItem.moldPoNo || (selectedReviewItem.projectNo ? `PO-${selectedReviewItem.projectNo}` : "발주대기")}
-                    </span>
-                  </div>
-                  <div>
-                    <span className="text-zinc-400 block text-[10px]">목표 제작일수</span>
-                    <span className="font-bold text-zinc-800">
-                      {selectedReviewItem.moldPoDays || selectedReviewItem.targetMfgDays ? `${selectedReviewItem.moldPoDays || selectedReviewItem.targetMfgDays}일` : "-일"}
-                      {selectedReviewItem.targetT1Date ? ` (T1: ${selectedReviewItem.targetT1Date})` : ""}
-                    </span>
-                  </div>
-                  <div>
-                    <span className="text-zinc-400 block text-[10px]">발주 금액</span>
-                    <span className="font-mono font-bold text-zinc-900">
-                      {selectedReviewItem.moldPoAmount ? `${Number(selectedReviewItem.moldPoAmount).toLocaleString()}원` : "발주서 확인 대기"}
-                    </span>
-                  </div>
-                  <div>
-                    <span className="text-zinc-400 block text-[10px]">금형 보증 타수</span>
-                    <span className="font-bold text-zinc-800">
-                      {selectedReviewItem.moldPoShot ? `${Number(selectedReviewItem.moldPoShot).toLocaleString()} shots` : "- shots"}
-                    </span>
-                  </div>
-                </div>
-
-                {/* 첨부된 발주서 파일 다운로드 줄 */}
-                {selectedReviewItem.moldPoFile && (
-                  <div className="flex items-center justify-between px-3 py-1.5 bg-indigo-50 rounded border border-indigo-200 text-[11px]">
-                    <div className="flex items-center gap-1.5 truncate">
-                      <Paperclip className="h-3.5 w-3.5 text-indigo-600 shrink-0" />
-                      <span className="text-zinc-500 text-[10px] shrink-0 font-medium">첨부 발주서:</span>
-                      <span className="font-mono font-bold text-indigo-800 truncate" title={selectedReviewItem.moldPoFile}>
-                        {getDisplayFileName(selectedReviewItem.moldPoFile)}
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 bg-white p-2.5 rounded border border-indigo-100 text-[11px]">
+                    <div>
+                      <span className="text-zinc-400 block text-[10px]">금형 PO 번호</span>
+                      <span className="font-mono font-bold text-indigo-700">
+                        {selectedReviewItem.moldPoNo || (selectedReviewItem.projectNo ? `PO-${selectedReviewItem.projectNo}` : "발주대기")}
                       </span>
                     </div>
-                    <button
-                      onClick={() => handleDownloadFile(selectedReviewItem.moldPoFile!, `금형제작발주서_${selectedReviewItem.projectNo}.pdf`)}
-                      className="px-2 py-0.5 rounded text-[10px] bg-white hover:bg-indigo-50 text-indigo-700 border border-indigo-300 font-bold flex items-center gap-1 cursor-pointer shrink-0"
-                      title="발주서 파일 다운로드"
-                    >
-                      <Download className="h-3 w-3" />
-                      다운로드
-                    </button>
+                    <div>
+                      <span className="text-zinc-400 block text-[10px]">목표 제작일수</span>
+                      <span className="font-bold text-zinc-800">
+                        {selectedReviewItem.moldPoDays || selectedReviewItem.targetMfgDays ? `${selectedReviewItem.moldPoDays || selectedReviewItem.targetMfgDays}일` : "-일"}
+                        {selectedReviewItem.targetT1Date ? ` (T1: ${selectedReviewItem.targetT1Date})` : ""}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-zinc-400 block text-[10px]">발주 금액</span>
+                      <span className="font-mono font-bold text-zinc-900">
+                        {selectedReviewItem.moldPoAmount ? `${Number(selectedReviewItem.moldPoAmount).toLocaleString()}원` : "발주서 확인 대기"}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-zinc-400 block text-[10px]">금형 보증 타수</span>
+                      <span className="font-bold text-zinc-800">
+                        {selectedReviewItem.moldPoShot ? `${Number(selectedReviewItem.moldPoShot).toLocaleString()} shots` : "- shots"}
+                      </span>
+                    </div>
                   </div>
-                )}
 
-                <div className="flex items-center justify-end pt-1">
-                  <Button 
-                    onClick={() => {
-                      setPoModalItem(selectedReviewItem);
-                      setIsPoModalOpen(true);
-                    }}
-                    size="xs"
-                    className="h-7 px-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold"
-                  >
-                    <Paperclip className="h-3.5 w-3.5 mr-1" />
-                    금형제작 발주서(PO) 열람
-                  </Button>
+                  {/* 첨부된 발주서 파일 다운로드 줄 */}
+                  {selectedReviewItem.moldPoFile && (
+                    <div className="flex items-center justify-between px-3 py-1.5 bg-indigo-50 rounded border border-indigo-200 text-[11px]">
+                      <div className="flex items-center gap-1.5 truncate">
+                        <Paperclip className="h-3.5 w-3.5 text-indigo-600 shrink-0" />
+                        <span className="text-zinc-500 text-[10px] shrink-0 font-medium">첨부 발주서:</span>
+                        <span className="font-mono font-bold text-indigo-800 truncate" title={selectedReviewItem.moldPoFile}>
+                          {getDisplayFileName(selectedReviewItem.moldPoFile)}
+                        </span>
+                      </div>
+                      <button
+                        onClick={() => handleDownloadFile(selectedReviewItem.moldPoFile!, `금형제작발주서_${selectedReviewItem.projectNo}.pdf`)}
+                        className="px-2 py-0.5 rounded text-[10px] bg-white hover:bg-indigo-50 text-indigo-700 border border-indigo-300 font-bold flex items-center gap-1 cursor-pointer shrink-0"
+                        title="발주서 파일 다운로드"
+                      >
+                        <Download className="h-3 w-3" />
+                        다운로드
+                      </button>
+                    </div>
+                  )}
+
+                  <div className="flex items-center justify-end pt-1">
+                    <Button 
+                      onClick={() => {
+                        setPoModalItem(selectedReviewItem);
+                        setIsPoModalOpen(true);
+                      }}
+                      size="xs"
+                      className="h-7 px-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold"
+                    >
+                      <Paperclip className="h-3.5 w-3.5 mr-1" />
+                      금형제작 발주서(PO) 열람
+                    </Button>
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
 
             <div className="flex items-center justify-end px-4 py-2.5 bg-zinc-50 border-t">
