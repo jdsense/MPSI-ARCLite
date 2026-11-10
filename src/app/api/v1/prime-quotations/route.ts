@@ -512,11 +512,11 @@ export async function POST(req: NextRequest) {
   }
 }
 
-// 6. PUT: 기존 견적 수정 및 상태 전환 (프로젝트 승격 시 Q -> MI 변환 포함)
+// 6. PUT: 기존 견적 수정 및 상태 전환 (프로젝트 승격 시 Q -> MI 변환 포함, 부분 업데이트 지원)
 export async function PUT(req: NextRequest) {
   try {
     await ensureTableInitialized();
-    const body: PrimeQuotationItem & { originalQuotationNo?: string } = await req.json();
+    const body: Partial<PrimeQuotationItem> & { originalQuotationNo?: string } = await req.json();
 
     const targetQuotationNo = body.originalQuotationNo || body.quotationNo;
     if (!targetQuotationNo) {
@@ -526,23 +526,11 @@ export async function PUT(req: NextRequest) {
       );
     }
 
-    const notePayload = {
-      partPriceItems: body.partPriceItems || [],
-      quotationFiles: body.quotationFiles || [],
-      memos: body.memos || [],
-      quotationFileName: body.quotationFileName || "",
-      quotationFileSize: body.quotationFileSize || "",
-      quotationFileDate: body.quotationFileDate || "",
-      quotationFileUrl: body.quotationFileUrl || "",
-      quotationDownloadUrl: body.quotationDownloadUrl || "",
-      totalEstimateWon: body.totalEstimateWon || 0,
-    };
-
-    // ID 또는 견적번호로 검색
-    let findSql = `SELECT "PrimeQuotationSequenceNo" FROM "MpsiPrimeQuotation" WHERE "QuotationID" = $1`;
+    // ID 또는 견적번호로 기존 데이터 전체 조회 (누락된 필드가 빈 값으로 덮어써지지 않도록 병합 보장)
+    let findSql = `SELECT * FROM "MpsiPrimeQuotation" WHERE "QuotationID" = $1`;
     let findParam: any[] = [targetQuotationNo];
     if (body.id) {
-      findSql = `SELECT "PrimeQuotationSequenceNo" FROM "MpsiPrimeQuotation" WHERE "PrimeQuotationSequenceNo" = $1 OR "QuotationID" = $2`;
+      findSql = `SELECT * FROM "MpsiPrimeQuotation" WHERE "PrimeQuotationSequenceNo" = $1 OR "QuotationID" = $2`;
       findParam = [body.id, targetQuotationNo];
     }
 
@@ -555,7 +543,51 @@ export async function PUT(req: NextRequest) {
       );
     }
 
-    const seqNo = Number(existing.rows[0].PrimeQuotationSequenceNo);
+    const existingRow = existing.rows[0];
+    const seqNo = Number(existingRow.PrimeQuotationSequenceNo);
+
+    let existingNote: any = {};
+    if (existingRow.Note) {
+      try {
+        existingNote = typeof existingRow.Note === "string" ? JSON.parse(existingRow.Note) : existingRow.Note;
+      } catch {
+        existingNote = {};
+      }
+    }
+
+    // Note JSON 병합 (body에 누락된 첨부파일, 단가이력, 메모 등 보존)
+    const notePayload = {
+      ...existingNote,
+      partPriceItems: body.partPriceItems !== undefined ? body.partPriceItems : (existingNote.partPriceItems || []),
+      quotationFiles: body.quotationFiles !== undefined ? body.quotationFiles : (existingNote.quotationFiles || []),
+      memos: body.memos !== undefined ? body.memos : (existingNote.memos || []),
+      quotationFileName: body.quotationFileName !== undefined ? body.quotationFileName : (existingNote.quotationFileName || ""),
+      quotationFileSize: body.quotationFileSize !== undefined ? body.quotationFileSize : (existingNote.quotationFileSize || ""),
+      quotationFileDate: body.quotationFileDate !== undefined ? body.quotationFileDate : (existingNote.quotationFileDate || ""),
+      quotationFileUrl: body.quotationFileUrl !== undefined ? body.quotationFileUrl : (existingNote.quotationFileUrl || ""),
+      quotationDownloadUrl: body.quotationDownloadUrl !== undefined ? body.quotationDownloadUrl : (existingNote.quotationDownloadUrl || ""),
+      totalEstimateWon: body.totalEstimateWon !== undefined ? body.totalEstimateWon : (existingNote.totalEstimateWon || 0),
+    };
+
+    // 기존 컬럼 값과 body 전달 값 병합
+    const finalQuotationNo = body.quotationNo || existingRow.QuotationID;
+    const finalOfficialProjectNo = body.officialProjectNo || existingRow.OfficialProjectNo || finalQuotationNo;
+    const finalProjectNo = body.projectNo || existingRow.ProjectID || finalQuotationNo;
+    const finalProjectName = body.projectName !== undefined ? body.projectName : (existingRow.ProjectName || "");
+    const finalProductName = body.productName !== undefined ? body.productName : (existingRow.ProductName || "");
+    const finalCustomerName = body.customerName !== undefined ? body.customerName : (existingRow.CustomerName || "");
+    const finalCustomerDept = body.customerDept !== undefined ? body.customerDept : (existingRow.CustomerDept || "");
+    const finalCustomerManager = body.customerManager !== undefined ? body.customerManager : (existingRow.CustomerManager || "");
+    const finalCustomerContact = body.customerContact !== undefined ? body.customerContact : (existingRow.CustomerContact || "");
+    const finalCustomerEmail = body.customerEmail !== undefined ? body.customerEmail : (existingRow.CustomerEmail || "");
+    const finalProductionVolume = body.productionVolume !== undefined ? body.productionVolume : (existingRow.ProductionVolume || "연간 100,000대");
+    const finalMoldEstimateWon = body.moldEstimateWon !== undefined ? body.moldEstimateWon : Number(existingRow.MoldEstimateWon || 0);
+    const finalPartUnitPriceWon = body.partUnitPriceWon !== undefined ? body.partUnitPriceWon : Number(existingRow.PartUnitPriceWon || 0);
+    const finalSubmissionDeadline = body.submissionDeadline !== undefined ? (body.submissionDeadline || null) : existingRow.SubmissionDeadline;
+    const finalSubmittedDate = body.submittedDate !== undefined ? (body.submittedDate || null) : existingRow.SubmittedDate;
+    const finalStatus = body.status !== undefined ? body.status : (existingRow.QuotationStatus || "견적서작성중");
+    const finalMpsiAuthor = body.mpsiAuthor !== undefined ? body.mpsiAuthor : (existingRow.MpsiAuthor || "MPSI 영업팀");
+    const finalNotes = body.notes !== undefined ? body.notes : (existingRow.Notes || "");
 
     await query(
       `
@@ -584,24 +616,24 @@ export async function PUT(req: NextRequest) {
       WHERE "PrimeQuotationSequenceNo" = $20
     `,
       [
-        body.quotationNo,
-        body.officialProjectNo || body.projectNo,
-        body.projectNo || body.quotationNo,
-        body.projectName || "",
-        body.productName || "",
-        body.customerName || "",
-        body.customerDept || "",
-        body.customerManager || "",
-        body.customerContact || "",
-        body.customerEmail || "",
-        body.productionVolume || "연간 100,000대",
-        body.moldEstimateWon || 0,
-        body.partUnitPriceWon || 0,
-        body.submissionDeadline || null,
-        body.submittedDate || null,
-        body.status || "견적서작성중",
-        body.mpsiAuthor || "MPSI 영업팀",
-        body.notes || "",
+        finalQuotationNo,
+        finalOfficialProjectNo,
+        finalProjectNo,
+        finalProjectName,
+        finalProductName,
+        finalCustomerName,
+        finalCustomerDept,
+        finalCustomerManager,
+        finalCustomerContact,
+        finalCustomerEmail,
+        finalProductionVolume,
+        finalMoldEstimateWon,
+        finalPartUnitPriceWon,
+        finalSubmissionDeadline,
+        finalSubmittedDate,
+        finalStatus,
+        finalMpsiAuthor,
+        finalNotes,
         JSON.stringify(notePayload),
         seqNo,
       ]
@@ -609,8 +641,17 @@ export async function PUT(req: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      data: { ...body, id: seqNo },
-      message: `원청사 견적 [${body.quotationNo}] DB 업데이트 완료`,
+      message: `원청사 견적 [${finalQuotationNo}] 갱신 완료`,
+      data: {
+        id: seqNo,
+        quotationNo: finalQuotationNo,
+        officialProjectNo: finalOfficialProjectNo,
+        projectNo: finalProjectNo,
+        projectName: finalProjectName,
+        productName: finalProductName,
+        customerName: finalCustomerName,
+        status: finalStatus,
+      },
     });
   } catch (error: any) {
     console.error("[API prime-quotations PUT Error]", error);

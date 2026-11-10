@@ -716,25 +716,25 @@ export default function ProjectStatus13StepsPage() {
         isRegistrationCompleted: true, // 등록 완료 플래그
       });
 
-      // 프로젝트 번호가 변경되었거나 견적 연동이 있는 경우 원청사 견적(DB 및 스토리지) 동기화
+      // 프로젝트 번호가 변경되었을 때만 원청사 견적(DB 및 스토리지) 동기화
       if (typeof window !== "undefined") {
         try {
-          fetch("/api/v1/prime-quotations", {
-            method: "PUT",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              originalQuotationNo: originalNo,
-              quotationNo: trimmedNo,
-              officialProjectNo: trimmedNo,
-              projectNo: trimmedNo,
-              projectName: formState.projectName || "",
-              productName: formState.productName.trim(),
-              status: "프로젝트 승격",
-            }),
-          }).catch((err) => console.warn("[Project] Failed to sync quote update:", err));
+          if (trimmedNo !== originalNo) {
+            fetch("/api/v1/prime-quotations", {
+              method: "PUT",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                originalQuotationNo: originalNo,
+                quotationNo: trimmedNo,
+                officialProjectNo: trimmedNo,
+                projectNo: trimmedNo,
+                status: "프로젝트 승격",
+              }),
+            }).catch((err) => console.warn("[Project] Failed to sync quote update:", err));
+          }
 
           const rawQ = localStorage.getItem("mpsi_prime_quotations_v1");
-          if (rawQ) {
+          if (rawQ && trimmedNo !== originalNo) {
             const list = JSON.parse(rawQ);
             if (Array.isArray(list)) {
               const updatedQ = list.map((q: any) =>
