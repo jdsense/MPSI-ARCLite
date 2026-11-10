@@ -271,11 +271,11 @@ export default function VendorMoldQuotationPage() {
         processingCostWon: Number(submitForm.processingCostWon || 0),
         overheadProfitWon: Number(submitForm.overheadProfitWon || 0),
         specialSpecWon: Number(submitForm.specialSpecWon || 0),
-        machineTypeTonnage: submitForm.machineTypeTonnage,
-        coreStructure: submitForm.coreStructure,
-        moldMaterial: submitForm.moldMaterial,
-        cavity: submitForm.cavity,
-        gateType: submitForm.gateType,
+        machineTypeTonnage: selectedItem.machineTypeTonnage || submitForm.machineTypeTonnage || "",
+        coreStructure: selectedItem.coreStructure || submitForm.coreStructure || "코어삽입형",
+        moldMaterial: selectedItem.moldMaterial || submitForm.moldMaterial || selectedItem.moldSteel || "",
+        cavity: selectedItem.cavity || submitForm.cavity || "",
+        gateType: selectedItem.gateType || submitForm.gateType || "",
         quotationFileName: submitForm.quoteFileName || "",
         quotationFileSize: submitForm.quoteFileSize || "",
         quotationFileUrl: submitForm.quoteFileUrl,
@@ -811,18 +811,18 @@ export default function VendorMoldQuotationPage() {
                 </div>
               </div>
 
-              {/* 3-2. 1. 금형 및 사출기 필수 사양 (프로젝트 관리대장 연동) */}
-              <div className="border rounded-md p-3.5 bg-zinc-50/50 dark:bg-zinc-800/40">
+              {/* 3-2. 1. 금형 및 사출기 필수 사양 (MPSI 프로젝트 관리대장 지정값 - 우성정공 확인 전용) */}
+              <div className="border border-purple-200 dark:border-purple-800/80 rounded-md p-3.5 bg-purple-50/30 dark:bg-purple-950/20">
                 <div className="font-bold text-xs text-zinc-800 dark:text-zinc-200 mb-2.5 flex items-center justify-between">
                   <span className="flex items-center gap-1.5 text-purple-700 dark:text-purple-400">
                     <Wrench className="h-3.5 w-3.5" />
                     1. 금형 및 사출기 필수 사양
-                    <span className="text-[10px] font-normal text-purple-700 bg-purple-100 px-1.5 py-0.5 rounded">
-                      프로젝트 관리 대장 연동
+                    <span className="text-[10px] font-normal text-purple-700 bg-purple-100 dark:bg-purple-900/60 dark:text-purple-200 px-1.5 py-0.5 rounded">
+                      MPSI 지정 사양 (입력 불필요)
                     </span>
                   </span>
-                  <span className="text-[11px] text-zinc-400">
-                    MPSI 요청 조건 확인 및 금형처 제안 사양
+                  <span className="text-[11px] text-purple-600 dark:text-purple-300 font-medium">
+                    ※ MPSI 등록 사양 자동 연동 (금형사 입력 불필요 / 확인 전용)
                   </span>
                 </div>
                 
@@ -831,77 +831,79 @@ export default function VendorMoldQuotationPage() {
                     <label className="text-zinc-600 dark:text-zinc-400 font-medium block mb-1">
                       사출기 타입 / 톤수
                     </label>
-                    <Input 
-                      value={submitForm.machineTypeTonnage}
-                      onChange={(e) => setSubmitForm({ ...submitForm, machineTypeTonnage: e.target.value })}
-                      placeholder="예: 전동식 550T"
-                      className="h-7 text-xs bg-white dark:bg-zinc-900"
-                    />
+                    <div 
+                      className="h-7 px-2.5 flex items-center rounded border border-purple-200 bg-white dark:bg-zinc-900 text-purple-900 dark:text-purple-200 font-mono font-bold text-xs shadow-2xs"
+                      title="MPSI에서 지정 배포한 사출기 조건 (수정 불가)"
+                    >
+                      {selectedItem.machineTypeTonnage || submitForm.machineTypeTonnage || "-"}
+                    </div>
                   </div>
+
                   <div>
                     <label className="text-zinc-600 dark:text-zinc-400 font-medium block mb-1">
                       원판일체형 / 코어삽입형
                     </label>
-                    <select
-                      value={submitForm.coreStructure}
-                      onChange={(e) => setSubmitForm({ ...submitForm, coreStructure: e.target.value })}
-                      className="h-7 w-full rounded border bg-white dark:bg-zinc-900 px-2 text-xs font-medium"
+                    <div 
+                      className="h-7 px-2.5 flex items-center rounded border border-purple-200 bg-white dark:bg-zinc-900 text-zinc-800 dark:text-zinc-200 font-semibold text-xs shadow-2xs"
+                      title="MPSI에서 지정한 원판/코어 구조"
                     >
-                      <option value="">선택</option>
-                      <option value="코어삽입형">코어삽입형 (Core Insert)</option>
-                      <option value="원판일체형">원판일체형 (Integrated Plate)</option>
-                    </select>
+                      {selectedItem.coreStructure || submitForm.coreStructure || "코어삽입형 (Core Insert)"}
+                    </div>
                   </div>
+
                   <div>
                     <label className="text-zinc-600 dark:text-zinc-400 font-medium block mb-1">
                       금형 재질 (상하원판 / 메인코어)
                     </label>
-                    <Input 
-                      value={submitForm.moldMaterial}
-                      onChange={(e) => setSubmitForm({ ...submitForm, moldMaterial: e.target.value })}
-                      placeholder="예: 상하원판: S55C / 메인코어: HP4M"
-                      className="h-7 text-xs bg-white dark:bg-zinc-900"
-                    />
+                    <div 
+                      className="h-7 px-2.5 flex items-center rounded border border-purple-200 bg-white dark:bg-zinc-900 text-zinc-800 dark:text-zinc-200 font-semibold text-xs truncate shadow-2xs"
+                      title={selectedItem.moldMaterial || submitForm.moldMaterial || selectedItem.moldSteel || "-"}
+                    >
+                      {selectedItem.moldMaterial || submitForm.moldMaterial || selectedItem.moldSteel || "-"}
+                    </div>
                   </div>
+
                   <div>
                     <label className="text-zinc-600 dark:text-zinc-400 font-medium block mb-1">
                       캐비티 구성 (Cavity)
                     </label>
-                    <Input 
-                      value={submitForm.cavity}
-                      onChange={(e) => setSubmitForm({ ...submitForm, cavity: e.target.value })}
-                      placeholder="예: 1 X 2"
-                      className="h-7 text-xs bg-white dark:bg-zinc-900 font-semibold"
-                    />
+                    <div 
+                      className="h-7 px-2.5 flex items-center rounded border border-purple-200 bg-white dark:bg-zinc-900 text-purple-900 dark:text-purple-200 font-mono font-bold text-xs shadow-2xs"
+                      title="MPSI 지정 캐비티 구성"
+                    >
+                      {selectedItem.cavity || submitForm.cavity || "-"}
+                    </div>
                   </div>
+
                   <div className="sm:col-span-2">
                     <label className="text-zinc-600 dark:text-zinc-400 font-medium block mb-1">
                       게이트 타입 (GATE 형식)
                     </label>
-                    <Input 
-                      value={submitForm.gateType}
-                      onChange={(e) => setSubmitForm({ ...submitForm, gateType: e.target.value })}
-                      placeholder="예: Pin Point Gate"
-                      className="h-7 text-xs bg-white dark:bg-zinc-900 font-semibold"
-                    />
+                    <div 
+                      className="h-7 px-2.5 flex items-center rounded border border-purple-200 bg-white dark:bg-zinc-900 text-zinc-800 dark:text-zinc-200 font-semibold text-xs truncate shadow-2xs"
+                      title={selectedItem.gateType || submitForm.gateType || "-"}
+                    >
+                      {selectedItem.gateType || submitForm.gateType || "-"}
+                    </div>
                   </div>
 
-                  {/* 3-2. 프로젝트 정보 연동 추가 항목: 목표 CT & 금형출하 납기 */}
+                  {/* 프로젝트 정보 연동 항목: 목표 CT & 금형출하 납기 */}
                   <div>
                     <label className="text-purple-900 dark:text-purple-300 font-bold block mb-1 flex items-center justify-between">
                       <span>목표 CT</span>
-                      <span className="text-[10px] text-purple-600 bg-purple-100 px-1 py-0.2 rounded font-normal">프로젝트 연동</span>
+                      <span className="text-[10px] text-purple-600 bg-purple-100 dark:bg-purple-900/60 dark:text-purple-300 px-1 py-0.2 rounded font-normal">MPSI 기준</span>
                     </label>
-                    <div className="h-7 px-2.5 flex items-center rounded border border-purple-200 bg-purple-50/70 dark:bg-purple-950/40 text-purple-900 dark:text-purple-200 font-mono font-bold text-xs">
+                    <div className="h-7 px-2.5 flex items-center rounded border border-purple-200 bg-white dark:bg-zinc-900 text-purple-900 dark:text-purple-200 font-mono font-bold text-xs shadow-2xs">
                       {selectedItem.targetCycleTime ? `${selectedItem.targetCycleTime} 초` : "-"}
                     </div>
                   </div>
+
                   <div className="sm:col-span-2">
                     <label className="text-purple-900 dark:text-purple-300 font-bold block mb-1 flex items-center justify-between">
                       <span>금형출하 납기 (출고 납기)</span>
-                      <span className="text-[10px] text-purple-600 bg-purple-100 px-1 py-0.2 rounded font-normal">프로젝트 연동</span>
+                      <span className="text-[10px] text-purple-600 bg-purple-100 dark:bg-purple-900/60 dark:text-purple-300 px-1 py-0.2 rounded font-normal">MPSI 기준</span>
                     </label>
-                    <div className="h-7 px-2.5 flex items-center justify-between rounded border border-purple-200 bg-purple-50/70 dark:bg-purple-950/40 text-purple-900 dark:text-purple-200 font-mono font-bold text-xs">
+                    <div className="h-7 px-2.5 flex items-center justify-between rounded border border-purple-200 bg-white dark:bg-zinc-900 text-purple-900 dark:text-purple-200 font-mono font-bold text-xs shadow-2xs">
                       <span>{selectedItem.moldDeliveryDate || "-"}</span>
                       <span className="text-[10.5px] text-zinc-500 font-normal font-sans">(금형 승인 및 양산처 이관일)</span>
                     </div>
