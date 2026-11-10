@@ -622,7 +622,7 @@ export default function QuotationPage() {
     setNewForm((prev) => ({
       ...prev,
       productName: pName,
-      projectName: prev.projectName || found?.defaultProject || `${pName} 프로젝트`,
+      // 사용자 요청: 견적명(projectName) 자동 바인딩 제거 (사용자 직접 입력 유지)
       partPriceItems: isLH_RH
         ? [
             {
@@ -1139,6 +1139,34 @@ export default function QuotationPage() {
     }
   };
 
+  // 원청사 견적 삭제 핸들러 (화면 + PostgreSQL DB 영구 삭제)
+  const handleDeleteQuotation = async (item: PrimeQuotationItem) => {
+    if (
+      !confirm(
+        `[원청사 견적 삭제 확인]\n\n견적번호: [${item.quotationNo}]\n원청사: ${item.customerName}\n견적명: ${item.projectName || item.productName}\n\n해당 견적 데이터를 정말로 삭제하시겠습니까?\n(PostgreSQL DB 및 로컬 저장소에서 영구 삭제됩니다.)`
+      )
+    ) {
+      return;
+    }
+
+    // 1. 화면 및 로컬 상태 삭제
+    setData((prev) => prev.filter((q) => q.id !== item.id && q.quotationNo !== item.quotationNo));
+    if (selectedItem?.id === item.id) {
+      setSelectedItem(null);
+      setIsDetailModalOpen(false);
+    }
+
+    // 2. PostgreSQL DB 삭제 API 호출
+    try {
+      await fetch(
+        `/api/v1/prime-quotations?id=${item.id}&quotationNo=${encodeURIComponent(item.quotationNo)}`,
+        { method: "DELETE" }
+      );
+    } catch (e) {
+      console.error("[PrimeQuotation] Delete DB Error:", e);
+    }
+  };
+
   // 검색 필터링
   const filtered = data.filter((item) => {
     const matchKey = filterKeyword
@@ -1345,7 +1373,7 @@ export default function QuotationPage() {
                 <th className="p-1.5 border-r border-slate-600 min-w-[130px]">견적번호 (PJT 번호)</th>
                 <th className="p-1.5 border-r border-slate-600 min-w-[140px]">원청사</th>
                 <th className="p-1.5 border-r border-slate-600 min-w-[100px]">원청사 담당자</th>
-                <th className="p-1.5 border-r border-slate-600 min-w-[130px]">차종/프로젝트</th>
+                <th className="p-1.5 border-r border-slate-600 min-w-[130px]">견적명</th>
                 <th className="p-1.5 border-r border-slate-600 min-w-[160px]">제품명</th>
                 <th className="p-1.5 border-r border-slate-600 min-w-[105px] text-right">금형 견적가</th>
                 <th className="p-1.5 border-r border-slate-600 min-w-[125px] text-right">부품 단가 (패밀리/EA)</th>
@@ -1356,7 +1384,8 @@ export default function QuotationPage() {
                 <th className="p-1.5 border-r border-slate-600 min-w-[90px] text-center">실제 제출일</th>
                 <th className="p-1.5 border-r border-slate-600 min-w-[85px] text-center">진행상태</th>
                 <th className="p-1.5 border-r border-slate-600 min-w-[80px] text-center">상세/메모</th>
-                <th className="p-1.5 min-w-[95px] text-center">승격 관리</th>
+                <th className="p-1.5 border-r border-slate-600 min-w-[95px] text-center">승격 관리</th>
+                <th className="p-1.5 min-w-[55px] text-center">삭제</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-zinc-200 dark:divide-zinc-800 text-zinc-700 dark:text-zinc-300 text-[11px]">
@@ -1463,7 +1492,7 @@ export default function QuotationPage() {
                       상세/메모
                     </Button>
                   </td>
-                  <td className="p-1.5 text-center">
+                  <td className="p-1.5 border-r text-center">
                     {row.status === "수주확정" ? (
                       <Button
                         onClick={() => handlePromoteToProject(row)}
@@ -1481,6 +1510,18 @@ export default function QuotationPage() {
                     ) : (
                       <span className="text-zinc-400 text-[10px] font-mono">-</span>
                     )}
+                  </td>
+                  <td className="p-1.5 text-center">
+                    <Button
+                      onClick={() => handleDeleteQuotation(row)}
+                      size="xs"
+                      variant="outline"
+                      className="h-6 px-1.5 text-[10px] text-rose-600 border-rose-200 hover:bg-rose-50 hover:border-rose-400 gap-0.5 font-medium"
+                      title="견적 삭제"
+                    >
+                      <Trash2 className="h-3 w-3" />
+                      삭제
+                    </Button>
                   </td>
                 </tr>
               ))}
@@ -1546,7 +1587,7 @@ export default function QuotationPage() {
                 </div>
                 <div>
                   <label className="text-zinc-600 font-bold block mb-0.5">
-                    차종 / 프로젝트명
+                    견적명
                   </label>
                   <Input 
                     value={newForm.projectName}

@@ -633,10 +633,15 @@ export async function DELETE(req: NextRequest) {
       );
     }
 
-    if (id) {
-      await query(`DELETE FROM "MpsiPrimeQuotation" WHERE "PrimeQuotationSequenceNo" = $1`, [id]);
+    if (quotationNo && id) {
+      await query(
+        `DELETE FROM "MpsiPrimeQuotation" WHERE "QuotationID" = $1 OR "PrimeQuotationSequenceNo" = $2`,
+        [quotationNo, id]
+      );
     } else if (quotationNo) {
       await query(`DELETE FROM "MpsiPrimeQuotation" WHERE "QuotationID" = $1`, [quotationNo]);
+    } else if (id) {
+      await query(`DELETE FROM "MpsiPrimeQuotation" WHERE "PrimeQuotationSequenceNo" = $1`, [id]);
     }
 
     return NextResponse.json({ success: true, message: "삭제 완료" });
