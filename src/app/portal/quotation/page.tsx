@@ -1510,23 +1510,33 @@ export default function QuotationPage() {
                   <td className="p-1.5 border-r text-right font-mono">
                     {row.partPriceItems && row.partPriceItems.length > 1 ? (
                       <div className="flex flex-col gap-0.5 text-[10px]">
-                        {row.partPriceItems.map((p) => (
-                          <div key={p.id} className="flex items-center justify-end gap-1">
-                            <span className={`px-1 py-0.2 rounded font-bold text-[9px] ${
-                              p.side === "LH" ? "bg-blue-100 text-blue-800 border border-blue-200" :
-                              p.side === "RH" ? "bg-amber-100 text-amber-800 border border-amber-200" :
-                              "bg-zinc-100 text-zinc-700 border border-zinc-200"
-                            }`}>
-                              {p.side}
-                            </span>
-                            <span className="font-bold text-zinc-800 dark:text-zinc-200">
-                              {p.unitPriceWon > 0 ? `${p.unitPriceWon.toLocaleString()}원` : "-"}
-                            </span>
-                          </div>
-                        ))}
+                        {row.partPriceItems.map((p, pIdx) => {
+                          const pSide = p.side || (p as any).type?.replace(/\s*\(.*\)/, "") || "공용";
+                          const pPrice = typeof p.unitPriceWon === "number" ? p.unitPriceWon : (Number((p as any).price) || 0);
+                          const pKey = p.id || `ppi-${row.quotationNo || row.id || "row"}-${pIdx}`;
+                          return (
+                            <div key={pKey} className="flex items-center justify-end gap-1">
+                              <span className={`px-1 py-0.2 rounded font-bold text-[9px] ${
+                                pSide === "LH" ? "bg-blue-100 text-blue-800 border border-blue-200" :
+                                pSide === "RH" ? "bg-amber-100 text-amber-800 border border-amber-200" :
+                                "bg-zinc-100 text-zinc-700 border border-zinc-200"
+                              }`}>
+                                {pSide}
+                              </span>
+                              <span className="font-bold text-zinc-800 dark:text-zinc-200">
+                                {pPrice > 0 ? `${pPrice.toLocaleString()}원` : "-"}
+                              </span>
+                            </div>
+                          );
+                        })}
                       </div>
                     ) : row.partPriceItems && row.partPriceItems.length === 1 ? (
-                      <span>{row.partPriceItems[0].unitPriceWon > 0 ? `${row.partPriceItems[0].unitPriceWon.toLocaleString()}원` : "-"}</span>
+                      (() => {
+                        const singlePrice = typeof row.partPriceItems[0].unitPriceWon === "number" 
+                          ? row.partPriceItems[0].unitPriceWon 
+                          : (Number((row.partPriceItems[0] as any).price) || 0);
+                        return <span>{singlePrice > 0 ? `${singlePrice.toLocaleString()}원` : "-"}</span>;
+                      })()
                     ) : row.partUnitPriceWon ? (
                       <span>{row.partUnitPriceWon.toLocaleString()}원</span>
                     ) : (
@@ -2082,30 +2092,35 @@ export default function QuotationPage() {
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
-                        {selectedItem.partPriceItems.map((part) => (
-                          <tr key={part.id} className="hover:bg-zinc-50/60 dark:hover:bg-zinc-800/40">
-                            <td className="py-1.5 px-2.5 text-center">
-                              <span className={`px-1.5 py-0.5 rounded text-[9.5px] font-bold ${
-                                part.side === "LH"
-                                  ? "bg-purple-100 text-purple-800 dark:bg-purple-950 dark:text-purple-300 border border-purple-200"
-                                  : part.side === "RH"
-                                  ? "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 border border-amber-200"
-                                  : "bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300"
-                              }`}>
-                                {part.side}
-                              </span>
-                            </td>
-                            <td className="py-1.5 px-2.5 font-medium text-zinc-800 dark:text-zinc-200">
-                              {part.partName}
-                            </td>
-                            <td className="py-1.5 px-2.5 font-mono text-[11px] text-zinc-500">
-                              {part.partNo || "-"}
-                            </td>
-                            <td className="py-1.5 px-2.5 text-right font-mono font-bold text-emerald-700 dark:text-emerald-400">
-                              {part.unitPriceWon.toLocaleString()}원
-                            </td>
-                          </tr>
-                        ))}
+                        {selectedItem.partPriceItems.map((part, pIdx) => {
+                          const partSide = part.side || (part as any).type?.replace(/\s*\(.*\)/, "") || "공용";
+                          const partPrice = typeof part.unitPriceWon === "number" ? part.unitPriceWon : (Number((part as any).price) || 0);
+                          const partKey = part.id || `detail-part-${pIdx}`;
+                          return (
+                            <tr key={partKey} className="hover:bg-zinc-50/60 dark:hover:bg-zinc-800/40">
+                              <td className="py-1.5 px-2.5 text-center">
+                                <span className={`px-1.5 py-0.5 rounded text-[9.5px] font-bold ${
+                                  partSide === "LH"
+                                    ? "bg-purple-100 text-purple-800 dark:bg-purple-950 dark:text-purple-300 border border-purple-200"
+                                    : partSide === "RH"
+                                    ? "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 border border-amber-200"
+                                    : "bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300"
+                                }`}>
+                                  {partSide}
+                                </span>
+                              </td>
+                              <td className="py-1.5 px-2.5 font-medium text-zinc-800 dark:text-zinc-200">
+                                {part.partName || (part as any).name || "-"}
+                              </td>
+                              <td className="py-1.5 px-2.5 font-mono text-[11px] text-zinc-500">
+                                {part.partNo || "-"}
+                              </td>
+                              <td className="py-1.5 px-2.5 text-right font-mono font-bold text-emerald-700 dark:text-emerald-400">
+                                {partPrice > 0 ? `${partPrice.toLocaleString()}원` : "-"}
+                              </td>
+                            </tr>
+                          );
+                        })}
                       </tbody>
                     </table>
                   </div>
@@ -2241,8 +2256,8 @@ export default function QuotationPage() {
                 {/* 파일 이력 목록 */}
                 <div className="flex flex-col gap-2 max-h-56 overflow-y-auto pr-0.5">
                   {(selectedItem.quotationFiles && selectedItem.quotationFiles.length > 0) ? (
-                    selectedItem.quotationFiles.map((file) => (
-                      <div key={file.id} className="p-2.5 rounded-md border bg-zinc-50/70 dark:bg-zinc-800/60 flex flex-col gap-1.5 text-xs">
+                    selectedItem.quotationFiles.map((file, fIdx) => (
+                      <div key={file.id || `detail-file-${fIdx}`} className="p-2.5 rounded-md border bg-zinc-50/70 dark:bg-zinc-800/60 flex flex-col gap-1.5 text-xs">
                         <div className="flex items-center justify-between flex-wrap gap-1">
                           <div className="flex items-center gap-1.5 flex-wrap">
                             <span className={`px-2 py-0.5 rounded text-[10px] font-bold font-mono ${
@@ -2393,8 +2408,8 @@ export default function QuotationPage() {
                   {selectedItem.memos.length === 0 ? (
                     <div className="text-zinc-400 text-center py-4 text-xs">등록된 협의 메모가 없습니다. 위 입력란에 메모를 남겨주세요.</div>
                   ) : (
-                    selectedItem.memos.map((m) => (
-                      <div key={m.id} className="p-2.5 rounded-md border bg-zinc-50/70 dark:bg-zinc-800/40 text-xs">
+                    selectedItem.memos.map((m, mIdx) => (
+                      <div key={m.id || `detail-memo-${mIdx}`} className="p-2.5 rounded-md border bg-zinc-50/70 dark:bg-zinc-800/40 text-xs">
                         <div className="flex items-center justify-between font-bold mb-1">
                           <span className="text-sky-700 dark:text-sky-400 flex items-center gap-1">
                             <User className="h-3 w-3" />
