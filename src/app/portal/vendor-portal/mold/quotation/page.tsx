@@ -134,12 +134,15 @@ export default function VendorMoldQuotationPage() {
 
   const handleOpenSubmit = (item: MoldDevEstimateItem) => {
     setSelectedItem(item);
-    const mCost = item.materialCostWon || 0;
-    const pCost = item.processingCostWon || 0;
-    const oCost = item.overheadProfitWon || 0;
-    const sCost = item.specialSpecWon || 0;
-    const totalCost = item.quoteAmountWon || (mCost + pCost + oCost + sCost);
-    const isAlreadySubmitted = (item.submissionHistory && item.submissionHistory.length > 0) || item.status !== "견적요청";
+    const myQuote = getMyVendorQuote(item);
+    const isAlreadySubmitted = !!myQuote;
+
+    // 자사 제출 내역이 있으면 본인 내역으로 채우고, 미제출 협력사라면 0원/빈값으로 완전 격리 초기화
+    const mCost = myQuote?.materialCostWon || 0;
+    const pCost = myQuote?.processingCostWon || 0;
+    const oCost = myQuote?.overheadProfitWon || 0;
+    const sCost = myQuote?.specialSpecWon || 0;
+    const totalCost = myQuote?.totalAmountWon || (mCost + pCost + oCost + sCost);
 
     setSubmitForm({
       materialCostWon: mCost,
@@ -152,14 +155,14 @@ export default function VendorMoldQuotationPage() {
       moldMaterial: item.moldMaterial || item.moldSteel || "",
       cavity: item.cavity || "",
       gateType: item.gateType || "",
-      quoteFileName: item.quotationFileName || "",
-      quoteFileSize: item.quotationFileSize || "",
-      quoteFileUrl: item.quotationFileUrl || "",
-      downloadUrl: item.downloadUrl || "",
+      quoteFileName: myQuote?.quotationFileName || "",
+      quoteFileSize: myQuote?.quotationFileSize || "",
+      quoteFileUrl: myQuote?.quotationFileUrl || "",
+      downloadUrl: myQuote?.downloadUrl || "",
       targetT1Date: item.targetT1Date || "",
-      availableMfgDays: item.availableMfgDays || item.targetMfgDays || 0,
+      availableMfgDays: myQuote?.availableMfgDays || item.targetMfgDays || 0,
       submissionType: isAlreadySubmitted ? "수정 제출" : "최초 제출",
-      vendorNotes: item.vendorNotes || "",
+      vendorNotes: myQuote?.vendorNotes || "",
       vendorMemo: "",
     });
     setIsSubmitModalOpen(true);
@@ -380,6 +383,32 @@ export default function VendorMoldQuotationPage() {
     return false;
   });
 
+  // 자사 제출 견적건 조회 (MPSI 답변 포함)
+  const getMyVendorQuote = (item: MoldDevEstimateItem) => {
+    return (item.vendorQuotes || []).find((q) => isMatchingVendor(q.vendorName, currentVendor));
+  };
+
+  // 현재 로그인한 협력사(자사) 관점 진행상태 판별 (복수 협력사 데이터 격리)
+  const getVendorSpecificStatus = (item: MoldDevEstimateItem): MoldQuotationStatus => {
+    // 1. MPSI에서 최종 수주 확정한 경우
+    if (item.status === "수주확정") {
+      const isWinner = isMatchingVendor(item.selectedVendorName, currentVendor) || 
+                       isMatchingVendor(item.vendorName, currentVendor);
+      return isWinner ? "수주확정" : "수주미성사";
+    }
+    // 2. 자사가 제출한 견적이 있는 경우
+    const myQuote = getMyVendorQuote(item);
+    if (myQuote) {
+      if (myQuote.status === "제출완료") return "외주견적제출";
+      if (myQuote.status === "검토협의") return "견적검토중";
+      if (myQuote.status === "수주확정") return "수주확정";
+      if (myQuote.status === "반려/미성사") return "수주미성사";
+      return "외주견적제출";
+    }
+    // 3. 자사가 아직 제출하지 않은 경우 (타사 제출 여부와 무관하게 자사 관점은 견적요청)
+    return "견적요청";
+  };
+
   const filtered = vendorEstimates.filter((item) => {
     const pNo = item.officialProjectNo || item.projectNo;
     const matchKey = filterKeyword
@@ -387,7 +416,8 @@ export default function VendorMoldQuotationPage() {
         item.productName.toLowerCase().includes(filterKeyword.toLowerCase()) ||
         item.estimateNo.toLowerCase().includes(filterKeyword.toLowerCase())
       : true;
-    const matchStatus = filterStatus !== "ALL" ? item.status === filterStatus : true;
+    const myStatus = getVendorSpecificStatus(item);
+    const matchStatus = filterStatus !== "ALL" ? myStatus === filterStatus : true;
     const targetDate = item[filterDateType];
     const matchDate = isWithinDateRange(targetDate, filterDateFrom, filterDateTo);
     return matchKey && matchStatus && matchDate;
@@ -438,11 +468,6 @@ export default function VendorMoldQuotationPage() {
       default:
         return <span>{status}</span>;
     }
-  };
-
-  // 자사 제출 견적건 조회 (MPSI 답변 포함)
-  const getMyVendorQuote = (item: MoldDevEstimateItem) => {
-    return (item.vendorQuotes || []).find((q) => isMatchingVendor(q.vendorName, currentVendor));
   };
 
   return (
@@ -577,12 +602,14 @@ export default function VendorMoldQuotationPage() {
                 const projectNoDisplay = getProjectNoDisplay(item);
                 const quoteNoDisplay = getQuoteNoDisplay(item);
                 const moldNoDisplay = item.moldNo || (projectNoDisplay.startsWith("MI") ? `${projectNoDisplay.split("-")[0].replace(/P0$/, "")}M` : "-");
+                const myQuote = getMyVendorQuote(item);
+                const myStatus = getVendorSpecificStatus(item);
 
                 return (
                   <tr 
                     key={item.id} 
                     className={`hover:bg-zinc-50/80 dark:hover:bg-zinc-800/30 transition-colors ${
-                      item.status === "견적요청" ? "bg-amber-50/20" : ""
+                      myStatus === "견적요청" ? "bg-amber-50/20" : ""
                     }`}
                   >
                     {/* 1. No */}
@@ -604,9 +631,9 @@ export default function VendorMoldQuotationPage() {
                       </span>
                     </td>
 
-                    {/* 4. 진행상태 */}
+                    {/* 4. 진행상태 (자사 제출 관점) */}
                     <td className="py-2 px-2 text-center whitespace-nowrap">
-                      {renderStatusBadge(item.status)}
+                      {renderStatusBadge(myStatus)}
                     </td>
 
                     {/* 5. 신작/설변 (N001, E001) */}
@@ -665,30 +692,23 @@ export default function VendorMoldQuotationPage() {
                       {item.availableMfgDays ? `${item.availableMfgDays}일` : "-"}
                     </td>
 
-                    {/* 11. 제출 견적가 (원) - 자사 제출 견적가만 표시 */}
+                    {/* 11. 제출 견적가 (원) - 자사 제출 견적가만 엄격히 표시 */}
                     <td className="py-2 px-2.5 text-right font-mono font-bold whitespace-nowrap">
-                      {(() => {
-                        const myQuote = getMyVendorQuote(item);
-                        const hasMyQuote = !!myQuote;
-                        const myAmount = myQuote?.totalAmountWon !== undefined 
-                          ? myQuote.totalAmountWon 
-                          : (isMatchingVendor(item.vendorName, currentVendor) ? item.quoteAmountWon : 0);
-                        const isSubmitted = item.status === "외주견적제출" || hasMyQuote;
-
-                        return isSubmitted ? (
-                          <span className="text-purple-600 font-extrabold">
-                            {myAmount > 0 ? `${myAmount.toLocaleString()}원` : "0원 (제출완료)"}
-                          </span>
-                        ) : (
-                          <span className="text-zinc-400 italic">견적서 미제출</span>
-                        );
-                      })()}
+                      {myQuote ? (
+                        <span className="text-purple-600 font-extrabold">
+                          {(myQuote.totalAmountWon || 0) > 0 
+                            ? `${(myQuote.totalAmountWon || 0).toLocaleString()}원` 
+                            : "0원 (제출완료)"}
+                        </span>
+                      ) : (
+                        <span className="text-zinc-400 italic">견적서 미제출</span>
+                      )}
                     </td>
 
-                    {/* 12. 작업 (견적서 작성 / 수정제출 / 상세) */}
+                    {/* 12. 작업 (자사 제출 여부에 따라 견적서 작성 / 수정제출 분기) */}
                     <td className="py-2 px-2 text-center whitespace-nowrap">
                       <div className="flex items-center justify-center gap-1">
-                        {item.status === "견적요청" ? (
+                        {!myQuote ? (
                           <Button
                             onClick={() => handleOpenSubmit(item)}
                             size="xs"
@@ -1273,7 +1293,7 @@ export default function VendorMoldQuotationPage() {
                 <span className="font-bold text-sm">
                   [{getQuoteNoDisplay(selectedItem)}] {selectedItem.productName} 견적 상세
                 </span>
-                {renderStatusBadge(selectedItem.status)}
+                {renderStatusBadge(getVendorSpecificStatus(selectedItem))}
               </div>
               <button onClick={() => setIsDetailModalOpen(false)} className="text-zinc-400 hover:text-zinc-600">
                 <X className="h-4 w-4" />
@@ -1311,7 +1331,12 @@ export default function VendorMoldQuotationPage() {
                 <div>
                   <div className="text-[10px] text-zinc-400">제출 견적금액</div>
                   <div className="font-mono font-bold text-amber-600 text-sm">
-                    {selectedItem.quoteAmountWon > 0 ? `${selectedItem.quoteAmountWon.toLocaleString()}원` : "미제출"}
+                    {(() => {
+                      const myQuote = getMyVendorQuote(selectedItem);
+                      return myQuote && (myQuote.totalAmountWon || 0) > 0 
+                        ? `${(myQuote.totalAmountWon || 0).toLocaleString()}원` 
+                        : (myQuote ? "0원 (제출완료)" : "미제출");
+                    })()}
                   </div>
                 </div>
               </div>

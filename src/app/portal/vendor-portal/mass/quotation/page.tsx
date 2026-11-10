@@ -110,23 +110,31 @@ export default function VendorMassQuotationPage() {
 
   const handleOpenSubmit = (item: MassProductionEstimateItem) => {
     setSelectedItem(item);
-    const isAlreadySubmitted = (item.submissionHistory && item.submissionHistory.length > 0) || item.status !== "견적요청";
+    const myQuote = getMyVendorQuote(item);
+    const isAlreadySubmitted = !!myQuote;
+
+    // 자사 제출 내역이 있으면 자사 내역으로 채우고, 미제출이면 0원/빈값으로 완전 격리 초기화
+    const matCost = myQuote?.materialCost || 0;
+    const procCost = myQuote?.processingCost || 0;
+    const packCost = myQuote?.packagingCost || 0;
+    const logCost = myQuote?.logisticsCost || 0;
+    const unitPrice = myQuote?.unitPrice || (matCost + procCost + packCost + logCost);
 
     setSubmitForm({
-      finalUnitPrice: item.finalUnitPrice || 2000,
-      quoteFileName: item.estimateFileName || "",
-      quoteFileSize: item.estimateFileSize || "",
-      quoteFileUrl: item.estimateFileUrl || "",
-      targetCycleTime: item.targetCycleTime || 32,
-      targetMassApprovalDate: item.targetMassApprovalDate || "2026-08-30",
-      massStartDate: item.massStartDate || "2026-09-15",
-      machineTonnage: item.machineTonnage || "450T 정밀사출기",
-      materialCost: item.materialCost || 1000,
-      processingCost: item.processingCost || 700,
-      packagingCost: item.packagingCost || 150,
-      logisticsCost: item.logisticsCost || 150,
+      finalUnitPrice: unitPrice,
+      quoteFileName: myQuote?.quotationFileName || "",
+      quoteFileSize: myQuote?.quotationFileSize || "",
+      quoteFileUrl: myQuote?.quotationFileUrl || "",
+      targetCycleTime: myQuote?.targetCycleTime || item.targetCycleTime || 0,
+      targetMassApprovalDate: item.targetMassApprovalDate || "",
+      massStartDate: item.massStartDate || "",
+      machineTonnage: item.machineTonnage || "",
+      materialCost: matCost,
+      processingCost: procCost,
+      packagingCost: packCost,
+      logisticsCost: logCost,
       submissionType: isAlreadySubmitted ? "수정 제출" : "최초 제출",
-      vendorNotes: item.vendorNotes || "",
+      vendorNotes: myQuote?.vendorNotes || "",
       vendorComment: "",
       vendorMemo: "",
     });
@@ -281,6 +289,27 @@ export default function VendorMassQuotationPage() {
     return (item.vendorQuotes || []).find((q) => isMatchingVendor(q.vendorName, currentVendor));
   };
 
+  // 현재 로그인한 양산 협력사(자사) 관점 진행상태 판별 (복수 협력사 데이터 격리)
+  const getVendorSpecificStatus = (item: MassProductionEstimateItem): MassQuotationStatus => {
+    // 1. MPSI에서 최종 수주/계약 확정한 경우
+    if (item.status === "양산계약확정") {
+      const isWinner = isMatchingVendor(item.selectedVendorName, currentVendor) || 
+                       isMatchingVendor(item.vendorName, currentVendor);
+      return isWinner ? "양산계약확정" : "단가합의완료";
+    }
+    // 2. 자사가 제출한 견적이 있는 경우
+    const myQuote = getMyVendorQuote(item);
+    if (myQuote) {
+      if (myQuote.status === "제출완료") return "외주견적제출";
+      if (myQuote.status === "검토협의") return "원가검토중";
+      if (myQuote.status === "수주확정") return "양산계약확정";
+      if (myQuote.status === "반려/미성사") return "단가합의완료";
+      return "외주견적제출";
+    }
+    // 3. 자사가 아직 미제출한 경우 -> 무조건 "견적요청"
+    return "견적요청";
+  };
+
   const filtered = vendorEstimates.filter((item) => {
     const quoteNo = getQuoteNoDisplay(item).toLowerCase();
     const projNo = getProjectNoDisplay(item).toLowerCase();
@@ -292,7 +321,8 @@ export default function VendorMassQuotationPage() {
         item.estimateNo.toLowerCase().includes(filterKeyword.toLowerCase()) ||
         item.resinSpec.toLowerCase().includes(filterKeyword.toLowerCase())
       : true;
-    const matchStatus = filterStatus !== "ALL" ? item.status === filterStatus : true;
+    const myStatus = getVendorSpecificStatus(item);
+    const matchStatus = filterStatus !== "ALL" ? myStatus === filterStatus : true;
     const targetDate = item[filterDateType];
     const matchDate = isWithinDateRange(targetDate, filterDateFrom, filterDateTo);
     return matchKey && matchStatus && matchDate;
@@ -501,19 +531,21 @@ export default function VendorMassQuotationPage() {
               filtered.map((item, idx) => {
                 const projectNoDisplay = getProjectNoDisplay(item);
                 const quoteNoDisplay = getQuoteNoDisplay(item);
+                const myQuote = getMyVendorQuote(item);
+                const myStatus = getVendorSpecificStatus(item);
 
                 return (
                   <tr 
                     key={item.id} 
                     className={`hover:bg-zinc-50/80 dark:hover:bg-zinc-800/30 transition-colors ${
-                      item.status === "견적요청" ? "bg-amber-50/20" : ""
+                      myStatus === "견적요청" ? "bg-amber-50/20" : ""
                     }`}
                   >
                     <td className="py-2 px-2 text-center text-zinc-400 font-mono text-[11px]">
                       {idx + 1}
                     </td>
                     <td className="py-2 px-2 text-center whitespace-nowrap">
-                      {renderStatusBadge(item.status)}
+                      {renderStatusBadge(myStatus)}
                     </td>
                     {/* 1-1) 프로젝트 관리번호 (수주 시 MI26001P0, 미수주 시 Q26001-01) */}
                     <td className="py-2 px-2 text-center whitespace-nowrap font-mono font-bold">
@@ -550,20 +582,16 @@ export default function VendorMassQuotationPage() {
                       {item.monthlyVolume > 0 ? `${item.monthlyVolume.toLocaleString()} EA` : "-"}
                     </td>
                     <td className="py-2 px-2.5 text-right font-mono font-bold whitespace-nowrap">
-                      {(() => {
-                        const myQuote = getMyVendorQuote(item);
-                        const myPrice = myQuote?.unitPrice || (isMatchingVendor(item.vendorName, currentVendor) ? item.finalUnitPrice : 0);
-                        return myPrice > 0 ? (
-                          <span className="text-blue-600 font-bold">{myPrice.toLocaleString()}원</span>
-                        ) : (
-                          <span className="text-zinc-400 italic">견적서 미제출</span>
-                        );
-                      })()}
+                      {myQuote && (myQuote.unitPrice || 0) > 0 ? (
+                        <span className="text-blue-600 font-bold">{(myQuote.unitPrice || 0).toLocaleString()}원</span>
+                      ) : (
+                        <span className="text-zinc-400 italic">견적서 미제출</span>
+                      )}
                     </td>
-                    {/* 1-3) 견적서 파일 및 협의 메모 컬럼 삭제됨 -> 작업 버튼 영역 */}
+                    {/* 1-3) 작업 버튼 영역 (자사 제출 여부에 따라 견적서 작성 / 수정제출 분기) */}
                     <td className="py-2 px-2 text-center whitespace-nowrap">
                       <div className="flex items-center justify-center gap-1">
-                        {item.status === "견적요청" ? (
+                        {!myQuote ? (
                           <Button
                             onClick={() => handleOpenSubmit(item)}
                             size="xs"
@@ -1021,7 +1049,7 @@ export default function VendorMassQuotationPage() {
                 <span className="font-bold text-sm">
                   [{getQuoteNoDisplay(selectedItem)}] {selectedItem.productName} 견적 상세
                 </span>
-                {renderStatusBadge(selectedItem.status)}
+                {renderStatusBadge(getVendorSpecificStatus(selectedItem))}
               </div>
               <button onClick={() => setIsDetailModalOpen(false)} className="text-zinc-400 hover:text-zinc-600 cursor-pointer">
                 <X className="h-4 w-4" />
@@ -1055,7 +1083,7 @@ export default function VendorMassQuotationPage() {
                   <span className="font-mono font-bold text-blue-600 text-sm">
                     {(() => {
                       const myQuote = getMyVendorQuote(selectedItem);
-                      const myPrice = myQuote?.unitPrice || (isMatchingVendor(selectedItem.vendorName, currentVendor) ? selectedItem.finalUnitPrice : 0);
+                      const myPrice = myQuote?.unitPrice || 0;
                       return myPrice > 0 ? `${myPrice.toLocaleString()}원/EA` : "미제출";
                     })()}
                   </span>

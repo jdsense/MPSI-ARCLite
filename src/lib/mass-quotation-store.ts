@@ -441,10 +441,15 @@ export function useMassQuotationStore() {
         author: submission.authorName || `${item.vendorName} 김재열 차장`,
       });
 
-      // 복수 업체 견적 리스트(vendorQuotes) 동기화
+      // 복수 업체 견적 리스트(vendorQuotes) 동기화 (정규화 매칭)
       const vName = submission.authorName || item.vendorName;
       let existingQuotes = item.vendorQuotes || [];
-      const vqIndex = existingQuotes.findIndex((q) => q.vendorName.includes(vName) || vName.includes(q.vendorName));
+      const cleanV = (s?: string) => (s || "").replace(/\([^)]*\)|주식회사|\s/g, "").trim().toLowerCase();
+      const vqIndex = existingQuotes.findIndex((q) => {
+        const a = cleanV(q.vendorName);
+        const b = cleanV(vName);
+        return a === b || a.includes(b) || b.includes(a);
+      });
       const newVq: MassVendorQuoteSubmission = {
         id: vqIndex >= 0 ? existingQuotes[vqIndex].id : `vq-${Date.now()}`,
         vendorName: vName,

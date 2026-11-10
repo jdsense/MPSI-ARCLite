@@ -410,7 +410,15 @@ export function useMoldQuotationStore() {
     };
 
     const existingQuotes = currentItem.vendorQuotes || [];
-    const vqIndex = existingQuotes.findIndex((q) => q.vendorName === submission.vendorName);
+    const cleanV = (s?: string) => (s || "").replace(/\([^)]*\)|주식회사|\s/g, "").trim().toLowerCase();
+    const vqIndex = existingQuotes.findIndex((q) => {
+      const a = cleanV(q.vendorName);
+      const b = cleanV(submission.vendorName);
+      if (!a || !b) return false;
+      if ((a.includes("우성") || a.includes("woosung")) && (b.includes("우성") || b.includes("woosung"))) return true;
+      if ((a.includes("대한") || a.includes("daehan")) && (b.includes("대한") || b.includes("daehan"))) return true;
+      return a === b || a.includes(b) || b.includes(a);
+    });
     const newSubmissionItem: MoldVendorQuoteSubmission = {
       id: vqIndex >= 0 ? existingQuotes[vqIndex].id : `vq-${Date.now()}`,
       vendorName: submission.vendorName,
