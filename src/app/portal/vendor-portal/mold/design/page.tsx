@@ -1012,6 +1012,27 @@ export default function VendorMoldDesignPage() {
                   </div>
                 </div>
 
+                {/* 첨부된 발주서 파일 다운로드 줄 */}
+                {selectedReviewItem.moldPoFile && (
+                  <div className="flex items-center justify-between px-3 py-1.5 bg-indigo-50 rounded border border-indigo-200 text-[11px]">
+                    <div className="flex items-center gap-1.5 truncate">
+                      <Paperclip className="h-3.5 w-3.5 text-indigo-600 shrink-0" />
+                      <span className="text-zinc-500 text-[10px] shrink-0 font-medium">첨부 발주서:</span>
+                      <span className="font-mono font-bold text-indigo-800 truncate" title={selectedReviewItem.moldPoFile}>
+                        {getDisplayFileName(selectedReviewItem.moldPoFile)}
+                      </span>
+                    </div>
+                    <button
+                      onClick={() => handleDownloadFile(selectedReviewItem.moldPoFile!, `금형제작발주서_${selectedReviewItem.projectNo}.pdf`)}
+                      className="px-2 py-0.5 rounded text-[10px] bg-white hover:bg-indigo-50 text-indigo-700 border border-indigo-300 font-bold flex items-center gap-1 cursor-pointer shrink-0"
+                      title="발주서 파일 다운로드"
+                    >
+                      <Download className="h-3 w-3" />
+                      다운로드
+                    </button>
+                  </div>
+                )}
+
                 <div className="flex items-center justify-end pt-1">
                   <Button 
                     onClick={() => {
@@ -1476,6 +1497,30 @@ export default function VendorMoldDesignPage() {
                 <h3 className="text-base font-bold text-zinc-900">금형 제작 발주서 (PO)</h3>
                 <span className="font-mono text-xs text-zinc-500">발주번호: {poModalItem.moldPoNo || (poModalItem.projectNo ? `PO-${poModalItem.projectNo}` : "PO-NEW")}</span>
               </div>
+
+              {/* MPSI가 첨부한 실제 발주서 파일 다운로드 블록 */}
+              {poModalItem.moldPoFile && (
+                <div className="flex items-center justify-between p-3 bg-indigo-50 border border-indigo-200 rounded">
+                  <div className="flex items-center gap-2 truncate">
+                    <Paperclip className="h-4 w-4 text-indigo-600 shrink-0" />
+                    <div className="truncate">
+                      <span className="text-[10px] text-zinc-500 block">MPSI 정식 첨부 발주서 파일</span>
+                      <span className="font-mono font-bold text-indigo-900 truncate block">
+                        {getDisplayFileName(poModalItem.moldPoFile)}
+                      </span>
+                    </div>
+                  </div>
+                  <Button 
+                    onClick={() => handleDownloadFile(poModalItem.moldPoFile!, `금형제작발주서_${poModalItem.projectNo}.pdf`)}
+                    size="xs"
+                    className="h-7 px-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold shrink-0"
+                  >
+                    <Download className="h-3.5 w-3.5 mr-1" />
+                    발주서 파일 다운로드
+                  </Button>
+                </div>
+              )}
+
               <div className="grid grid-cols-2 gap-3 text-[11px]">
                 <div className="border p-2.5 rounded bg-zinc-50 space-y-1">
                   <div className="font-bold text-zinc-800 mb-1">[발주사] (주)엠피에스아이</div>

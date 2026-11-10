@@ -67,6 +67,8 @@ export interface DrawingDesignItem {
   moldPoAmount?: number;
   moldPoDays?: number;
   moldPoShot?: number;
+  moldPoFile?: string;               // 금형제작 발주서 파일명
+  moldPoFileNote?: string;           // 금형제작 발주서 설명 메모
   moldPoAttached?: boolean;          // 발주서 첨부 여부
   moldPoApproved?: boolean;          // 발주서 금형처 발송 승인 여부
   moldPoApprovedDate?: string;
@@ -474,7 +476,7 @@ export function useMoldDesignStore() {
   // 8. 파일 업로드 및 메모 등록 (DB PUT 연동)
   const uploadDesignFileWithLog = (
     designId: number,
-    fileType: "product3D" | "moldMeetingReport" | "caeReport" | "mold3DData",
+    fileType: "product3D" | "moldMeetingReport" | "caeReport" | "mold3DData" | "moldPoFile",
     fileName: string,
     fileNote: string,
     authorName: string,
@@ -489,6 +491,7 @@ export function useMoldDesignStore() {
       moldMeetingReport: { fileKey: "moldMeetingReportFile", noteKey: "moldMeetingReportNote", title: "금형 제작 협의록" },
       caeReport: { fileKey: "caeReportFile", noteKey: "caeReportNote", title: "CAE 해석 보고서" },
       mold3DData: { fileKey: "mold3DDataFile", noteKey: "mold3DDataNote", title: "금형 3D data" },
+      moldPoFile: { fileKey: "moldPoFile", noteKey: "moldPoFileNote", title: "금형제작 발주서" },
     }[fileType];
 
     let targetItem: DrawingDesignItem | undefined;
@@ -524,6 +527,7 @@ export function useMoldDesignStore() {
         ...item,
         [fieldMap.fileKey]: fileName,
         [fieldMap.noteKey]: fileNote,
+        moldPoAttached: fileType === "moldPoFile" ? true : item.moldPoAttached,
         drStatus: newDrStatus,
         moldDesignStatus: newDesignStatus,
         workLogs: newLogs,

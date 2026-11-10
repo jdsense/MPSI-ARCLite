@@ -72,7 +72,7 @@ export default function ProductReviewAndMoldDesignPage() {
   const [uploadModalTarget, setUploadModalTarget] = useState<{
     isOpen: boolean;
     designId: number;
-    fileType: "product3D" | "moldMeetingReport" | "caeReport" | "mold3DData";
+    fileType: "product3D" | "moldMeetingReport" | "caeReport" | "mold3DData" | "moldPoFile";
     title: string;
     targetName: string;
   }>({
@@ -213,7 +213,7 @@ export default function ProductReviewAndMoldDesignPage() {
   // 파일 업로드 모달 열기
   const handleOpenFileUploadModal = (
     designId: number,
-    fileType: "product3D" | "moldMeetingReport" | "caeReport" | "mold3DData",
+    fileType: "product3D" | "moldMeetingReport" | "caeReport" | "mold3DData" | "moldPoFile",
     title: string,
     defaultName: string
   ) => {
@@ -278,6 +278,7 @@ export default function ProductReviewAndMoldDesignPage() {
           moldMeetingReport: "moldMeetingReportFile",
           caeReport: "caeReportFile",
           mold3DData: "mold3DDataFile",
+          moldPoFile: "moldPoFile",
         }[uploadModalTarget.fileType] as keyof DrawingDesignItem;
 
         const noteKey = {
@@ -285,12 +286,14 @@ export default function ProductReviewAndMoldDesignPage() {
           moldMeetingReport: "moldMeetingReportNote",
           caeReport: "caeReportNote",
           mold3DData: "mold3DDataNote",
+          moldPoFile: "moldPoFileNote",
         }[uploadModalTarget.fileType] as keyof DrawingDesignItem;
 
-        const updatedItem = {
+        const updatedItem: DrawingDesignItem = {
           ...current,
           [fieldKey]: finalFilePath,
           [noteKey]: uploadFileNote.trim(),
+          moldPoAttached: uploadModalTarget.fileType === "moldPoFile" ? true : current.moldPoAttached,
         };
 
         if (productReviewItem?.id === current.id) {
@@ -298,6 +301,9 @@ export default function ProductReviewAndMoldDesignPage() {
         }
         if (moldDesignItem?.id === current.id) {
           setMoldDesignItem(updatedItem);
+        }
+        if (poModalItem?.id === current.id) {
+          setPoModalItem(updatedItem);
         }
       }
 
@@ -971,35 +977,17 @@ export default function ProductReviewAndMoldDesignPage() {
                     onClick={() => {
                       updateProductReviewStatus(
                         productReviewItem.id, 
-                        "검토완료", 
-                        "MPSI 김양훈 부장",
-                        "[제품 모델링 검토 완료] MPSI 담당자가 제품 모델링 성형성 및 DR 검토를 완료하였습니다. (금형 발주 진행 가능)"
-                      );
-                      setProductReviewItem({ ...productReviewItem, drStatus: "검토완료" });
-                      alert("제품 모델링 검토 완료 처리되었습니다. (금형발주서 배포 가능)");
-                    }}
-                    size="xs"
-                    className="h-7 px-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold"
-                  >
-                    <CheckCircle2 className="h-3.5 w-3.5 mr-1" />
-                    제품 모델링 검토 완료
-                  </Button>
-
-                  <Button 
-                    onClick={() => {
-                      updateProductReviewStatus(
-                        productReviewItem.id, 
                         "최종검토완료", 
-                        "MPSI 기술팀장",
-                        "[최종검토완료] 원청 고객사 승인 최종 3D 제품데이터 확정 완료"
+                        "MPSI 김양훈 부장",
+                        "[최종검토완료 확정] 제품 모델링 성형성(DR) 검토 완료 및 원청 고객사 최종 데이터 확정 완료 (금형 발주 진행 가능)"
                       );
                       setProductReviewItem({ ...productReviewItem, drStatus: "최종검토완료" });
-                      alert("원청 고객사 도면 최종검토완료로 확정되었습니다.");
+                      alert("제품 모델링 검토 완료 및 원청 최종검토완료가 동시 확정되었습니다. (금형발주서 배포 가능)");
                     }}
                     size="xs"
-                    className="h-7 px-3 bg-purple-600 hover:bg-purple-700 text-white font-bold"
+                    className="h-7 px-3.5 bg-purple-600 hover:bg-purple-700 text-white font-bold shadow-xs flex items-center gap-1.5"
                   >
-                    <Check className="h-3.5 w-3.5 mr-1" />
+                    <CheckCircle2 className="h-3.5 w-3.5" />
                     최종검토완료 확정
                   </Button>
                 </div>
@@ -1054,6 +1042,44 @@ export default function ProductReviewAndMoldDesignPage() {
                   </div>
                 </div>
 
+                {/* 첨부된 발주서 실제 파일 상태 표시줄 */}
+                <div className="flex items-center justify-between px-3 py-1.5 bg-white dark:bg-zinc-900 rounded border border-indigo-100 text-[11px]">
+                  <div className="flex items-center gap-2 truncate">
+                    <Paperclip className="h-3.5 w-3.5 text-indigo-600 shrink-0" />
+                    <span className="text-zinc-500 text-[10px] shrink-0 font-medium">첨부 발주서:</span>
+                    {productReviewItem.moldPoFile ? (
+                      <span className="font-mono font-semibold text-indigo-700 dark:text-indigo-300 truncate" title={productReviewItem.moldPoFile}>
+                        {getDisplayFileName(productReviewItem.moldPoFile)}
+                      </span>
+                    ) : (
+                      <span className="text-zinc-400 italic text-[10px]">미첨부 (금형제작 발주서 첨부 / 보기 버튼으로 파일 등록 필요)</span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    {productReviewItem.moldPoFile && (
+                      <button
+                        onClick={() => handleDownloadFile(productReviewItem.moldPoFile!, `금형제작발주서_${productReviewItem.projectNo}.pdf`)}
+                        className="px-2 py-0.5 rounded text-[10px] bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 font-semibold flex items-center gap-1 cursor-pointer"
+                        title="첨부된 발주서 파일 다운로드"
+                      >
+                        <Download className="h-3 w-3" />
+                        다운로드
+                      </button>
+                    )}
+                    <button
+                      onClick={() => {
+                        setPoModalItem(productReviewItem);
+                        setIsPoModalOpen(true);
+                      }}
+                      className="px-2 py-0.5 rounded text-[10px] bg-zinc-100 hover:bg-zinc-200 text-zinc-700 border border-zinc-300 font-medium flex items-center gap-1 cursor-pointer"
+                      title="발주서 사양서(PO) 규격 미리보기"
+                    >
+                      <Eye className="h-3 w-3" />
+                      PO 양식 미리보기
+                    </button>
+                  </div>
+                </div>
+
                 <div className="flex items-center justify-between pt-1">
                   <div className="text-[10px] text-zinc-500">
                     * 금형처 제출 견적서 정보(캐비티/강재/금형비)가 발주서에 자동 연동되며, 목표 T1 및 보증샷이 명기됩니다.
@@ -1061,8 +1087,12 @@ export default function ProductReviewAndMoldDesignPage() {
                   <div className="flex items-center gap-2">
                     <Button 
                       onClick={() => {
-                        setPoModalItem(productReviewItem);
-                        setIsPoModalOpen(true);
+                        handleOpenFileUploadModal(
+                          productReviewItem.id,
+                          "moldPoFile",
+                          "금형제작 발주서",
+                          `금형제작발주서_${productReviewItem.projectNo}.pdf`
+                        );
                       }}
                       size="xs"
                       variant="outline"
@@ -1528,6 +1558,8 @@ export default function ProductReviewAndMoldDesignPage() {
                   description={
                     uploadModalTarget.fileType === "product3D" || uploadModalTarget.fileType === "mold3DData"
                       ? "3D CAD 모델링(STP, STEP, X_T, CATPart) 또는 도면(DWG, DXF), 압축파일(ZIP)"
+                      : uploadModalTarget.fileType === "moldPoFile"
+                      ? "금형제작 발주서 문서(PDF, XLSX, XLS, DOCX) 또는 압축파일(ZIP)"
                       : "보고서 문서(PDF, PPTX, XLSX, HWP) 또는 압축파일(ZIP)"
                   }
                 />
@@ -1623,6 +1655,72 @@ export default function ProductReviewAndMoldDesignPage() {
                 <h3 className="text-base font-bold text-zinc-900 dark:text-zinc-100">금형 제작 발주서 (PO)</h3>
                 <span className="font-mono text-xs text-zinc-500">발주번호: {poModalItem.moldPoNo || (poModalItem.projectNo ? `PO-${poModalItem.projectNo}` : "PO-NEW")}</span>
               </div>
+
+              {/* 실제 첨부된 발주서 파일 연동 블록 */}
+              {poModalItem.moldPoFile ? (
+                <div className="flex items-center justify-between p-3 bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-200 rounded">
+                  <div className="flex items-center gap-2 truncate">
+                    <Paperclip className="h-4 w-4 text-indigo-600 shrink-0" />
+                    <div className="truncate">
+                      <span className="text-[10px] text-zinc-500 block">첨부된 실제 발주서 파일</span>
+                      <span className="font-mono font-bold text-indigo-900 dark:text-indigo-200 truncate block">
+                        {getDisplayFileName(poModalItem.moldPoFile)}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <Button 
+                      onClick={() => handleDownloadFile(poModalItem.moldPoFile!, `금형제작발주서_${poModalItem.projectNo}.pdf`)}
+                      size="xs"
+                      className="h-7 px-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold"
+                    >
+                      <Download className="h-3.5 w-3.5 mr-1" />
+                      파일 다운로드
+                    </Button>
+                    <Button
+                      onClick={() => {
+                        setIsPoModalOpen(false);
+                        handleOpenFileUploadModal(
+                          poModalItem.id,
+                          "moldPoFile",
+                          "금형제작 발주서",
+                          `금형제작발주서_${poModalItem.projectNo}.pdf`
+                        );
+                      }}
+                      size="xs"
+                      variant="outline"
+                      className="h-7 px-2.5 border-indigo-300 text-indigo-700 hover:bg-indigo-50"
+                    >
+                      <UploadCloud className="h-3.5 w-3.5 mr-1" />
+                      파일 교체
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex items-center justify-between p-3 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 rounded">
+                  <div className="flex items-center gap-2 text-amber-900 dark:text-amber-200 text-xs">
+                    <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0" />
+                    <span>아직 첨부된 실제 발주서 파일(PDF/Excel)이 없습니다.</span>
+                  </div>
+                  <Button
+                    onClick={() => {
+                      setIsPoModalOpen(false);
+                      handleOpenFileUploadModal(
+                        poModalItem.id,
+                        "moldPoFile",
+                        "금형제작 발주서",
+                        `금형제작발주서_${poModalItem.projectNo}.pdf`
+                      );
+                    }}
+                    size="xs"
+                    className="h-7 px-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold shrink-0"
+                  >
+                    <UploadCloud className="h-3.5 w-3.5 mr-1" />
+                    발주서 파일 첨부하기
+                  </Button>
+                </div>
+              )}
+
               <div className="grid grid-cols-2 gap-3 text-[11px]">
                 <div className="border p-2.5 rounded bg-zinc-50 dark:bg-zinc-800/40 space-y-1">
                   <div className="font-bold text-zinc-800 dark:text-zinc-200 mb-1">[발주사 (MPSI)]</div>
@@ -1677,7 +1775,24 @@ export default function ProductReviewAndMoldDesignPage() {
                 * 본 발주서는 MPSI ERP 및 SCM 발주 시스템과 연동되어 법적 효력을 갖습니다.
               </div>
             </div>
-            <div className="flex items-center justify-end px-4 py-2 bg-zinc-50 border-t">
+            <div className="flex items-center justify-between px-4 py-2 bg-zinc-50 dark:bg-zinc-800 border-t">
+              <Button
+                onClick={() => {
+                  setIsPoModalOpen(false);
+                  handleOpenFileUploadModal(
+                    poModalItem.id,
+                    "moldPoFile",
+                    "금형제작 발주서",
+                    `금형제작발주서_${poModalItem.projectNo}.pdf`
+                  );
+                }}
+                variant="outline"
+                size="xs"
+                className="h-7 px-3 text-indigo-700 border-indigo-300 hover:bg-indigo-50 font-bold"
+              >
+                <UploadCloud className="h-3.5 w-3.5 mr-1" />
+                {poModalItem.moldPoFile ? "발주서 파일 교체/재업로드" : "발주서 파일 첨부 (업로드)"}
+              </Button>
               <Button onClick={() => setIsPoModalOpen(false)} size="xs" className="h-7 px-3">닫기</Button>
             </div>
           </div>
