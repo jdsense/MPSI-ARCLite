@@ -25,6 +25,7 @@ interface EmployeeItem {
   companyName: string;        // 업체명
   empCode: string;            // 사원식별자
   name: string;               // 사원명
+  position: string;           // 직책
   deptName: string;           // 부서명
   taskRole: string;           // 담당업무 (예: 금형설계, 사출품질, CAE해석, 구매)
   relatedPjt: string;         // 관련PJT (NT5-2026-A, A2XT-M01 등)
@@ -45,6 +46,7 @@ const initialEmployees: EmployeeItem[] = [
     companyName: "MPSI (원청)",
     empCode: "EMP-2026-001",
     name: "김태훈",
+    position: "수석연구원",
     deptName: "개발기획팀",
     taskRole: "금형/사출 개발 총괄 및 DR 검토",
     relatedPjt: "NT5-2026-A, A2XT-M01",
@@ -62,6 +64,7 @@ const initialEmployees: EmployeeItem[] = [
     companyName: "MPSI (원청)",
     empCode: "EMP-2026-002",
     name: "김양훈",
+    position: "책임",
     deptName: "품질보증부",
     taskRole: "시사출 판정(Pass/Fail) 및 수입검사(IQC)",
     relatedPjt: "NT5-2026-A, SPX-EV-09",
@@ -79,6 +82,7 @@ const initialEmployees: EmployeeItem[] = [
     companyName: "현대자동차 (1차사)",
     empCode: "C-HK-2026-01",
     name: "최민희",
+    position: "책임매니저",
     deptName: "의장설계팀",
     taskRole: "도어 트림 설계 사양 협의 및 DR 승인",
     relatedPjt: "NT5-2026-A",
@@ -96,6 +100,7 @@ const initialEmployees: EmployeeItem[] = [
     companyName: "우성정공 (금형제작)",
     empCode: "S-WS-2026-01",
     name: "배희섭",
+    position: "이사",
     deptName: "기술영업/설계실",
     taskRole: "금형 견적/설계 및 CAE 유동해석",
     relatedPjt: "NT5-2026-A, A2XT-M01",
@@ -113,6 +118,7 @@ const initialEmployees: EmployeeItem[] = [
     companyName: "뉴몰드 (사출양산)",
     empCode: "S-NM-2026-01",
     name: "김부곤",
+    position: "공장장",
     deptName: "생산기술부",
     taskRole: "사출 성형기 가동, CPK 검증 및 납품 관리",
     relatedPjt: "NT5-2026-A, SPX-EV-09",
@@ -153,6 +159,7 @@ export default function EmployeeManagementPage() {
     companyName: "MPSI (원청)",
     empCode: "",
     name: "",
+    position: "",
     deptName: "",
     taskRole: "",
     relatedPjt: "",
@@ -237,6 +244,7 @@ export default function EmployeeManagementPage() {
       companyName: "MPSI (원청)",
       empCode: `EMP-2026-0${data.length + 1}`,
       name: "",
+      position: "",
       deptName: "생산관리팀",
       taskRole: "사출 공정 0~140 작업관리",
       relatedPjt: "NT5-2026-A",
@@ -468,6 +476,7 @@ export default function EmployeeManagementPage() {
                 <th className="p-1.5 border-r border-slate-600 min-w-[130px]">업체명</th>
                 <th className="p-1.5 border-r border-slate-600 min-w-[110px]">사원식별자</th>
                 <th className="p-1.5 border-r border-slate-600 min-w-[90px]">사원명</th>
+                <th className="p-1.5 border-r border-slate-600 min-w-[80px] text-center">직책</th>
                 <th className="p-1.5 border-r border-slate-600 min-w-[100px]">부서명</th>
                 <th className="p-1.5 border-r border-slate-600 min-w-[170px]">담당업무</th>
                 <th className="p-1.5 border-r border-slate-600 min-w-[130px] font-mono text-amber-300">관련PJT</th>
@@ -494,6 +503,7 @@ export default function EmployeeManagementPage() {
                   <td className="p-1.5 border-r font-medium truncate max-w-[130px]" title={row.companyName}>{row.companyName}</td>
                   <td className="p-1.5 border-r font-mono font-bold text-sky-600">{row.empCode}</td>
                   <td className="p-1.5 border-r font-bold text-zinc-900 dark:text-zinc-100">{row.name}</td>
+                  <td className="p-1.5 border-r text-center text-zinc-700 dark:text-zinc-300 font-medium">{row.position || "-"}</td>
                   <td className="p-1.5 border-r text-zinc-600">{row.deptName}</td>
                   <td className="p-1.5 border-r truncate max-w-[170px]" title={row.taskRole}>{row.taskRole}</td>
                   
@@ -617,6 +627,15 @@ export default function EmployeeManagementPage() {
                       onChange={(e) => setFormState({ ...formState, name: e.target.value })}
                       placeholder="홍길동"
                       className="h-7 text-xs bg-white font-bold"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-zinc-500 mb-1">직책</label>
+                    <Input 
+                      value={formState.position || ""} 
+                      onChange={(e) => setFormState({ ...formState, position: e.target.value })} 
+                      placeholder="책임, 수석, 과장"
+                      className="h-7 text-xs bg-white"
                     />
                   </div>
                   <div>

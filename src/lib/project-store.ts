@@ -370,6 +370,8 @@ export interface ProjectItem {
   estimateNo?: string;           // 견적관리번호 (예: EST-2026-001)
   isContractConfirmed?: boolean; // 수주확정 여부 (true: 개발/양산, false: 견적진행중)
   isQuotePending?: boolean;      // 수주미성사 여부
+  isPromotedFromQuote?: boolean; // 원청사 견적에서 수주 승격 여부
+  isRegistrationCompleted?: boolean; // 프로젝트 생산/외주 스펙 등록 완료 여부
   quotationType?: "VENDOR_FIRST" | "MPSI_FIRST"; // 견적 유형
   quotationStatus?: string;      // 견적 진행 상태
   costEstimateDetails?: {

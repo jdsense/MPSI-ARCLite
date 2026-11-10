@@ -193,8 +193,8 @@ export default function ProjectStatus13StepsPage() {
   const [editingProject, setEditingProject] = useState<ProjectItem | null>(null);
   const [editFormState, setEditFormState] = useState<Partial<ProjectItem>>({});
 
-  // 신규 등록 시 프로젝트 번호 지정 모드 (신규 자동 채번 vs 기존 프로젝트 번호 연동)
-  const [projectCreationMode, setProjectCreationMode] = useState<"NEW" | "EXISTING">("NEW");
+  // 신규 등록 시 프로젝트 번호 지정 모드 (신규 자동 채번 vs 기존 프로젝트 번호 연동 vs 승격 프로젝트 확정 등록)
+  const [projectCreationMode, setProjectCreationMode] = useState<"NEW" | "EXISTING" | "PROMOTED">("NEW");
   const [selectedExistingProjectNo, setSelectedExistingProjectNo] = useState("");
 
   // 설계변경(E채번) 발의 모달 상태
@@ -303,6 +303,18 @@ export default function ProjectStatus13StepsPage() {
       setToastMessage((prev) => (prev?.text === text ? null : prev));
     }, 4500);
   };
+
+  // URL 쿼리 파라미터 연동 (?highlight=MI26001-01) - 원청사 견적 승격 건 자동 검색 필터 적용
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      const highlight = params.get("highlight");
+      if (highlight) {
+        setFilterKeyword(highlight);
+        showToast(`승격된 프로젝트 [${highlight}] 가 검색 필터에 적용되었습니다. 그리드의 '등록' 버튼을 눌러 생산 방식 및 외주업체를 확정 등록하세요.`, "info");
+      }
+    }
+  }, []);
 
   // 날짜 프리셋 설정 함수
   const setDatePreset = (preset: "all" | "today" | "thisMonth" | "recent3M" | "year2026") => {
@@ -532,6 +544,53 @@ export default function ProjectStatus13StepsPage() {
     setIsNewProjectModalOpen(true);
   };
 
+  // 원청사 견적 승격 건 생산 및 외주업체 등록 모달 열기 핸들러
+  const handleOpenPromotedRegisterModal = (row: ProjectItem) => {
+    setProjectCreationMode("PROMOTED");
+    setSelectedExistingProjectNo("");
+    setSelectedItemCode(row.partNo || "");
+    const today = new Date();
+    const dateStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+
+    setFormState({
+      projectNo: row.projectNo,
+      estimateNo: row.estimateNo || "",
+      projectName: row.projectName || "",
+      productName: row.productName || "",
+      customerName: row.customerName || CUSTOMER_OPTIONS[0],
+      partNo: row.partNo || "",
+      moldNo: row.moldNo || `${row.projectNo}M`,
+      moldDegree: row.moldDegree || "M1",
+      changeType: (row.changeType as any) || "N001",
+      moldProductionType: row.moldProductionType || "OUTSOURCING",
+      moldVendor: row.moldVendor || "우성정공(주)",
+      massProductionType: row.massProductionType || "OUTSOURCING",
+      massVendor: row.massVendor || "(주)뉴몰드",
+      cavity: row.cavity || "1*2 Cavity",
+      material: row.material || "NAK80",
+      partWeight: row.partWeight || "420g",
+      annualVolume: row.annualVolume || 50000,
+      machineTon: row.machineTon || "650T",
+      hrsSpec: row.hrsSpec || "밸브게이트 2-Drop",
+      moldMaterial: row.moldMaterial || "NAK80",
+      resinSpec: row.resinSpec || "PP-EPDM",
+      warrantyShots: row.warrantyShots || 500000,
+      registeredDate: row.registeredDate || dateStr,
+      quoteSubmitDate: row.quoteSubmitDate || "",
+      orderDate: row.orderDate || dateStr,
+      kickoffDate: row.kickoffDate || "",
+      targetMoldDays: row.targetMoldDays || 45,
+      targetT1Date: row.targetT1Date || "",
+      moldDeliveryDate: row.moldDeliveryDate || "",
+      targetMassDate: row.targetMassDate || "",
+      massStartDate: row.massStartDate || "",
+      currentStep: 1, // 등록 완료 시 1단계(도면접수)로 전환
+      stepStatus: "진행중",
+      trialDegree: "T1 대기",
+    });
+    setIsNewProjectModalOpen(true);
+  };
+
   // 기존 프로젝트 번호 연동 선택 시 기본 정보 자동 세팅 핸들러
   const handleSelectExistingProject = (pNo: string) => {
     setSelectedExistingProjectNo(pNo);
@@ -589,7 +648,7 @@ export default function ProjectStatus13StepsPage() {
       return;
     }
     if (!formState.partNo?.trim()) {
-      alert("기초정보 품목을 선택해주세요.");
+      alert("품목식별자 / 품번(Part No.)을 입력하거나 기초정보 품목을 선택해주세요.");
       return;
     }
 
@@ -598,6 +657,51 @@ export default function ProjectStatus13StepsPage() {
 
     const estimateNo = formState.estimateNo?.trim() || generateNextQuoteNo(projects);
     const isQuote = Number(formState.currentStep) === 0;
+
+    // 원청사 견적 승격 건 등록 완료 처리 (기존 행 갱신)
+    if (projectCreationMode === "PROMOTED") {
+      updateStep(trimmedNo, {
+        projectName: formState.projectName || "",
+        productName: formState.productName.trim(),
+        customerName: formState.customerName || "고객사",
+        partNo: formState.partNo,
+        moldNo: formState.moldNo || `${trimmedNo}M`,
+        moldDegree: formState.moldDegree || "M1",
+        changeType: (formState.changeType as any) || "N001",
+        moldProductionType: formState.moldProductionType || "OUTSOURCING",
+        moldVendor: formState.moldVendor || "우성정공(주)",
+        massProductionType: formState.massProductionType || "OUTSOURCING",
+        massVendor: formState.massVendor || "(주)뉴몰드",
+        cavity: formState.cavity || "1*2 Cavity",
+        material: formState.material || "NAK80",
+        partWeight: formState.partWeight || "420g",
+        annualVolume: Number(formState.annualVolume || 50000),
+        machineTon: formState.machineTon || "650T",
+        hrsSpec: formState.hrsSpec || "밸브게이트 2-Drop",
+        moldMaterial: formState.moldMaterial || "NAK80",
+        resinSpec: formState.resinSpec || "PP-EPDM",
+        warrantyShots: Number(formState.warrantyShots || 500000),
+        registeredDate: formState.registeredDate || dateStr,
+        quoteSubmitDate: formState.quoteSubmitDate || "",
+        orderDate: formState.orderDate || dateStr,
+        kickoffDate: formState.kickoffDate || "",
+        targetMoldDays: Number(formState.targetMoldDays || 45),
+        targetT1Date: formState.targetT1Date || "",
+        moldDeliveryDate: formState.moldDeliveryDate || "",
+        targetMassDate: formState.targetMassDate || "",
+        massStartDate: formState.massStartDate || "",
+        currentStep: 1, // 1단계로 전환
+        stepStatus: "진행중",
+        stepNameCustom: "제품 data 접수",
+        isContractConfirmed: true,
+        isQuotePending: false,
+        quotationStatus: "수주확정",
+        isRegistrationCompleted: true, // 등록 완료
+      });
+      showToast(`승격 프로젝트 [${trimmedNo}] 생산 방식 및 외주업체 등록이 완료되었습니다. 1단계(제품 data 접수)가 시작됩니다.`, "success");
+      setIsNewProjectModalOpen(false);
+      return;
+    }
 
     addProject({
       projectNo: trimmedNo,
@@ -647,7 +751,7 @@ export default function ProjectStatus13StepsPage() {
       updatedAt: `${dateStr} 09:00`,
     });
 
-    showToast(`프로젝트 [${trimmedNo}] (견적: ${estimateNo}, 구분 ${formState.changeType || "N001"}) 등록 완료`, "success");
+    showToast(`프로젝트 [${trimmedNo}] (견적: ${estimateNo}, 구분 필터 ${formState.changeType || "N001"}) 등록 완료`, "success");
     setIsNewProjectModalOpen(false);
   };
 
@@ -1497,7 +1601,7 @@ export default function ProjectStatus13StepsPage() {
         {/* [0열]: *견적/수주 관리 & *개발/양산 관리 탭 + 체크박스 분리 필터 (사용자 피드백 3 반영) */}
         <div className="flex flex-wrap items-center justify-between pb-2.5 border-b border-zinc-100 dark:border-zinc-800 gap-2.5">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="font-bold text-zinc-700 dark:text-zinc-300 text-xs shrink-0">구분</span>
+            <span className="font-bold text-zinc-700 dark:text-zinc-300 text-xs shrink-0">구분 필터</span>
             
             {/* 원클릭 프리셋 버튼 탭 */}
             <div className="inline-flex rounded-lg border border-zinc-200 dark:border-zinc-700 p-0.5 bg-zinc-100 dark:bg-zinc-800 text-xs">
@@ -2148,6 +2252,31 @@ export default function ProjectStatus13StepsPage() {
                       {/* 16. 상세 모달 열기 및 수정/삭제 버튼 */}
                       <td className="p-2 text-center">
                         <div className="flex items-center justify-center gap-1">
+                          {/* 6. 프로젝트 승격 건에 대한 등록 버튼 (등록 완료 시 비활성화) */}
+                          {row.isPromotedFromQuote ? (
+                            row.isRegistrationCompleted ? (
+                              <Button 
+                                size="xs" 
+                                disabled
+                                className="h-6 px-1.5 text-[10px] rounded-md font-bold gap-1 bg-zinc-100 text-zinc-400 border border-zinc-200 cursor-not-allowed shadow-2xs"
+                                title="생산 및 외주업체 등록 완료"
+                              >
+                                <Check className="h-3 w-3 text-zinc-400" />
+                                등록완료
+                              </Button>
+                            ) : (
+                              <Button 
+                                onClick={() => handleOpenPromotedRegisterModal(row)} 
+                                size="xs" 
+                                className="h-6 px-2 text-[10px] rounded-md font-bold gap-1 bg-indigo-600 hover:bg-indigo-700 text-white shadow-2xs animate-pulse"
+                                title="승격된 프로젝트의 생산방식 및 외주 협력사 등록"
+                              >
+                                <Sparkles className="h-3 w-3" />
+                                등록
+                              </Button>
+                            )
+                          ) : null}
+
                           <Button 
                             onClick={() => handleOpenModal(row, "detail")} 
                             size="xs" 
@@ -2794,7 +2923,9 @@ export default function ProjectStatus13StepsPage() {
               <div className="flex items-center gap-2">
                 <Briefcase className="h-4 w-4 text-sky-400" />
                 <h3 className="font-bold text-xs">
-                  프로젝트 등록 (생산 및 외주업체 선택)
+                  {projectCreationMode === "PROMOTED" 
+                    ? `승격 프로젝트 등록 (생산 및 외주업체 선택) - [${formState.projectNo}]` 
+                    : "프로젝트 등록 (생산 및 외주업체 선택)"}
                 </h3>
               </div>
               <button onClick={() => setIsNewProjectModalOpen(false)} className="text-zinc-400 hover:text-white">
@@ -2803,89 +2934,107 @@ export default function ProjectStatus13StepsPage() {
             </div>
 
             <div className="p-5 flex flex-col gap-4 overflow-y-auto text-xs">
-              {/* [핵심] 프로젝트 번호 지정 방식 선택 (신규 프로젝트 발번 vs 기존 프로젝트 번호 연동) */}
-              <div className="bg-white dark:bg-zinc-900 p-3.5 rounded-lg border border-sky-200 dark:border-zinc-700 flex flex-col gap-2.5 shadow-2xs">
-                <div className="flex items-center justify-between">
-                  <span className="font-bold text-xs text-sky-800 dark:text-sky-300 flex items-center gap-1.5">
-                    <Sparkles className="h-4 w-4 text-sky-600" />
-                    프로젝트 번호 지정 방식
-                  </span>
-                  <span className="text-[10px] text-zinc-400">
-                    * 프로젝트 번호는 무조건 M으로 시작하며, 같은 번호로 설계변경/추가금형 등록이 가능합니다.
-                  </span>
-                </div>
-
-                <div className="flex items-center gap-4 text-xs flex-wrap">
-                  <label className="flex items-center gap-1.5 cursor-pointer">
-                    <input
-                      type="radio"
-                      name="projectCreationMode"
-                      value="NEW"
-                      checked={projectCreationMode === "NEW"}
-                      onChange={() => {
-                        setProjectCreationMode("NEW");
-                        const nextPjt = generateNextProjectNo(projects);
-                        const nextQ = generateNextQuoteNo(projects);
-                        setFormState((prev) => ({
-                          ...prev,
-                          projectNo: nextPjt,
-                          estimateNo: nextQ,
-                          changeType: "N001",
-                          moldDegree: "M1",
-                          moldNo: `${nextPjt}M`,
-                        }));
-                      }}
-                    />
-                    <span className="font-bold text-zinc-800 dark:text-zinc-200">
-                      신규 프로젝트 발번 (초도 신작 N001)
+              {/* [핵심] 프로젝트 번호 지정 방식 선택 또는 원청사 승격 안내 배너 */}
+              {projectCreationMode === "PROMOTED" ? (
+                <div className="bg-indigo-50/80 dark:bg-indigo-950/40 p-3.5 rounded-lg border border-indigo-200 dark:border-indigo-800 flex flex-col gap-1.5 shadow-2xs">
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-xs text-indigo-900 dark:text-indigo-200 flex items-center gap-1.5">
+                      <Sparkles className="h-4 w-4 text-indigo-600 animate-pulse" />
+                      원청사 견적 수주 확정 승격 건
                     </span>
-                  </label>
-
-                  <label className="flex items-center gap-1.5 cursor-pointer">
-                    <input
-                      type="radio"
-                      name="projectCreationMode"
-                      value="EXISTING"
-                      checked={projectCreationMode === "EXISTING"}
-                      onChange={() => {
-                        setProjectCreationMode("EXISTING");
-                        const existingNo = selectedExistingProjectNo || projects[0]?.projectNo || "";
-                        if (existingNo) {
-                          handleSelectExistingProject(existingNo);
-                        }
-                      }}
-                    />
-                    <span className="font-bold text-purple-700 dark:text-purple-300">
-                      기존 프로젝트 번호 연동 (설계변경 E차수 / 복수·증설 금형 M차수 등록)
-                    </span>
-                  </label>
-                </div>
-
-                {projectCreationMode === "EXISTING" && (
-                  <div className="pt-2 border-t flex flex-col gap-1.5 bg-purple-50/50 dark:bg-purple-950/20 p-2.5 rounded-md">
-                    <div className="flex items-center gap-2">
-                      <span className="text-zinc-700 dark:text-zinc-300 font-bold shrink-0">연동할 기존 프로젝트:</span>
-                      <select
-                        value={selectedExistingProjectNo || formState.projectNo}
-                        onChange={(e) => handleSelectExistingProject(e.target.value)}
-                        className="h-8 flex-1 rounded border border-purple-300 bg-white dark:bg-zinc-800 px-2 text-xs font-mono font-bold text-purple-800 dark:text-purple-200"
-                      >
-                        {Array.from(new Set(projects.map((p) => p.projectNo))).map((pNo) => {
-                          const p = projects.find((item) => item.projectNo === pNo);
-                          return (
-                            <option key={pNo} value={pNo}>
-                              [{pNo}] {p?.projectName} - {p?.productName} ({p?.customerName})
-                            </option>
-                          );
-                        })}
-                      </select>
-                    </div>
-                    <span className="text-[10px] text-purple-700 dark:text-purple-300">
-                      * 동일한 프로젝트 번호로 차수(설변 E001 또는 추가금형 M2)를 등록하여, 관리대장에서 같은 프로젝트로 식별되어 프로세스를 재진행합니다.
+                    <span className="text-[10px] bg-indigo-100 text-indigo-800 dark:bg-indigo-900 dark:text-indigo-200 px-2 py-0.5 rounded font-bold font-mono">
+                      프로젝트번호: {formState.projectNo} (원 견적번호: {formState.estimateNo})
                     </span>
                   </div>
-                )}
-              </div>
+                  <p className="text-[11px] text-indigo-700 dark:text-indigo-300 leading-relaxed">
+                    원청사 견적 관리에서 수주 승격되어 프로젝트 관리대장에 연동된 건입니다. 
+                    견적 정보(고객사, 프로젝트명, 제품명)가 자동 바인딩되었으며, 아래에서 금형/양산 협력업체 및 기술 사양을 확인·등록하면 <strong>1단계(제품 data 접수)</strong>로 즉시 공식 개발 프로세스가 시작됩니다.
+                  </p>
+                </div>
+              ) : (
+                <div className="bg-white dark:bg-zinc-900 p-3.5 rounded-lg border border-sky-200 dark:border-zinc-700 flex flex-col gap-2.5 shadow-2xs">
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-xs text-sky-800 dark:text-sky-300 flex items-center gap-1.5">
+                      <Sparkles className="h-4 w-4 text-sky-600" />
+                      프로젝트 번호 지정 방식
+                    </span>
+                    <span className="text-[10px] text-zinc-400">
+                      * 프로젝트 번호는 무조건 M으로 시작하며, 같은 번호로 설계변경/추가금형 등록이 가능합니다.
+                    </span>
+                  </div>
+
+                  <div className="flex items-center gap-4 text-xs flex-wrap">
+                    <label className="flex items-center gap-1.5 cursor-pointer">
+                      <input
+                        type="radio"
+                        name="projectCreationMode"
+                        value="NEW"
+                        checked={projectCreationMode === "NEW"}
+                        onChange={() => {
+                          setProjectCreationMode("NEW");
+                          const nextPjt = generateNextProjectNo(projects);
+                          const nextQ = generateNextQuoteNo(projects);
+                          setFormState((prev) => ({
+                            ...prev,
+                            projectNo: nextPjt,
+                            estimateNo: nextQ,
+                            changeType: "N001",
+                            moldDegree: "M1",
+                            moldNo: `${nextPjt}M`,
+                          }));
+                        }}
+                      />
+                      <span className="font-bold text-zinc-800 dark:text-zinc-200">
+                        신규 프로젝트 발번 (초도 신작 N001)
+                      </span>
+                    </label>
+
+                    <label className="flex items-center gap-1.5 cursor-pointer">
+                      <input
+                        type="radio"
+                        name="projectCreationMode"
+                        value="EXISTING"
+                        checked={projectCreationMode === "EXISTING"}
+                        onChange={() => {
+                          setProjectCreationMode("EXISTING");
+                          const existingNo = selectedExistingProjectNo || projects[0]?.projectNo || "";
+                          if (existingNo) {
+                            handleSelectExistingProject(existingNo);
+                          }
+                        }}
+                      />
+                      <span className="font-bold text-purple-700 dark:text-purple-300">
+                        기존 프로젝트 번호 연동 (설계변경 E차수 / 복수·증설 금형 M차수 등록)
+                      </span>
+                    </label>
+                  </div>
+
+                  {projectCreationMode === "EXISTING" && (
+                    <div className="pt-2 border-t flex flex-col gap-1.5 bg-purple-50/50 dark:bg-purple-950/20 p-2.5 rounded-md">
+                      <div className="flex items-center gap-2">
+                        <span className="text-zinc-700 dark:text-zinc-300 font-bold shrink-0">연동할 기존 프로젝트:</span>
+                        <select
+                          value={selectedExistingProjectNo || formState.projectNo}
+                          onChange={(e) => handleSelectExistingProject(e.target.value)}
+                          className="h-8 flex-1 rounded border border-purple-300 bg-white dark:bg-zinc-800 px-2 text-xs font-mono font-bold text-purple-800 dark:text-purple-200"
+                        >
+                          {Array.from(new Set(projects.map((p) => p.projectNo))).map((pNo) => {
+                            const p = projects.find((item) => item.projectNo === pNo);
+                            return (
+                              <option key={pNo} value={pNo}>
+                                [{pNo}] {p?.projectName} - {p?.productName} ({p?.customerName})
+                              </option>
+                            );
+                          })}
+                        </select>
+                      </div>
+                      <span className="text-[10px] text-purple-700 dark:text-purple-300">
+                        * 동일한 프로젝트 번호로 차수(설변 E001 또는 추가금형 M2)를 등록하여, 관리대장에서 같은 프로젝트로 식별되어 프로세스를 재진행합니다.
+                      </span>
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* [기초정보 품목 선택] */}
               <div className="bg-sky-50/70 dark:bg-sky-950/30 p-3.5 rounded-lg border border-sky-200 dark:border-sky-800 flex flex-col gap-2.5 shadow-2xs">
@@ -2983,7 +3132,7 @@ export default function ProjectStatus13StepsPage() {
                   {/* 1-2. 신작 / 설변 구분 */}
                   <div>
                     <label className="block text-zinc-600 dark:text-zinc-400 mb-1 font-bold flex items-center justify-between">
-                      <span>신작/설변 구분</span>
+                      <span>신작/설변 구분 필터</span>
                       <span className="text-[10px] text-amber-700 font-mono font-bold bg-amber-50 px-1.5 py-0.2 rounded border border-amber-200">
                         {formState.changeType || "N001"}
                       </span>
@@ -3039,16 +3188,21 @@ export default function ProjectStatus13StepsPage() {
                           기초정보 연동됨
                         </span>
                       ) : (
-                        <span className="text-[9px] text-amber-600 font-normal">
-                          (상단 품목 선택 필수)
+                        <span className="text-[9px] text-zinc-400 font-normal">
+                          (직접 입력 또는 상단 품목 선택)
                         </span>
                       )}
                     </label>
                     <Input 
                       value={formState.partNo || ""} 
-                      readOnly
-                      placeholder="상단 기초정보 품목 선택 시 자동 입력"
-                      className="h-7 text-xs bg-zinc-100 dark:bg-zinc-800 font-mono font-bold text-sky-700 dark:text-sky-300 border-zinc-200 cursor-not-allowed"
+                      readOnly={Boolean(selectedItemCode)}
+                      onChange={(e) => setFormState({ ...formState, partNo: e.target.value })}
+                      placeholder="예: 8471-NT500-LH"
+                      className={`h-7 text-xs font-mono font-bold ${
+                        selectedItemCode 
+                          ? "bg-zinc-100 dark:bg-zinc-800 text-sky-700 dark:text-sky-300 border-zinc-200 cursor-not-allowed" 
+                          : "bg-white text-zinc-900 border-sky-300"
+                      }`}
                     />
                   </div>
 
@@ -3490,10 +3644,14 @@ export default function ProjectStatus13StepsPage() {
               </Button>
               <Button 
                 onClick={handleCreateProject}
-                className="h-8 px-4 text-xs bg-sky-600 hover:bg-sky-700 text-white gap-1.5 font-bold"
+                className={`h-8 px-4 text-xs text-white gap-1.5 font-bold ${
+                  projectCreationMode === "PROMOTED"
+                    ? "bg-indigo-600 hover:bg-indigo-700 shadow-md"
+                    : "bg-sky-600 hover:bg-sky-700"
+                }`}
               >
                 <Check className="h-3.5 w-3.5" />
-                프로젝트 등록
+                {projectCreationMode === "PROMOTED" ? "승격 프로젝트 등록 확정" : "프로젝트 등록"}
               </Button>
             </div>
           </div>
@@ -3581,7 +3739,7 @@ export default function ProjectStatus13StepsPage() {
                   {/* 1-2. 신작 / 설변 구분 */}
                   <div>
                     <label className="block text-zinc-600 dark:text-zinc-400 mb-1 font-bold flex items-center justify-between">
-                      <span>신작/설변 구분</span>
+                      <span>신작/설변 구분 필터</span>
                       <span className="text-[10px] text-amber-700 font-mono font-bold bg-amber-50 px-1.5 py-0.2 rounded border border-amber-200">
                         {editFormState.changeType || "N001"}
                       </span>

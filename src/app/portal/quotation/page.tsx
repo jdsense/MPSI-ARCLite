@@ -8,7 +8,7 @@ import {
   Building2, Send, Download, X, Upload,
   Paperclip, FileSpreadsheet, Trash2,
   Calendar, Package, Sparkles,
-  ArrowRight, Check, User, Clock,
+  ArrowRight, ArrowUpRight, Check, User, Clock,
   DollarSign, FileText, Phone, Mail, Edit3, MessageSquare,
   Layers, ExternalLink
 } from "lucide-react";
@@ -25,6 +25,7 @@ export type PrimeQuotationStatus =
   | "원청사협의중"
   | "고객 답변 대기"
   | "수주확정"
+  | "프로젝트 승격"
   | "실주/미체결";
 
 // 2. 패밀리 금형(Family Mold, LH/RH) 등 복수 부품 단가 인터페이스
@@ -334,6 +335,26 @@ function savePrimeQuotationsToStorage(quotes: PrimeQuotationItem[]) {
   } catch (e) {}
 }
 
+// 견적 단계 번호(Q) 자동 채번 함수 (옵션 B: Q26001-01)
+export function generateNextQuotationNo(items: PrimeQuotationItem[]): string {
+  const currentYear = String(new Date().getFullYear()).slice(-2);
+  const prefix = `Q${currentYear}`;
+  const seqs: number[] = [];
+
+  (items || []).forEach((item) => {
+    const raw = item.quotationNo || item.projectNo || "";
+    if (raw.toUpperCase().startsWith(prefix)) {
+      const match = raw.toUpperCase().match(new RegExp(`^${prefix}(\\d{3})`));
+      if (match && match[1]) {
+        seqs.push(parseInt(match[1], 10));
+      }
+    }
+  });
+
+  const nextSeq = seqs.length > 0 ? Math.max(...seqs) + 1 : 1;
+  return `${prefix}${String(nextSeq).padStart(3, "0")}-01`;
+}
+
 // 업로드된 실제 File/Blob을 브라우저 세션 동안 메모리에 안전하게 보관하는 맵
 const uploadedFileBlobMap = new Map<string, { blob: Blob; fileName: string }>();
 
@@ -452,7 +473,7 @@ function triggerActualFileDownload(
 
 export default function QuotationPage() {
   const router = useRouter();
-  const { projects, updateStep } = useProjectMaster();
+  const { projects, updateStep, addProject } = useProjectMaster();
   const [data, setDataState] = useState<PrimeQuotationItem[]>(() => getStoredPrimeQuotations());
 
   const setData = (updater: PrimeQuotationItem[] | ((prev: PrimeQuotationItem[]) => PrimeQuotationItem[])) => {
@@ -496,18 +517,18 @@ export default function QuotationPage() {
   const [isReplaceFileFormOpen, setIsReplaceFileFormOpen] = useState(false);
   const [selectedReplaceFile, setSelectedReplaceFile] = useState<File | null>(null);
 
-  // 프로젝트 선택 연동 (0단계 견적과 프로젝트 마스터 키 관계 바인딩)
+  // 프로젝트 선택 연동 (선택 시 참고용)
   const [selectedProjectNo, setSelectedProjectNo] = useState<string>("");
 
   // 신규 등록 폼 (패밀리 금형 LH/RH 부품단가 & 다중 견적제출파일 지원)
   const [newForm, setNewForm] = useState({
-    customerName: "",
+    customerName: CUSTOMER_OPTIONS[0],
     customerDept: "바디의장개발팀",
     customerManager: "",
     customerContact: "",
     customerEmail: "",
-    projectNo: "",
-    quotationNo: "", // 견적번호 (PJT 번호와 1:1 동일)
+    projectNo: "Q26001-01",
+    quotationNo: "Q26001-01", // 견적번호
     projectName: "",
     productName: "",
     productionVolume: "연간 100,000대",
@@ -520,38 +541,43 @@ export default function QuotationPage() {
     submissionDeadline: "",
     // [요청 4] 견적제출파일 다중 목록
     quotationFiles: [] as QuotationFileHistoryItem[],
-    mpsiAuthor: "MPSI",
+    mpsiAuthor: "MPSI 영업팀",
     notes: "",
     initialMemo: "",
   });
 
+  // 신규 원청사 견적 등록 모달 열기 (옵션 B: Q26001-01 자동 채번 프리필)
+  const handleOpenNewModal = () => {
+    const nextQ = generateNextQuotationNo(data);
+    setNewForm({
+      customerName: CUSTOMER_OPTIONS[0],
+      customerDept: "바디의장개발팀",
+      customerManager: "",
+      customerContact: "",
+      customerEmail: "",
+      projectNo: nextQ,
+      quotationNo: nextQ,
+      projectName: "",
+      productName: "",
+      productionVolume: "연간 100,000대",
+      moldEstimateWon: 0,
+      partPriceItems: [
+        { id: `p-${Date.now()}-1`, side: "LH", partName: "", partNo: "", unitPriceWon: 0 },
+        { id: `p-${Date.now()}-2`, side: "RH", partName: "", partNo: "", unitPriceWon: 0 },
+      ],
+      submissionDeadline: "",
+      quotationFiles: [],
+      mpsiAuthor: "MPSI 영업팀",
+      notes: "",
+      initialMemo: "",
+    });
+    setSelectedProjectNo("");
+    setIsNewModalOpen(true);
+  };
+
   const handleSelectProject = (pNo: string) => {
     setSelectedProjectNo(pNo);
-    if (!pNo) {
-      setNewForm({
-        customerName: "",
-        customerDept: "",
-        customerManager: "",
-        customerContact: "",
-        customerEmail: "",
-        projectNo: "",
-        quotationNo: "",
-        projectName: "",
-        productName: "",
-        productionVolume: "",
-        moldEstimateWon: 0,
-        partPriceItems: [
-          { id: "p-new-1", side: "LH", partName: "", partNo: "", unitPriceWon: 0 },
-          { id: "p-new-2", side: "RH", partName: "", partNo: "", unitPriceWon: 0 },
-        ],
-        submissionDeadline: "",
-        quotationFiles: [],
-        mpsiAuthor: "MPSI",
-        notes: "",
-        initialMemo: "",
-      });
-      return;
-    }
+    if (!pNo) return;
 
     const found = projects.find((p) => p.projectNo === pNo);
     if (found) {
@@ -560,16 +586,12 @@ export default function QuotationPage() {
       
       setNewForm((prev) => ({
         ...prev,
-        projectNo: found.projectNo,
-        // [요청 1] 견적번호 = 프로젝트 관리번호 1:1 동일 바인딩
-        quotationNo: found.projectNo,
-        projectName: found.projectName,
-        productName: found.productName,
+        projectName: found.projectName || prev.projectName,
+        productName: found.productName || prev.productName,
         customerName: found.customerName || prev.customerName,
-        productionVolume: found.orderQty ? `연간 ${found.orderQty.toLocaleString()}대` : "연간 120,000대",
-        submissionDeadline: found.targetT1Date || "",
-        notes: found.notes || `${found.projectName} - ${found.productName} 0단계 원청사 견적 제출 건`,
-        // 패밀리 금형 부품 기본 세팅
+        productionVolume: found.orderQty ? `연간 ${found.orderQty.toLocaleString()}대` : prev.productionVolume,
+        submissionDeadline: found.targetT1Date || prev.submissionDeadline,
+        notes: found.notes || prev.notes,
         partPriceItems: isLH_RH ? [
           { id: `p-${Date.now()}-1`, side: "LH", partName: `${pName.replace(/LH\/RH/i, "").trim()} LH`.trim(), partNo: found.partNo ? `${found.partNo}-L` : "", unitPriceWon: 0 },
           { id: `p-${Date.now()}-2`, side: "RH", partName: `${pName.replace(/LH\/RH/i, "").trim()} RH`.trim(), partNo: found.partNo ? `${found.partNo}-R` : "", unitPriceWon: 0 },
@@ -577,6 +599,82 @@ export default function QuotationPage() {
           { id: `p-${Date.now()}-1`, side: "공용", partName: pName, partNo: found.partNo || "", unitPriceWon: 0 }
         ]
       }));
+    }
+  };
+
+  // 수주확정 견적 ➔ 프로젝트 승격 핸들러 (Q26001-01 ➔ MI26001-01)
+  const handlePromoteToProject = (item: PrimeQuotationItem) => {
+    // 5. 프로젝트 승격이 되면, 견적번호 시작문자가 "Q"에서 "MI"로 변경되어야 한다
+    const officialPjtNo = item.quotationNo.toUpperCase().startsWith("Q")
+      ? item.quotationNo.replace(/^Q/i, "MI")
+      : (item.quotationNo.toUpperCase().startsWith("M") ? item.quotationNo : `MI${item.quotationNo}`);
+
+    if (!confirm(`[프로젝트 승격 확인]\n\n견적 [${item.quotationNo}] 건을 정식 프로젝트 [${officialPjtNo}]로 승격하시겠습니까?\n\n승격 시:\n1) 견적 상태가 '프로젝트 승격'으로 전환됩니다.\n2) 견적번호 시작문자가 'Q'에서 'MI'(${officialPjtNo})로 변경됩니다.\n3) 프로젝트 관리대장에 자동 등록되어 외주처/생산 사양을 확정할 수 있습니다.`)) {
+      return;
+    }
+
+    const today = new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().split("T")[0];
+
+    // 1. 견적 데이터 갱신 (진행상태: '프로젝트 승격', 견적번호 시작문자 Q -> MI)
+    const updatedItem: PrimeQuotationItem = {
+      ...item,
+      quotationNo: officialPjtNo,
+      projectNo: officialPjtNo,
+      officialProjectNo: officialPjtNo,
+      status: "프로젝트 승격",
+    };
+
+    setData((prev) => prev.map((q) => (q.id === item.id ? updatedItem : q)));
+    if (selectedItem?.id === item.id) {
+      setSelectedItem(updatedItem);
+    }
+
+    // 2. 프로젝트 관리대장에 자동 추가 (생산/외주업체 등록 대기 상태)
+    addProject({
+      projectNo: officialPjtNo,
+      estimateNo: item.quotationNo, // 이전 Q 견적번호 보존
+      projectName: item.projectName || "",
+      productName: item.productName || "",
+      customerName: item.customerName || "고객사",
+      partNo: item.partPriceItems?.[0]?.partNo || "",
+      moldNo: `${officialPjtNo}M`,
+      moldDegree: "M1",
+      changeType: "N001",
+      moldProductionType: "OUTSOURCING",
+      moldVendor: "우성정공(주)",
+      massProductionType: "OUTSOURCING",
+      massVendor: "(주)뉴몰드",
+      cavity: "1*2 Cavity",
+      material: "NAK80",
+      partWeight: "420g",
+      annualVolume: 50000,
+      machineTon: "650T",
+      hrsSpec: "밸브게이트 2-Drop",
+      moldMaterial: "NAK80",
+      resinSpec: "PP-EPDM",
+      warrantyShots: 500000,
+      registeredDate: today,
+      targetT1Date: item.submissionDeadline || "",
+      moldDeliveryDate: "",
+      targetMassDate: "",
+      currentStep: 0,
+      stepStatus: "진행중",
+      trialDegree: "T1 대기",
+      trialCompletionRate: 0,
+      facilityEvent: "가동대기",
+      orderQty: 0,
+      deliveredQty: 0,
+      updatedAt: `${today} 09:00`,
+      quotationStatus: "수주확정",
+      isContractConfirmed: true,
+      isQuotePending: false,
+      isPromotedFromQuote: true,
+      isRegistrationCompleted: false, // 등록 대기 플래그
+      notes: `[원청사 견적 승격] 견적번호: ${item.quotationNo} -> 정식 프로젝트: ${officialPjtNo} 승격 완료`,
+    });
+
+    if (confirm(`[프로젝트 승격 완료]\n\n정식 프로젝트 [${officialPjtNo}]가 생성되어 프로젝트 관리대장에 등록되었습니다.\n프로젝트 관리대장(/portal/project)으로 이동하여 외주처 및 세부 생산 사양을 등록하시겠습니까?`)) {
+      router.push(`/portal/project?highlight=${encodeURIComponent(officialPjtNo)}`);
     }
   };
 
@@ -743,12 +841,12 @@ export default function QuotationPage() {
 
   // 신규 원청사 견적 등록
   const handleSaveNewQuotation = () => {
-    if (!selectedProjectNo || !newForm.projectNo) {
-      alert("견적을 등록할 대상 프로젝트를 선택해주세요. (0단계 견적과 프로젝트 관리번호 간 키 관계 연동)");
+    if (!newForm.quotationNo?.trim()) {
+      alert("견적번호를 입력해주세요. (예: Q26001-01)");
       return;
     }
-    if (!newForm.customerName || !newForm.productName.trim()) {
-      alert("선택된 프로젝트의 원청사(고객사)와 제품명을 확인해주세요.");
+    if (!newForm.customerName?.trim() || !newForm.productName?.trim()) {
+      alert("원청사(고객사명)와 제품명을 모두 입력해주세요.");
       return;
     }
     const today = new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().split("T")[0];
@@ -763,21 +861,20 @@ export default function QuotationPage() {
       });
     }
 
-    // [요청 1] 견적번호 = 프로젝트 관리번호와 완전 동일
-    const assignedQuotationNo = newForm.projectNo;
+    const assignedQuotationNo = newForm.quotationNo.trim();
 
     const newItem: PrimeQuotationItem = {
       id: Date.now(),
       quotationNo: assignedQuotationNo,
-      customerName: newForm.customerName,
-      customerDept: newForm.customerDept,
-      customerManager: newForm.customerManager,
-      customerContact: newForm.customerContact,
-      customerEmail: newForm.customerEmail,
-      projectNo: newForm.projectNo,
-      projectName: newForm.projectName,
+      customerName: newForm.customerName.trim(),
+      customerDept: newForm.customerDept.trim(),
+      customerManager: newForm.customerManager.trim(),
+      customerContact: newForm.customerContact.trim(),
+      customerEmail: newForm.customerEmail.trim(),
+      projectNo: assignedQuotationNo,
+      projectName: newForm.projectName.trim() || assignedQuotationNo,
       productName: newForm.productName.trim(),
-      productionVolume: newForm.productionVolume,
+      productionVolume: newForm.productionVolume.trim(),
       moldEstimateWon: Number(newForm.moldEstimateWon || 0),
       partUnitPriceWon: newForm.partPriceItems[0]?.unitPriceWon || 0,
       partPriceItems: newForm.partPriceItems,
@@ -798,7 +895,7 @@ export default function QuotationPage() {
 
     setData([newItem, ...data]);
     setIsNewModalOpen(false);
-    alert(`[${newItem.quotationNo}] 원청사 견적 건이 등록되었습니다.\n(견적번호 = 프로젝트 번호 일치 및 패밀리 금형 부품단가 저장 완료)`);
+    alert(`[${newItem.quotationNo}] 원청사 견적이 성공적으로 등록되었습니다.\n(고객사: ${newItem.customerName}, 제품: ${newItem.productName})`);
   };
 
   // 메모 추가
@@ -926,6 +1023,8 @@ export default function QuotationPage() {
         return <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-100 text-blue-800 border border-blue-300">고객 답변 대기</span>;
       case "수주확정":
         return <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300 flex items-center gap-1"><Check className="h-3 w-3" />수주확정</span>;
+      case "프로젝트 승격":
+        return <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-100 text-indigo-800 border border-indigo-300 flex items-center gap-1"><ArrowUpRight className="h-3 w-3 text-indigo-600" />프로젝트 승격</span>;
       case "실주/미체결":
         return <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-800 border border-rose-300">실주</span>;
     }
@@ -1009,7 +1108,7 @@ export default function QuotationPage() {
             />
           </div>
           <div className="flex flex-col gap-1">
-            <span className="text-zinc-600 dark:text-zinc-400 font-medium">원청사 (고객사)</span>
+            <span className="text-zinc-600 dark:text-zinc-400 font-medium">원청사</span>
             <select 
               value={filterCustomer}
               onChange={(e) => setFilterCustomer(e.target.value)}
@@ -1071,7 +1170,7 @@ export default function QuotationPage() {
               엑셀 다운로드
             </Button>
             <Button 
-              onClick={() => setIsNewModalOpen(true)}
+              onClick={handleOpenNewModal}
               className="h-7 px-3 bg-sky-600 hover:bg-sky-700 text-white text-xs gap-1"
             >
               <Plus className="h-3.5 w-3.5" />
@@ -1087,7 +1186,7 @@ export default function QuotationPage() {
               <tr>
                 <th className="p-1.5 w-10 text-center border-r border-slate-600">No</th>
                 <th className="p-1.5 border-r border-slate-600 min-w-[130px]">견적번호 (PJT 번호)</th>
-                <th className="p-1.5 border-r border-slate-600 min-w-[140px]">원청사 (고객사)</th>
+                <th className="p-1.5 border-r border-slate-600 min-w-[140px]">원청사</th>
                 <th className="p-1.5 border-r border-slate-600 min-w-[100px]">원청사 담당자</th>
                 <th className="p-1.5 border-r border-slate-600 min-w-[130px]">차종/프로젝트</th>
                 <th className="p-1.5 border-r border-slate-600 min-w-[160px]">제품명</th>
@@ -1095,10 +1194,12 @@ export default function QuotationPage() {
                 <th className="p-1.5 border-r border-slate-600 min-w-[125px] text-right">부품 단가 (패밀리/EA)</th>
                 {/* [요청 4] 제목을 '견적제출파일'로 변경 */}
                 <th className="p-1.5 border-r border-slate-600 min-w-[150px]">견적제출파일</th>
+                <th className="p-1.5 border-r border-slate-600 min-w-[90px] text-center">등록일자</th>
                 <th className="p-1.5 border-r border-slate-600 min-w-[90px] text-center">제출 마감일</th>
                 <th className="p-1.5 border-r border-slate-600 min-w-[90px] text-center">실제 제출일</th>
                 <th className="p-1.5 border-r border-slate-600 min-w-[85px] text-center">진행상태</th>
-                <th className="p-1.5 min-w-[80px] text-center">상세/메모</th>
+                <th className="p-1.5 border-r border-slate-600 min-w-[80px] text-center">상세/메모</th>
+                <th className="p-1.5 min-w-[95px] text-center">승격 관리</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-zinc-200 dark:divide-zinc-800 text-zinc-700 dark:text-zinc-300 text-[11px]">
@@ -1109,7 +1210,7 @@ export default function QuotationPage() {
                   {/* [요청 1 & 2] 견적번호 = PJT번호 및 수주확정 시 승격된 정식 PJT 번호(MI26001P0) 양방향 표기 */}
                   <td className="p-1.5 border-r font-mono">
                     <span className="font-bold text-sky-700 dark:text-sky-400">{row.quotationNo}</span>
-                    {row.officialProjectNo && (
+                    {row.officialProjectNo && row.officialProjectNo !== row.quotationNo && (
                       <div className="mt-0.5">
                         <span 
                           className="px-1.5 py-0.2 rounded bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 font-bold text-[9px] border border-emerald-300 dark:border-emerald-700 inline-flex items-center gap-0.5 shadow-2xs cursor-pointer hover:bg-emerald-200"
@@ -1190,10 +1291,11 @@ export default function QuotationPage() {
                     )}
                   </td>
 
+                  <td className="p-1.5 border-r text-center font-mono text-zinc-500">{row.submittedDate || row.submissionDeadline || "-"}</td>
                   <td className="p-1.5 border-r text-center font-mono text-zinc-500">{row.submissionDeadline}</td>
                   <td className="p-1.5 border-r text-center font-mono font-bold text-sky-700">{row.submittedDate || "-"}</td>
                   <td className="p-1.5 border-r text-center">{renderStatusBadge(row.status)}</td>
-                  <td className="p-1.5 text-center">
+                  <td className="p-1.5 border-r text-center">
                     <Button 
                       onClick={() => { setSelectedItem(row); setIsDetailModalOpen(true); }}
                       size="xs" 
@@ -1203,6 +1305,25 @@ export default function QuotationPage() {
                       <Eye className="h-3 w-3" />
                       상세/메모
                     </Button>
+                  </td>
+                  <td className="p-1.5 text-center">
+                    {row.status === "수주확정" ? (
+                      <Button
+                        onClick={() => handlePromoteToProject(row)}
+                        size="xs"
+                        className="h-6 px-2 text-[10px] font-bold bg-indigo-600 hover:bg-indigo-700 text-white gap-1 shadow-xs animate-pulse"
+                        title="정식 프로젝트로 승격 (MI 번호 부여 및 관리대장 연동)"
+                      >
+                        <ArrowUpRight className="h-3 w-3" />
+                        프로젝트 승격
+                      </Button>
+                    ) : row.status === "프로젝트 승격" ? (
+                      <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
+                        승격완료
+                      </span>
+                    ) : (
+                      <span className="text-zinc-400 text-[10px] font-mono">-</span>
+                    )}
                   </td>
                 </tr>
               ))}
@@ -1226,78 +1347,66 @@ export default function QuotationPage() {
             </div>
 
             <div className="p-4 overflow-y-auto flex flex-col gap-4 text-xs">
-              {/* 0단계 견적 ↔ 프로젝트 마스터 키 관계 연동 */}
-              <div className="p-2.5 bg-sky-50/60 dark:bg-sky-950/20 border border-sky-200 dark:border-sky-800 rounded-md flex flex-col gap-1.5">
-                <div className="flex items-center justify-between">
-                  <label className="font-bold text-sky-900 dark:text-sky-200 flex items-center gap-1.5">
-                    <Package className="h-4 w-4 text-sky-600" />
-                    대상 프로젝트 선택 (0단계 견적 및 수주 ↔ 프로젝트 관리번호 키 연동)
-                  </label>
-                  <span className="text-[10px] text-sky-600 font-medium">선택 시 PJT 번호·고객사·제품명 자동 바인딩</span>
-                </div>
-                <select
-                  value={selectedProjectNo}
-                  onChange={(e) => handleSelectProject(e.target.value)}
-                  className="w-full h-8 rounded-md border border-sky-300 dark:border-sky-700 bg-white dark:bg-zinc-900 px-2 text-xs font-bold text-sky-900 dark:text-sky-200 shadow-xs"
-                >
-                  <option value="">-- 대상 프로젝트를 선택하세요 (필수 선택) --</option>
-                  {projects.map((p) => (
-                    <option key={`${p.id}-${p.projectNo}`} value={p.projectNo}>
-                      [{p.projectNo}] {p.projectName} - {p.productName} ({p.customerName}){p.changeType ? ` [${p.changeType}]` : ""}
-                    </option>
-                  ))}
-                </select>
-                {!selectedProjectNo && (
-                  <p className="text-[11px] text-amber-600 font-semibold mt-0.5">
-                    * 0단계 원청사 견적 관리는 프로젝트 관리번호(PJT No)를 키(Key)로 연동하므로 반드시 프로젝트를 먼저 선택해야 합니다.
-                  </p>
-                )}
-              </div>
-
-              {/* 프로젝트 및 품목 정보 (프로젝트 마스터 연동 - 키 일관성 유지) */}
-              <div className="grid grid-cols-2 gap-2 border rounded-md p-3 bg-zinc-50/40 dark:bg-zinc-800/20">
+              {/* 프로젝트 및 품목 정보 (직접 입력 및 Q 자동 채번) */}
+              <div className="grid grid-cols-2 gap-2.5 border rounded-md p-3 bg-zinc-50/40 dark:bg-zinc-800/20">
                 <div>
-                  <label className="text-zinc-600 font-medium block mb-0.5">
-                    PJT 관리번호 & 견적번호 <span className="text-[10px] text-sky-600 font-bold">(1:1 동일 바인딩)</span>
+                  <label className="text-zinc-600 font-bold block mb-0.5">
+                    견적번호 (Q 채번) <span className="text-[10px] text-sky-600 font-normal">(자동 채번 / 수정 가능)</span>
                   </label>
                   <Input 
-                    value={newForm.projectNo}
-                    readOnly
-                    placeholder="프로젝트 선택 시 자동입력 (예: Q26001-01)"
-                    className="h-7 text-xs font-mono font-bold bg-zinc-100 dark:bg-zinc-800 text-sky-800 dark:text-sky-300 cursor-not-allowed"
+                    value={newForm.quotationNo}
+                    onChange={(e) => setNewForm({ ...newForm, quotationNo: e.target.value, projectNo: e.target.value })}
+                    placeholder="예: Q26001-01"
+                    className="h-7 text-xs font-mono font-bold bg-white text-sky-800 dark:text-sky-300 border-sky-300"
                   />
                 </div>
                 <div>
-                  <label className="text-zinc-600 font-medium block mb-0.5">
-                    원청사 (고객사명) <span className="text-[10px] text-zinc-400">(자동연동)</span>
+                  <label className="text-zinc-600 font-bold block mb-0.5">
+                    원청사 (고객사명) <span className="text-red-500">*</span>
                   </label>
-                  <Input 
-                    value={newForm.customerName}
-                    readOnly
-                    placeholder="프로젝트 선택 시 자동입력"
-                    className="h-7 text-xs font-bold bg-zinc-100 dark:bg-zinc-800 text-zinc-800 dark:text-zinc-200 cursor-not-allowed"
-                  />
+                  <div className="flex gap-1">
+                    <select
+                      value={CUSTOMER_OPTIONS.includes(newForm.customerName) ? newForm.customerName : "DIRECT"}
+                      onChange={(e) => {
+                        if (e.target.value !== "DIRECT") {
+                          setNewForm({ ...newForm, customerName: e.target.value });
+                        }
+                      }}
+                      className="h-7 rounded border bg-white dark:bg-zinc-900 px-2 text-xs font-medium w-1/2"
+                    >
+                      {CUSTOMER_OPTIONS.map((c) => (
+                        <option key={c} value={c}>{c}</option>
+                      ))}
+                      <option value="DIRECT">직접 입력</option>
+                    </select>
+                    <Input 
+                      value={newForm.customerName}
+                      onChange={(e) => setNewForm({ ...newForm, customerName: e.target.value })}
+                      placeholder="원청 고객사명"
+                      className="h-7 text-xs font-bold bg-white flex-1"
+                    />
+                  </div>
                 </div>
                 <div>
-                  <label className="text-zinc-600 font-medium block mb-0.5">
-                    차종 / 프로젝트명 <span className="text-[10px] text-zinc-400">(자동연동)</span>
+                  <label className="text-zinc-600 font-bold block mb-0.5">
+                    차종 / 프로젝트명
                   </label>
                   <Input 
                     value={newForm.projectName}
-                    readOnly
-                    placeholder="프로젝트 선택 시 자동입력"
-                    className="h-7 text-xs font-bold bg-zinc-100 dark:bg-zinc-800 text-zinc-800 dark:text-zinc-200 cursor-not-allowed"
+                    onChange={(e) => setNewForm({ ...newForm, projectName: e.target.value })}
+                    placeholder="예: 현대 NT5 도어 트림 모듈"
+                    className="h-7 text-xs font-bold bg-white"
                   />
                 </div>
                 <div>
-                  <label className="text-zinc-600 font-medium block mb-0.5">
-                    제품명(품목명) <span className="text-[10px] text-zinc-400">(자동연동)</span>
+                  <label className="text-zinc-600 font-bold block mb-0.5">
+                    제품명(품목명) <span className="text-red-500">*</span>
                   </label>
                   <Input 
                     value={newForm.productName}
-                    readOnly
-                    placeholder="프로젝트 선택 시 자동입력"
-                    className="h-7 text-xs font-bold bg-zinc-100 dark:bg-zinc-800 text-zinc-800 dark:text-zinc-200 cursor-not-allowed"
+                    onChange={(e) => setNewForm({ ...newForm, productName: e.target.value })}
+                    placeholder="예: Front Door Upper Cover LH/RH"
+                    className="h-7 text-xs font-bold bg-white"
                   />
                 </div>
               </div>

@@ -3,7 +3,7 @@
     "id": "project",
     "groupTitle": "MPSI 메인 공정 메뉴",
     "title": "프로젝트 관리",
-    "icon": "Briefcase",
+    "icon": "FileSpreadsheet",
     "isGroupMenu": true,
     "baseUrl": "/portal/project",
     "url": "/portal/project",
