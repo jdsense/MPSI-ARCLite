@@ -115,6 +115,27 @@ const CUSTOMER_OPTIONS = [
   "덕양산업",
 ];
 
+// 기초정보 등록 품목 연동 인터페이스 및 표준 제품 선택지
+export interface RegisteredProductOption {
+  itemCode: string;
+  itemName: string;
+  category?: string;
+  spec?: string;
+  drawingNo?: string;
+  defaultProject?: string;
+}
+
+export const DEFAULT_PRODUCT_OPTIONS: RegisteredProductOption[] = [
+  { itemCode: "84710-NT500-LH", itemName: "Front Door Upper Cover LH/RH", defaultProject: "현대 NT5 도어 트림 모듈" },
+  { itemCode: "85840-NQ500", itemName: "Rear Pillar Trim Inner LH/RH", defaultProject: "기아 EV-NQ5 페이스리프트" },
+  { itemCode: "37500-EV04-L", itemName: "Battery Pack Under Tray LH/RH", defaultProject: "현대차 EV04 배터리팩 모듈" },
+  { itemCode: "37510-SPX00-BM", itemName: "BMS Battery Case Module", defaultProject: "SPX 전기차 배터리 모듈 하우징" },
+  { itemCode: "82710-AA000", itemName: "Door Armrest Base", defaultProject: "현대 아반떼 CN7 도어 암레스트" },
+  { itemCode: "84740-A2XT0-MB", itemName: "Center Console Main Bracket", defaultProject: "현대모비스 센터콘솔 모듈" },
+  { itemCode: "86510-K7000", itemName: "Radiator Lower Grille", defaultProject: "기아 K7 범퍼 로워 그릴" },
+  { itemCode: "84611-L0000", itemName: "Crash Pad Lower Panel", defaultProject: "현대 그랜저 크래시패드 모듈" },
+];
+
 // 초기 원청사 견적 샘플 데이터
 const initialPrimeQuotations: PrimeQuotationItem[] = [
   {
@@ -557,6 +578,79 @@ export default function QuotationPage() {
   const [selectedItem, setSelectedItem] = useState<PrimeQuotationItem | null>(null);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
   const [isNewModalOpen, setIsNewModalOpen] = useState(false);
+
+  // 기초정보 품목 연동 상태 및 자동 로드
+  const [registeredProducts, setRegisteredProducts] = useState<RegisteredProductOption[]>(DEFAULT_PRODUCT_OPTIONS);
+
+  useEffect(() => {
+    fetch("/api/v1/basic-info/items")
+      .then((res) => res.json())
+      .then((json) => {
+        if (json.success && Array.isArray(json.data) && json.data.length > 0) {
+          const map = new Map<string, RegisteredProductOption>();
+          DEFAULT_PRODUCT_OPTIONS.forEach((item) => map.set(item.itemName, item));
+          json.data.forEach((it: any) => {
+            map.set(it.itemName, {
+              itemCode: it.itemCode,
+              itemName: it.itemName,
+              category: it.category,
+              spec: it.spec,
+              drawingNo: it.drawingNo,
+              defaultProject: it.usageDesc || it.itemName,
+            });
+          });
+          setRegisteredProducts(Array.from(map.values()));
+        }
+      })
+      .catch((err) => console.warn("[Quotation] Failed to load basic-info items:", err));
+  }, []);
+
+  // 견적 등록 모달에서 제품 선택 시 사양/품번/차종 자동 연동
+  const handleSelectProduct = (pName: string) => {
+    if (pName === "DIRECT") {
+      return;
+    }
+    if (!pName) {
+      setNewForm((prev) => ({ ...prev, productName: "" }));
+      return;
+    }
+
+    const found = registeredProducts.find((p) => p.itemName === pName);
+    const isLH_RH = pName.toUpperCase().includes("LH") || pName.toUpperCase().includes("RH") || pName.includes("양측");
+    const baseName = pName.replace(/LH\/RH/i, "").replace(/LH/i, "").replace(/RH/i, "").trim();
+
+    setNewForm((prev) => ({
+      ...prev,
+      productName: pName,
+      projectName: prev.projectName || found?.defaultProject || `${pName} 프로젝트`,
+      partPriceItems: isLH_RH
+        ? [
+            {
+              id: `p-${Date.now()}-1`,
+              side: "LH",
+              partName: `${baseName} LH`.trim(),
+              partNo: found?.itemCode ? `${found.itemCode}` : "",
+              unitPriceWon: prev.partPriceItems?.[0]?.unitPriceWon || 0,
+            },
+            {
+              id: `p-${Date.now()}-2`,
+              side: "RH",
+              partName: `${baseName} RH`.trim(),
+              partNo: found?.itemCode ? `${found.itemCode.replace(/-LH$/i, "-RH")}` : "",
+              unitPriceWon: prev.partPriceItems?.[1]?.unitPriceWon || 0,
+            },
+          ]
+        : [
+            {
+              id: `p-${Date.now()}-1`,
+              side: "공용",
+              partName: pName,
+              partNo: found?.itemCode || "",
+              unitPriceWon: prev.partPriceItems?.[0]?.unitPriceWon || 0,
+            },
+          ],
+    }));
+  };
 
   // 메모 작성 상태
   const [newMemoText, setNewMemoText] = useState("");
@@ -1465,12 +1559,27 @@ export default function QuotationPage() {
                   <label className="text-zinc-600 font-bold block mb-0.5">
                     제품명(품목명) <span className="text-red-500">*</span>
                   </label>
-                  <Input 
-                    value={newForm.productName}
-                    onChange={(e) => setNewForm({ ...newForm, productName: e.target.value })}
-                    placeholder="예: Front Door Upper Cover LH/RH"
-                    className="h-7 text-xs font-bold bg-white"
-                  />
+                  <div className="flex gap-1">
+                    <select
+                      value={registeredProducts.some((p) => p.itemName === newForm.productName) ? newForm.productName : (newForm.productName ? "DIRECT" : "")}
+                      onChange={(e) => handleSelectProduct(e.target.value)}
+                      className="h-7 rounded border bg-white dark:bg-zinc-900 px-2 text-xs font-medium w-1/2"
+                    >
+                      <option value="">제품 선택 (기초정보)</option>
+                      {registeredProducts.map((p) => (
+                        <option key={p.itemCode || p.itemName} value={p.itemName}>
+                          {p.itemName}
+                        </option>
+                      ))}
+                      <option value="DIRECT">직접 입력</option>
+                    </select>
+                    <Input 
+                      value={newForm.productName}
+                      onChange={(e) => setNewForm({ ...newForm, productName: e.target.value })}
+                      placeholder="예: Front Door Upper Cover LH/RH"
+                      className="h-7 text-xs font-bold bg-white flex-1"
+                    />
+                  </div>
                 </div>
               </div>
 
