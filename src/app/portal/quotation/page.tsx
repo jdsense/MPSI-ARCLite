@@ -758,8 +758,26 @@ export default function QuotationPage() {
       officialPjtNo = `${officialPjtNo}P0`;
     }
 
-    if (!confirm(`[프로젝트 승격 확인]\n\n견적 [${item.quotationNo}] 건을 정식 프로젝트 [${officialPjtNo}]로 승격하시겠습니까?\n\n승격 시:\n1) 견적 상태가 '프로젝트 승격'으로 전환됩니다.\n2) 견적번호가 '${item.quotationNo}'에서 정식 프로젝트번호 '${officialPjtNo}'로 변경됩니다.\n3) 프로젝트 관리대장에 자동 등록되어 외주처/생산 사양을 확정할 수 있습니다.`)) {
-      return;
+    // [요청 1] 프로젝트 관리대장에 동일한 프로젝트 번호가 이미 있는지 확인
+    const isExistingInProjects = projects.some(
+      (p) => p.projectNo?.toUpperCase() === officialPjtNo.toUpperCase()
+    );
+
+    if (isExistingInProjects) {
+      const confirmOverwrite = confirm(
+        `[프로젝트 번호 중복 확인]\n\n프로젝트 관리대장에 이미 동일한 프로젝트 번호 [${officialPjtNo}]가 존재합니다.\n\n해당 번호로 새로 등록하시겠습니까?`
+      );
+      if (!confirmOverwrite) {
+        return;
+      }
+    } else {
+      if (
+        !confirm(
+          `[프로젝트 승격 확인]\n\n견적 [${item.quotationNo}] 건을 정식 프로젝트 [${officialPjtNo}]로 승격하시겠습니까?\n\n승격 시:\n1) 견적 상태가 '프로젝트 승격'으로 전환됩니다.\n2) 견적번호가 '${item.quotationNo}'에서 정식 프로젝트번호 '${officialPjtNo}'로 변경됩니다.\n3) 프로젝트 관리대장에 자동 등록되어 외주처/생산 사양을 확정할 수 있습니다.`
+        )
+      ) {
+        return;
+      }
     }
 
     const today = new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().split("T")[0];
@@ -780,36 +798,38 @@ export default function QuotationPage() {
     updateQuotationInDB(updatedItem, item.quotationNo);
 
     // 2. 프로젝트 관리대장에 자동 추가 (생산/외주업체 등록 대기 상태)
+    // [요청 2] 스크린샷 표시 정보(품번, 금형번호, 금형차수, 캐비티사양, 금형제작처, 사출양산처, 현재스텝, 킥오프, 목표T1, 금형출고납기, 목표양산승인 등)는 기본 입력 제외
     addProject({
       projectNo: officialPjtNo,
       estimateNo: item.quotationNo, // 이전 Q 견적번호 보존
       projectName: item.projectName || "",
       productName: item.productName || "",
       customerName: item.customerName || "고객사",
-      partNo: item.partPriceItems?.[0]?.partNo || "",
-      moldNo: `${officialPjtNo}M`,
-      moldDegree: "M1",
+      partNo: "", // 기본 입력 제외
+      moldNo: "", // 기본 입력 제외
+      moldDegree: "", // 기본 입력 제외
       changeType: "N001",
       moldProductionType: "OUTSOURCING",
-      moldVendor: "우성정공(주)",
+      moldVendor: "", // 기본 입력 제외
       massProductionType: "OUTSOURCING",
-      massVendor: "(주)뉴몰드",
-      cavity: "1*2 Cavity",
-      material: "NAK80",
-      partWeight: "420g",
-      annualVolume: 50000,
-      machineTon: "650T",
-      hrsSpec: "밸브게이트 2-Drop",
-      moldMaterial: "NAK80",
-      resinSpec: "PP-EPDM",
-      warrantyShots: 500000,
+      massVendor: "", // 기본 입력 제외
+      cavity: "", // 기본 입력 제외
+      material: "",
+      partWeight: "",
+      annualVolume: 0,
+      machineTon: "",
+      hrsSpec: "",
+      moldMaterial: "",
+      resinSpec: "",
+      warrantyShots: 0,
       registeredDate: today,
-      targetT1Date: item.submissionDeadline || "",
-      moldDeliveryDate: "",
-      targetMassDate: "",
-      currentStep: 0,
+      targetT1Date: "", // 기본 입력 제외
+      moldDeliveryDate: "", // 기본 입력 제외
+      targetMassDate: "", // 기본 입력 제외
+      currentStep: 0, // 등록 대기 상태
       stepStatus: "진행중",
-      trialDegree: "T1 대기",
+      stepNameCustom: "", // 기본 스텝명 제외
+      trialDegree: "",
       trialCompletionRate: 0,
       facilityEvent: "가동대기",
       orderQty: 0,

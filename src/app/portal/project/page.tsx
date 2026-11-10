@@ -196,6 +196,7 @@ export default function ProjectStatus13StepsPage() {
   // 신규 등록 시 프로젝트 번호 지정 모드 (신규 자동 채번 vs 기존 프로젝트 번호 연동 vs 승격 프로젝트 확정 등록)
   const [projectCreationMode, setProjectCreationMode] = useState<"NEW" | "EXISTING" | "PROMOTED">("NEW");
   const [selectedExistingProjectNo, setSelectedExistingProjectNo] = useState("");
+  const [promotedOriginalProjectNo, setPromotedOriginalProjectNo] = useState("");
 
   // 설계변경(E채번) 발의 모달 상태
   const [isRevisionModalOpen, setIsRevisionModalOpen] = useState(false);
@@ -548,43 +549,44 @@ export default function ProjectStatus13StepsPage() {
   const handleOpenPromotedRegisterModal = (row: ProjectItem) => {
     setProjectCreationMode("PROMOTED");
     setSelectedExistingProjectNo("");
+    setPromotedOriginalProjectNo(row.projectNo);
     setSelectedItemCode(row.partNo || "");
     const today = new Date();
     const dateStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
 
     setFormState({
-      projectNo: row.projectNo,
+      projectNo: row.projectNo, // 견적에서 승격된 프로젝트 번호 바인딩 (모달에서 수정 가능)
       estimateNo: row.estimateNo || "",
       projectName: row.projectName || "",
       productName: row.productName || "",
       customerName: row.customerName || CUSTOMER_OPTIONS[0],
-      partNo: row.partNo || "",
-      moldNo: row.moldNo || `${row.projectNo}M`,
+      partNo: row.partNo || "", // 기본 입력 제외 (기초정보 품목 선택 또는 수기 입력)
+      moldNo: row.moldNo || "", // 기본 입력 제외
       moldDegree: row.moldDegree || "M1",
       changeType: (row.changeType as any) || "N001",
       moldProductionType: row.moldProductionType || "OUTSOURCING",
-      moldVendor: row.moldVendor || "우성정공(주)",
+      moldVendor: row.moldVendor || "", // 기본 입력 제외 (모달에서 외주처 선택)
       massProductionType: row.massProductionType || "OUTSOURCING",
-      massVendor: row.massVendor || "(주)뉴몰드",
-      cavity: row.cavity || "1*2 Cavity",
-      material: row.material || "NAK80",
-      partWeight: row.partWeight || "420g",
-      annualVolume: row.annualVolume || 50000,
-      machineTon: row.machineTon || "650T",
-      hrsSpec: row.hrsSpec || "밸브게이트 2-Drop",
-      moldMaterial: row.moldMaterial || "NAK80",
-      resinSpec: row.resinSpec || "PP-EPDM",
-      warrantyShots: row.warrantyShots || 500000,
+      massVendor: row.massVendor || "", // 기본 입력 제외 (모달에서 외주처 선택)
+      cavity: row.cavity || "", // 기본 입력 제외
+      material: row.material || "",
+      partWeight: row.partWeight || "",
+      annualVolume: row.annualVolume || "",
+      machineTon: row.machineTon || "",
+      hrsSpec: row.hrsSpec || "",
+      moldMaterial: row.moldMaterial || "",
+      resinSpec: row.resinSpec || "",
+      warrantyShots: row.warrantyShots || "",
       registeredDate: row.registeredDate || dateStr,
       quoteSubmitDate: row.quoteSubmitDate || "",
       orderDate: row.orderDate || dateStr,
       kickoffDate: row.kickoffDate || "",
       targetMoldDays: row.targetMoldDays || 45,
-      targetT1Date: row.targetT1Date || "",
+      targetT1Date: row.targetT1Date || "", // 기본 입력 제외
       moldDeliveryDate: row.moldDeliveryDate || "",
-      targetMassDate: row.targetMassDate || "",
+      targetMassDate: row.targetMassDate || "", // 기본 입력 제외
       massStartDate: row.massStartDate || "",
-      currentStep: 1, // 등록 완료 시 1단계(도면접수)로 전환
+      currentStep: 1, // 등록 완료 시 1단계(제품 data 접수)로 전환
       stepStatus: "진행중",
       trialDegree: "T1 대기",
     });
@@ -660,27 +662,42 @@ export default function ProjectStatus13StepsPage() {
 
     // 원청사 견적 승격 건 등록 완료 처리 (기존 행 갱신)
     if (projectCreationMode === "PROMOTED") {
-      updateStep(trimmedNo, {
+      const originalNo = promotedOriginalProjectNo || trimmedNo;
+
+      // 프로젝트 번호를 수정한 경우 중복 검사
+      if (trimmedNo.toUpperCase() !== originalNo.toUpperCase()) {
+        const isDuplicate = projects.some(
+          (p) => p.projectNo?.toUpperCase() === trimmedNo.toUpperCase() && p.projectNo?.toUpperCase() !== originalNo.toUpperCase()
+        );
+        if (isDuplicate) {
+          alert(`이미 존재하는 프로젝트 번호 [${trimmedNo}] 입니다.\n다른 프로젝트 번호를 입력해 주세요.`);
+          return;
+        }
+      }
+
+      updateStep(originalNo, {
+        projectNo: trimmedNo,
+        estimateNo: formState.estimateNo || "",
         projectName: formState.projectName || "",
         productName: formState.productName.trim(),
         customerName: formState.customerName || "고객사",
-        partNo: formState.partNo,
-        moldNo: formState.moldNo || `${trimmedNo}M`,
+        partNo: formState.partNo || "",
+        moldNo: formState.moldNo || "",
         moldDegree: formState.moldDegree || "M1",
         changeType: (formState.changeType as any) || "N001",
         moldProductionType: formState.moldProductionType || "OUTSOURCING",
-        moldVendor: formState.moldVendor || "우성정공(주)",
+        moldVendor: formState.moldVendor || "",
         massProductionType: formState.massProductionType || "OUTSOURCING",
-        massVendor: formState.massVendor || "(주)뉴몰드",
-        cavity: formState.cavity || "1*2 Cavity",
-        material: formState.material || "NAK80",
-        partWeight: formState.partWeight || "420g",
-        annualVolume: Number(formState.annualVolume || 50000),
-        machineTon: formState.machineTon || "650T",
-        hrsSpec: formState.hrsSpec || "밸브게이트 2-Drop",
-        moldMaterial: formState.moldMaterial || "NAK80",
-        resinSpec: formState.resinSpec || "PP-EPDM",
-        warrantyShots: Number(formState.warrantyShots || 500000),
+        massVendor: formState.massVendor || "",
+        cavity: formState.cavity || "",
+        material: formState.material || "",
+        partWeight: formState.partWeight || "",
+        annualVolume: Number(formState.annualVolume || 0),
+        machineTon: formState.machineTon || "",
+        hrsSpec: formState.hrsSpec || "",
+        moldMaterial: formState.moldMaterial || "",
+        resinSpec: formState.resinSpec || "",
+        warrantyShots: Number(formState.warrantyShots || 0),
         registeredDate: formState.registeredDate || dateStr,
         quoteSubmitDate: formState.quoteSubmitDate || "",
         orderDate: formState.orderDate || dateStr,
@@ -690,14 +707,49 @@ export default function ProjectStatus13StepsPage() {
         moldDeliveryDate: formState.moldDeliveryDate || "",
         targetMassDate: formState.targetMassDate || "",
         massStartDate: formState.massStartDate || "",
-        currentStep: 1, // 1단계로 전환
+        currentStep: 1, // 1단계(제품 data 접수)로 전환
         stepStatus: "진행중",
         stepNameCustom: "제품 data 접수",
         isContractConfirmed: true,
         isQuotePending: false,
         quotationStatus: "수주확정",
-        isRegistrationCompleted: true, // 등록 완료
+        isRegistrationCompleted: true, // 등록 완료 플래그
       });
+
+      // 프로젝트 번호가 변경되었거나 견적 연동이 있는 경우 원청사 견적(DB 및 스토리지) 동기화
+      if (typeof window !== "undefined") {
+        try {
+          fetch("/api/v1/prime-quotations", {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              originalQuotationNo: originalNo,
+              quotationNo: trimmedNo,
+              officialProjectNo: trimmedNo,
+              projectNo: trimmedNo,
+              projectName: formState.projectName || "",
+              productName: formState.productName.trim(),
+              status: "프로젝트 승격",
+            }),
+          }).catch((err) => console.warn("[Project] Failed to sync quote update:", err));
+
+          const rawQ = localStorage.getItem("mpsi_prime_quotations_v1");
+          if (rawQ) {
+            const list = JSON.parse(rawQ);
+            if (Array.isArray(list)) {
+              const updatedQ = list.map((q: any) =>
+                q.quotationNo === originalNo || q.officialProjectNo === originalNo
+                  ? { ...q, quotationNo: trimmedNo, officialProjectNo: trimmedNo, projectNo: trimmedNo }
+                  : q
+              );
+              localStorage.setItem("mpsi_prime_quotations_v1", JSON.stringify(updatedQ));
+            }
+          }
+        } catch (e) {
+          console.error("Failed to sync quotation storage:", e);
+        }
+      }
+
       showToast(`승격 프로젝트 [${trimmedNo}] 생산 방식 및 외주업체 등록이 완료되었습니다. 1단계(제품 data 접수)가 시작됩니다.`, "success");
       setIsNewProjectModalOpen(false);
       return;
@@ -2038,14 +2090,19 @@ export default function ProjectStatus13StepsPage() {
                   const isFailedQuote = (row.quotationStatus === "수주 미성사" || row.stepNameCustom === "수주 미성사") && !isProjectInProcess;
 
                   let stepDisplayName = "";
-                  if (isProjectInProcess) {
+                  if (row.isPromotedFromQuote && !row.isRegistrationCompleted) {
+                    // 승격 건은 등록 전까지 기본 입력(고객 답변 대기 등)을 노출하지 않음
+                    stepDisplayName = "";
+                  } else if (isProjectInProcess) {
                     stepDisplayName = (row.stepNameCustom && row.stepNameCustom !== "고객 답변 대기" && row.stepNameCustom !== "수주 미성사")
                       ? row.stepNameCustom
                       : (currentStepObj?.name || `Step ${row.currentStep}`);
                   } else if (isFailedQuote) {
                     stepDisplayName = "수주 미성사";
-                  } else {
+                  } else if (isWaitCustomer) {
                     stepDisplayName = "고객 답변 대기";
+                  } else {
+                    stepDisplayName = "";
                   }
 
                   // 상태 뱃지 스타일 (스크린샷 알약 형태)
@@ -2167,15 +2224,13 @@ export default function ProjectStatus13StepsPage() {
                             {row.moldDegree}
                           </span>
                         ) : (
-                          <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-zinc-100 text-zinc-600 border border-zinc-200">
-                            M1
-                          </span>
+                          <span className="text-zinc-400 font-mono text-[10px]">-</span>
                         )}
                       </td>
 
                       {/* 8. 캐비티사양 */}
                       <td className="p-2 border-r border-slate-200 dark:border-zinc-800 text-center font-mono text-zinc-700 dark:text-zinc-300">
-                        {row.cavity}
+                        {row.cavity || "-"}
                       </td>
 
                       {/* 9. 금형 제작처 (스크린샷 사각 테두리 뱃지 스타일) */}
@@ -2185,7 +2240,7 @@ export default function ProjectStatus13StepsPage() {
                             {row.moldVendor}
                           </span>
                         ) : (
-                          <span className="text-zinc-400 font-mono text-[10px]">N/A</span>
+                          <span className="text-zinc-400 font-mono text-[10px]">-</span>
                         )}
                       </td>
 
@@ -2196,42 +2251,46 @@ export default function ProjectStatus13StepsPage() {
                             {row.massVendor}
                           </span>
                         ) : (
-                          <span className="text-zinc-400 font-mono text-[10px]">N/A</span>
+                          <span className="text-zinc-400 font-mono text-[10px]">-</span>
                         )}
                       </td>
 
                       {/* 11. 현재 스텝 (고객 답변 대기 / 수주 미성사 / 공정 진행 - 수정 없는 순수 조회용) */}
                       <td className="p-2 border-r border-slate-200 dark:border-zinc-800 text-center">
                         <div className="flex items-center justify-center">
-                          {row.currentStep === 0 || row.isQuotePending || row.projectNo.startsWith("Q") ? (
-                            <button
-                              type="button"
-                              onClick={() => router.push(`/portal/quotation?projectNo=${encodeURIComponent(row.projectNo)}`)}
-                              className="hover:opacity-85 transition-opacity"
-                              title={`클릭 시 [원청사 견적관리] 화면으로 이동`}
-                            >
-                              <span className={`inline-block px-2.5 py-0.5 rounded-full text-[10px] font-bold border shadow-2xs ${getStepPillClass()}`}>
-                                {stepDisplayName}
-                              </span>
-                            </button>
+                          {stepDisplayName ? (
+                            row.currentStep === 0 || row.isQuotePending || row.projectNo.startsWith("Q") ? (
+                              <button
+                                type="button"
+                                onClick={() => router.push(`/portal/quotation?projectNo=${encodeURIComponent(row.projectNo)}`)}
+                                className="hover:opacity-85 transition-opacity"
+                                title={`클릭 시 [원청사 견적관리] 화면으로 이동`}
+                              >
+                                <span className={`inline-block px-2.5 py-0.5 rounded-full text-[10px] font-bold border shadow-2xs ${getStepPillClass()}`}>
+                                  {stepDisplayName}
+                                </span>
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => handleNavigateToStepPage(row.currentStep, row.projectNo)}
+                                className="hover:opacity-85 transition-opacity"
+                                title={`클릭 시 [Step ${row.currentStep}: ${stepDisplayName}] 실무 화면으로 이동`}
+                              >
+                                <span className={`inline-block px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${getStepPillClass()}`}>
+                                  {stepDisplayName}
+                                </span>
+                              </button>
+                            )
                           ) : (
-                            <button
-                              type="button"
-                              onClick={() => handleNavigateToStepPage(row.currentStep, row.projectNo)}
-                              className="hover:opacity-85 transition-opacity"
-                              title={`클릭 시 [Step ${row.currentStep}: ${stepDisplayName}] 실무 화면으로 이동`}
-                            >
-                              <span className={`inline-block px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${getStepPillClass()}`}>
-                                {stepDisplayName}
-                              </span>
-                            </button>
+                            <span className="text-zinc-400 font-mono text-[10px]">-</span>
                           )}
                         </div>
                       </td>
 
                       {/* 13. 킥오프 */}
                       <td className="p-2 border-r border-slate-200 dark:border-zinc-800 text-center font-mono text-zinc-600 dark:text-zinc-400">
-                        {row.kickoffDate || row.orderDate || ""}
+                        {row.isPromotedFromQuote && !row.isRegistrationCompleted ? "" : (row.kickoffDate || row.orderDate || "")}
                       </td>
 
                       {/* 14. 목표 T1 */}
@@ -3111,6 +3170,10 @@ export default function ProjectStatus13StepsPage() {
                       placeholder="예: MI26001P0"
                       className="h-7 text-xs bg-sky-50/50 dark:bg-zinc-800 font-mono font-bold text-sky-900 dark:text-sky-200 border-sky-300"
                     />
+                    <p className="text-[10px] text-rose-600 dark:text-rose-400 font-bold mt-1 flex items-center gap-1">
+                      <AlertTriangle className="h-3 w-3 shrink-0 text-rose-500" />
+                      ※ 프로젝트 번호는 한번 저장하면 그후에 변경할 수 없습니다.
+                    </p>
                   </div>
 
                   {/* 1-1. 견적 번호 (Q 채번 분리) */}
