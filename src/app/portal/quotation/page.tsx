@@ -357,23 +357,79 @@ function savePrimeQuotationsToStorage(quotes: PrimeQuotationItem[]) {
 }
 
 // 견적 단계 번호(Q) 자동 채번 함수 (옵션 B: Q26001-01)
-export function generateNextQuotationNo(items: PrimeQuotationItem[]): string {
+// 원청사 견적 목록 및 프로젝트 관리대장의 모든 번호(Q26xxx, MI26xxx)를 전수 검사하여 기존 채번과 절대 중복되지 않도록 채번
+export function generateNextQuotationNo(
+  items: PrimeQuotationItem[],
+  existingProjects?: { projectNo?: string; estimateNo?: string }[]
+): string {
   const currentYear = String(new Date().getFullYear()).slice(-2);
   const prefix = `Q${currentYear}`;
   const seqs: number[] = [];
 
+  // 1. 견적 목록 검사 (quotationNo, projectNo, officialProjectNo)
   (items || []).forEach((item) => {
-    const raw = item.quotationNo || item.projectNo || "";
-    if (raw.toUpperCase().startsWith(prefix)) {
-      const match = raw.toUpperCase().match(new RegExp(`^${prefix}(\\d{3})`));
+    const targets = [item.quotationNo, item.projectNo, item.officialProjectNo];
+    targets.forEach((raw) => {
+      if (!raw) return;
+      const clean = raw.trim().toUpperCase();
+      // Q26, MI26, M26 등에서 3자리 숫자 추출 (예: Q26001-01 -> 1, MI26001P0 -> 1)
+      const match = clean.match(new RegExp(`^(?:Q|MI|M)${currentYear}(\\d{3})`));
       if (match && match[1]) {
         seqs.push(parseInt(match[1], 10));
       }
-    }
+    });
   });
 
-  const nextSeq = seqs.length > 0 ? Math.max(...seqs) + 1 : 1;
-  return `${prefix}${String(nextSeq).padStart(3, "0")}-01`;
+  // 2. 프로젝트 관리대장 목록 검사 (projectNo, estimateNo)
+  (existingProjects || []).forEach((p) => {
+    const targets = [p.projectNo, p.estimateNo];
+    targets.forEach((raw) => {
+      if (!raw) return;
+      const clean = raw.trim().toUpperCase();
+      const match = clean.match(new RegExp(`^(?:Q|MI|M)${currentYear}(\\d{3})`));
+      if (match && match[1]) {
+        seqs.push(parseInt(match[1], 10));
+      }
+    });
+  });
+
+  let nextSeq = seqs.length > 0 ? Math.max(...seqs) + 1 : 1;
+
+  // 3. 중복 방지 루프 (혹시라도 이미 존재하는 Q 번호나 승격 후 MI 번호가 존재하면 다음 번호로 증가)
+  while (true) {
+    const candidateQ = `${prefix}${String(nextSeq).padStart(3, "0")}-01`;
+    const candidateMI = `MI${currentYear}${String(nextSeq).padStart(3, "0")}P0`;
+
+    const existsInQuotes = (items || []).some((q) => {
+      const qNo = q.quotationNo?.toUpperCase();
+      const offNo = q.officialProjectNo?.toUpperCase();
+      const pNo = q.projectNo?.toUpperCase();
+      return (
+        qNo === candidateQ ||
+        qNo === candidateMI ||
+        offNo === candidateQ ||
+        offNo === candidateMI ||
+        pNo === candidateQ ||
+        pNo === candidateMI
+      );
+    });
+
+    const existsInProjects = (existingProjects || []).some((p) => {
+      const pNo = p.projectNo?.toUpperCase();
+      const estNo = p.estimateNo?.toUpperCase();
+      return (
+        pNo === candidateQ ||
+        pNo === candidateMI ||
+        estNo === candidateQ ||
+        estNo === candidateMI
+      );
+    });
+
+    if (!existsInQuotes && !existsInProjects) {
+      return candidateQ;
+    }
+    nextSeq++;
+  }
 }
 
 // 업로드된 실제 File/Blob을 브라우저 세션 동안 메모리에 안전하게 보관하는 맵
@@ -690,9 +746,9 @@ export default function QuotationPage() {
     initialMemo: "",
   });
 
-  // 신규 원청사 견적 등록 모달 열기 (옵션 B: Q26001-01 자동 채번 프리필)
+  // 신규 원청사 견적 등록 모달 열기 (기존 견적 및 프로젝트 번호와 중복되지 않도록 다음 Q 번호 자동 채번)
   const handleOpenNewModal = () => {
-    const nextQ = generateNextQuotationNo(data);
+    const nextQ = generateNextQuotationNo(data, projects);
     setNewForm({
       customerName: CUSTOMER_OPTIONS[0],
       customerDept: "바디의장개발팀",
@@ -1033,6 +1089,15 @@ export default function QuotationPage() {
     }
 
     const assignedQuotationNo = newForm.quotationNo.trim();
+
+    // 중복 견적번호 방지 검사 (견적 및 관리대장 전수 확인)
+    const isDuplicateQuotation = data.some(
+      (q) => q.quotationNo?.toUpperCase() === assignedQuotationNo.toUpperCase()
+    );
+    if (isDuplicateQuotation) {
+      alert(`이미 등록된 견적번호 [${assignedQuotationNo}] 입니다.\n다른 견적번호를 입력해 주세요.`);
+      return;
+    }
 
     const newItem: PrimeQuotationItem = {
       id: Date.now(),
