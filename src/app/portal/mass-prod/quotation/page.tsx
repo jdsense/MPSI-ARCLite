@@ -144,12 +144,17 @@ export default function MassProductionQuotationPage() {
       }
 
       const resin = (found as any).resinSpec || found.material || "PP-TD20";
-      const cav = found.cavity ? (found.cavity.includes("Cavity") ? found.cavity : `${found.cavity} Cavity`) : "1*2 Cavity";
-      const monthlyVol = found.orderQty ? Math.round(found.orderQty / 12) : 25000;
-      const partW = Number(String((found as any).partWeight || "").replace(/[^0-9.]/g, "")) || 320;
-      const runnerW = 35;
+      const cav = found.cavity ? (found.cavity.includes("Cavity") ? found.cavity : `${found.cavity} Cavity`) : "1*3 Cavity";
+      const monthlyVol = found.orderQty 
+        ? Math.round(found.orderQty / 12) 
+        : ((found as any).annualVolume ? Math.round(Number((found as any).annualVolume) / 12) : 250);
+      const partW = Number(String((found as any).partWeight || "").replace(/[^0-9.]/g, "")) || 100;
+      const runnerW = 15;
       const resinPrice = 2800;
-      const calc = calculateCosts(resinPrice, partW, runnerW, cav, 36);
+      const machineTon = (found as any).machineTon 
+        ? (String((found as any).machineTon).includes("T") ? String((found as any).machineTon) : `${(found as any).machineTon}T`) 
+        : (found.facilityEvent?.includes("T") ? found.facilityEvent : "700T");
+      const calc = calculateCosts(resinPrice, partW, runnerW, cav, 35);
 
       // 프로젝트 번호는 항상 M으로 시작 보장
       const pjtDisplayName = found.projectNo.toUpperCase().startsWith("M")
@@ -165,9 +170,9 @@ export default function MassProductionQuotationPage() {
         vendorName: found.massProductionType === "IN_HOUSE" ? "MPSI 자체사출공장" : matchedVendor,
         assignedVendors: found.massProductionType === "IN_HOUSE" ? ["MPSI 자체사출공장"] : [matchedVendor],
         productionType: found.massProductionType === "IN_HOUSE" ? "IN_HOUSE" : "OUTSOURCING",
-        targetMassApprovalDate: found.targetMassDate || "2026-08-30",
-        targetCycleTime: 36,
-        machineTonnage: found.facilityEvent?.includes("T") ? found.facilityEvent : "650T",
+        targetMassApprovalDate: found.targetMassDate || "2026-12-20",
+        targetCycleTime: 35,
+        machineTonnage: machineTon,
         resinSpec: resin,
         resinPricePerKg: resinPrice,
         partWeightGram: partW,

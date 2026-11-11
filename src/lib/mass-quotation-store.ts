@@ -119,8 +119,8 @@ export interface MassProductionEstimateItem {
   submissionHistory?: MassQuoteSubmissionHistoryItem[]; // 견적서 및 메모 이력 영구 보존
 }
 
-const STORAGE_KEY = "mpsi_mass_quotations_v12";
-const EVENT_NAME = "mpsi_mass_quotation_update_v12";
+const STORAGE_KEY = "mpsi_mass_quotations_v13";
+const EVENT_NAME = "mpsi_mass_quotation_update_v13";
 
 // 더미 데이터 초기값 전면 비움
 export const INITIAL_MASS_ESTIMATES: MassProductionEstimateItem[] = [];
@@ -148,6 +148,7 @@ export function isDummyMassEstimate(item: any): boolean {
 export function getStoredMassEstimates(): MassProductionEstimateItem[] {
   if (typeof window === "undefined") return [];
   try {
+    localStorage.removeItem("mpsi_mass_quotations_v12");
     localStorage.removeItem("mpsi_mass_quotations_v11");
     localStorage.removeItem("mpsi_mass_quotations_v10");
     localStorage.removeItem("mpsi_mass_quotations_v9");
@@ -202,6 +203,12 @@ export function autoEnrollMassQuotationFromTrial(trial: {
   massVendor?: string;
   cavity?: string;
   material?: string;
+  resinSpec?: string;
+  machineTon?: string;
+  partWeight?: number | string;
+  annualVolume?: number | string;
+  monthlyVolume?: number;
+  targetCycleTime?: number;
   transferPlanDate?: string;
   transferActualDate?: string;
 }): MassProductionEstimateItem | null {
@@ -220,6 +227,15 @@ export function autoEnrollMassQuotationFromTrial(trial: {
   const assignedVendors = isSelf ? ["MPSI 자체사출공장"] : [vendorName];
   const status: MassQuotationStatus = isSelf ? "자체진행" : "견적요청";
 
+  const actualMachineTon = trial.machineTon 
+    ? (String(trial.machineTon).includes("T") ? String(trial.machineTon) : `${trial.machineTon}T`) 
+    : "700T";
+  const actualResin = trial.resinSpec || trial.material || "PP 컴파운드 사출물";
+  const actualPartWeight = Number(trial.partWeight) || 100;
+  const actualMonthlyVolume = trial.monthlyVolume || 
+    (trial.annualVolume ? Math.round(Number(trial.annualVolume) / 12) : 250);
+  const actualCT = trial.targetCycleTime || 35;
+
   if (exists) {
     const updated = current.map((item) => {
       if (item.projectNo !== trial.projectNo) return item;
@@ -232,6 +248,12 @@ export function autoEnrollMassQuotationFromTrial(trial: {
         vendorName,
         selectedVendorName: vendorName,
         assignedVendors,
+        cavity: trial.cavity || item.cavity,
+        machineTonnage: actualMachineTon || item.machineTonnage,
+        resinSpec: actualResin || item.resinSpec,
+        partWeightGram: actualPartWeight || item.partWeightGram,
+        monthlyVolume: actualMonthlyVolume || item.monthlyVolume,
+        targetCycleTime: actualCT || item.targetCycleTime,
         status: item.status === "단가합의완료" || item.status === "양산계약확정" ? item.status : status,
       };
       syncMassEstimateToBackend(merged);
@@ -251,24 +273,24 @@ export function autoEnrollMassQuotationFromTrial(trial: {
     estimateNo,
     projectNo: trial.projectNo,
     officialProjectNo: trial.projectNo,
-    projectName: trial.projectName || "Door Armrest Base",
-    productName: trial.productName || "Main Part",
-    customerName: trial.customerName || "현대자동차 (1차사)",
+    projectName: trial.projectName || "견적명11",
+    productName: trial.productName || "BMS Battery Case Module",
+    customerName: trial.customerName || "현대자동차 (광주공장)",
     vendorName,
     selectedVendorName: vendorName,
     assignedVendors,
     productionType,
-    resinSpec: "PP 컴파운드 사출물",
+    resinSpec: actualResin,
     resinPricePerKg: 2850,
-    partWeightGram: 420,
-    runnerWeightGram: 35,
-    cavity: trial.cavity || "1*2 Cavity",
-    machineTonnage: "650T",
-    targetCycleTime: 35,
+    partWeightGram: actualPartWeight,
+    runnerWeightGram: 15,
+    cavity: trial.cavity || "1*3",
+    machineTonnage: actualMachineTon,
+    targetCycleTime: actualCT,
     targetMassApprovalDate: trial.transferPlanDate || "2026-12-20",
-    massStartDate: trial.transferActualDate || "2026-12-25",
-    sph: 102,
-    monthlyVolume: 50000,
+    massStartDate: trial.transferActualDate || "2026-11-12",
+    sph: actualCT > 0 ? Math.round(3600 / actualCT) : 102,
+    monthlyVolume: actualMonthlyVolume,
     materialCost: 1250,
     processingCost: 720,
     overheadCost: 60,

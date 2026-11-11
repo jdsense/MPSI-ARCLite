@@ -42,7 +42,11 @@ async function ensureTableInitialized() {
   }
 }
 
-function mapRowToItem(row: any): MassProductionEstimateItem {
+function mapRowToItem(
+  row: any,
+  projectMap?: Map<string, any>,
+  trialMap?: Map<string, any>
+): MassProductionEstimateItem {
   let note: any = {};
   if (row.Note) {
     try {
@@ -51,6 +55,10 @@ function mapRowToItem(row: any): MassProductionEstimateItem {
       note = {};
     }
   }
+
+  const pid = row.ProjectID || note.projectNo || "";
+  const pm = projectMap?.get(pid) || {};
+  const tm = trialMap?.get(pid) || {};
 
   const reqDateStr = row.RequestDate
     ? (row.RequestDate instanceof Date
@@ -64,29 +72,48 @@ function mapRowToItem(row: any): MassProductionEstimateItem {
         : String(row.SubmissionDate).split("T")[0])
     : note.submittedDate || "";
 
+  // ProjectMaster 실제 사양 실시간 바인딩
+  const actualProjectName = pm.projectName || pm.ProjectName || note.projectName || "Door Armrest Base";
+  const actualProductName = pm.productName || pm.ProductName || note.productName || "Main Part";
+  const actualCustomerName = pm.customerName || note.customerName || "현대자동차 (1차사)";
+  const actualCavity = pm.cavity || tm.cavity || note.cavity || "1*2 Cavity";
+  const actualMachineTon = pm.machineTon 
+    ? (String(pm.machineTon).includes("T") ? String(pm.machineTon) : `${pm.machineTon}T`) 
+    : (note.machineTonnage || "700T");
+  const actualResin = pm.resinSpec || note.resinSpec || "PP 컴파운드 사출물";
+  const actualPartWeight = (pm.partWeight ? Number(pm.partWeight) : 0) || note.partWeightGram || 100;
+  const actualMonthlyVolume = (pm.annualVolume ? Math.round(Number(pm.annualVolume) / 12) : 0) ||
+    (pm.orderQty ? Math.round(Number(pm.orderQty) / 12) : 0) ||
+    note.monthlyVolume || 250;
+  
+  const latestTrial = (tm.trials && tm.trials.length > 0) ? tm.trials[tm.trials.length - 1] : null;
+  const actualCycleTime = latestTrial?.targetCycleTime || latestTrial?.cycleTime || Number(row.TargetCycleTime) || note.targetCycleTime || 35;
+  const actualTargetApproval = tm.transferPlanDate || pm.targetMassDate || note.targetMassApprovalDate || "2026-12-20";
+  const actualMassStart = tm.transferActualDate || note.massStartDate || "2026-12-25";
+
   return {
     id: Number(row.MassQuotationSequenceNo),
     estimateNo: row.MassQuotationID,
-    projectNo: row.ProjectID,
-    officialProjectNo: note.officialProjectNo || row.ProjectID,
-    projectName: note.projectName || "Door Armrest Base",
-    productName: note.productName || "Main Part",
-    customerName: note.customerName || "현대자동차 (1차사)",
+    projectNo: pid,
+    officialProjectNo: note.officialProjectNo || pid,
+    projectName: actualProjectName,
+    productName: actualProductName,
+    customerName: actualCustomerName,
     vendorName: note.vendorName || row.MassVendorID || "(주)뉴몰드",
     selectedVendorName: note.selectedVendorName || row.MassVendorID,
     assignedVendors: note.assignedVendors || (row.MassVendorID ? [row.MassVendorID] : ["(주)뉴몰드"]),
     productionType: (row.ProductionType as any) || note.productionType || "OUTSOURCING",
-    resinSpec: note.resinSpec || "PP 컴파운드 사출물",
+    resinSpec: actualResin,
     resinPricePerKg: note.resinPricePerKg || 2850,
-    partWeightGram: note.partWeightGram || 420,
-    runnerWeightGram: note.runnerWeightGram || 35,
-    cavity: note.cavity || "1*2 Cavity",
-    machineTonnage: note.machineTonnage || "650T",
-    targetCycleTime: Number(row.TargetCycleTime) || note.targetCycleTime || 35,
-    targetMassApprovalDate: note.targetMassApprovalDate || "2026-12-20",
-    massStartDate: note.massStartDate || "2026-12-25",
-    sph: note.sph || 102,
-    monthlyVolume: note.monthlyVolume || 50000,
+    partWeightGram: actualPartWeight,
+    runnerWeightGram: note.runnerWeightGram || 15,
+    cavity: actualCavity,
+    machineTonnage: actualMachineTon,
+    targetCycleTime: actualCycleTime,
+    targetMassApprovalDate: actualTargetApproval,
+    massStartDate: actualMassStart,
+    sph: note.sph || (actualCycleTime > 0 ? Math.round(3600 / actualCycleTime) : 102),
+    monthlyVolume: actualMonthlyVolume,
     materialCost: Number(row.MaterialCost) || note.materialCost || 1250,
     processingCost: Number(row.ProcessingCost) || note.processingCost || 720,
     overheadCost: note.overheadCost || 60,
@@ -152,32 +179,61 @@ export async function GET(req: NextRequest) {
         );
 
         if (existMass.rows.length === 0 && isApproved) {
+          // ProjectMaster 실제 스펙 조회
+          let pMeta: any = {};
+          try {
+            const pRes = await query(`SELECT "ProjectName", "PersonInChargeID", "Note" FROM "ProjectMaster" WHERE "ProjectID" = $1`, [pid]);
+            if (pRes.rows.length > 0) {
+              const rowNote = pRes.rows[0].Note;
+              pMeta = typeof rowNote === "string" ? JSON.parse(rowNote) : rowNote || {};
+              pMeta.ProjectName = pRes.rows[0].ProjectName;
+              pMeta.CustomerName = pMeta.customerName || pRes.rows[0].PersonInChargeID;
+            }
+          } catch {}
+
           const isSelf = trialMeta.massVendor?.includes("자체") || trialMeta.massVendor?.includes("MPSI");
-          const vendorName = isSelf ? "MPSI 자체사출공장" : (trialMeta.massVendor || "(주)뉴몰드");
+          const vendorName = isSelf ? "MPSI 자체사출공장" : (trialMeta.massVendor || pMeta.massVendor || "(주)뉴몰드");
           const status = isSelf ? "자체진행" : "견적요청";
           const dateStr = new Date().toISOString().slice(0, 10);
           const estimateNo = `${pid}사출견적`;
 
+          const actualProjectName = pMeta.projectName || pMeta.ProjectName || trialMeta.projectName || "Door Armrest Base";
+          const actualProductName = pMeta.productName || pMeta.ProductName || trialMeta.productName || "Main Part";
+          const actualCustomerName = pMeta.customerName || pMeta.CustomerName || trialMeta.customerName || "현대자동차 (1차사)";
+          const actualCavity = pMeta.cavity || trialMeta.cavity || "1*2 Cavity";
+          const actualMachineTon = pMeta.machineTon 
+            ? (String(pMeta.machineTon).includes("T") ? String(pMeta.machineTon) : `${pMeta.machineTon}T`) 
+            : "700T";
+          const actualResin = pMeta.resinSpec || "PP 컴파운드 사출물";
+          const actualPartWeight = (pMeta.partWeight ? Number(pMeta.partWeight) : 0) || 100;
+          const actualMonthlyVolume = (pMeta.annualVolume ? Math.round(Number(pMeta.annualVolume) / 12) : 0) ||
+            (pMeta.orderQty ? Math.round(Number(pMeta.orderQty) / 12) : 0) || 250;
+          
+          const latestTrial = (trialMeta.trials && trialMeta.trials.length > 0) ? trialMeta.trials[trialMeta.trials.length - 1] : null;
+          const actualCycleTime = latestTrial?.targetCycleTime || latestTrial?.cycleTime || 35;
+          const actualTargetApproval = trialMeta.transferPlanDate || pMeta.targetMassDate || "2026-12-20";
+          const actualMassStart = trialMeta.transferActualDate || "2026-12-25";
+
           const initialNote = {
             officialProjectNo: pid,
-            projectName: trialMeta.projectName || "Door Armrest Base",
-            productName: trialMeta.productName || "Main Part",
-            customerName: trialMeta.customerName || "현대자동차 (1차사)",
+            projectName: actualProjectName,
+            productName: actualProductName,
+            customerName: actualCustomerName,
             vendorName,
             selectedVendorName: vendorName,
             assignedVendors: [vendorName],
             productionType: isSelf ? "IN_HOUSE" : "OUTSOURCING",
-            resinSpec: "PP 컴파운드 사출물",
+            resinSpec: actualResin,
             resinPricePerKg: 2850,
-            partWeightGram: 420,
-            runnerWeightGram: 35,
-            cavity: trialMeta.cavity || "1*2 Cavity",
-            machineTonnage: "650T",
-            targetCycleTime: 35,
-            targetMassApprovalDate: trialMeta.transferPlanDate || "2026-12-20",
-            massStartDate: trialMeta.transferActualDate || "2026-12-25",
-            sph: 102,
-            monthlyVolume: 50000,
+            partWeightGram: actualPartWeight,
+            runnerWeightGram: 15,
+            cavity: actualCavity,
+            machineTonnage: actualMachineTon,
+            targetCycleTime: actualCycleTime,
+            targetMassApprovalDate: actualTargetApproval,
+            massStartDate: actualMassStart,
+            sph: actualCycleTime > 0 ? Math.round(3600 / actualCycleTime) : 102,
+            monthlyVolume: actualMonthlyVolume,
             materialCost: 1250,
             processingCost: 720,
             overheadCost: 60,
@@ -242,7 +298,32 @@ export async function GET(req: NextRequest) {
       console.warn("[MassQuotation AutoSync Warning]", e);
     }
 
-    // 2. 조회 실행
+    // 2. 조회 실행 및 ProjectMaster / MoldTrial 실시간 연동 매핑
+    const projectRows = await query(`SELECT "ProjectID", "ProjectName", "PersonInChargeID", "Note" FROM "ProjectMaster"`);
+    const projectMap = new Map<string, any>();
+    for (const pr of projectRows.rows) {
+      let pMeta: any = {};
+      try {
+        pMeta = typeof pr.Note === "string" ? JSON.parse(pr.Note) : pr.Note || {};
+      } catch {}
+      projectMap.set(pr.ProjectID, {
+        ...pMeta,
+        ProjectID: pr.ProjectID,
+        ProjectName: pr.ProjectName,
+        CustomerName: pMeta.customerName || pr.PersonInChargeID,
+      });
+    }
+
+    const trialRowsForMap = await query(`SELECT "ProjectID", "Note" FROM "MpsiMoldTrial"`);
+    const trialMap = new Map<string, any>();
+    for (const tr of trialRowsForMap.rows) {
+      let tMeta: any = {};
+      try {
+        tMeta = typeof tr.Note === "string" ? JSON.parse(tr.Note) : tr.Note || {};
+      } catch {}
+      trialMap.set(tr.ProjectID, tMeta);
+    }
+
     let sql = `SELECT * FROM "MpsiMassQuotation" ORDER BY "MassQuotationSequenceNo" DESC`;
     let params: any[] = [];
     if (projectId) {
@@ -253,7 +334,7 @@ export async function GET(req: NextRequest) {
     const { rows } = await query(sql, params);
 
     const items = rows
-      .map(mapRowToItem)
+      .map((row) => mapRowToItem(row, projectMap, trialMap))
       .filter((it: MassProductionEstimateItem) => {
         // 과거 더미 테스트 데이터만 제외 (실제 프로젝트 MI26xxx 등은 정상 표출)
         if (
