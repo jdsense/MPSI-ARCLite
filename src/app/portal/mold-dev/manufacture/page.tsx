@@ -25,7 +25,8 @@ import {
   MoldManufactureItem, 
   MoldManufactureStatus,
   ManufactureScheduleFile,
-  getManufactureStatusBadge
+  getManufactureStatusBadge,
+  getManufactureStatusText
 } from "@/lib/mold-manufacture-store";
 import { cleanCompanyAuthor } from "@/lib/notification-store";
 
@@ -409,7 +410,7 @@ export default function MoldManufacturePage() {
                     {/* 금형제작 현황 (클라이언트 요구: 미입력 / 금형 설계 중 / 가공 중 / 습합 중 / 금형 육성 중) */}
                     <td className="p-2 border-r text-center">
                       <span className={`inline-block px-2.5 py-0.5 rounded-full text-[11px] border shadow-2xs ${getManufactureStatusBadge(row.manufactureStatus)}`}>
-                        {row.manufactureStatus}
+                        {getManufactureStatusText(row.manufactureStatus)}
                       </span>
                     </td>
 
@@ -506,7 +507,7 @@ export default function MoldManufacturePage() {
                   </div>
                   {/* 2-2) 상태 표시 (설계 중 / 가공 중 / 습합 중 / 금형 육성 중 / 미입력) */}
                   <span className={`px-3 py-1 rounded-full text-xs font-bold border shadow-xs ${getManufactureStatusBadge(selectedItem.manufactureStatus)}`}>
-                    {selectedItem.manufactureStatus}
+                    {getManufactureStatusText(selectedItem.manufactureStatus)}
                   </span>
                 </div>
 
@@ -517,7 +518,7 @@ export default function MoldManufacturePage() {
                       <span className="text-[11px] text-zinc-500 font-medium block mb-1">금형 제작 현황 단계:</span>
                       <div className="flex items-center gap-2">
                         <span className={`px-2.5 py-0.5 rounded text-xs font-bold border ${getManufactureStatusBadge(selectedItem.manufactureStatus)}`}>
-                          {selectedItem.manufactureStatus}
+                          {getManufactureStatusText(selectedItem.manufactureStatus)}
                         </span>
                         <span className="text-[11px] text-zinc-600 dark:text-zinc-400">
                           {selectedItem.manufactureStatus === "미입력" && "일정표가 아직 등록되지 않은 초기 단계입니다."}

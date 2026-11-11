@@ -50,10 +50,10 @@ export async function GET(req: Request) {
         if (!pid || pid === "DUMMY") continue;
 
         // 금형 발주 완료(moldPoApproved), 금형 설계 승인(검토완료), 또는 소재발주 승인 상태인 경우 제작 대장에 자동 등재
+        const isDesignDone = d.DesignApprovalStatus === "검토완료" || meta.moldDesignStatus === "검토완료";
         const isApprovedForManufacture = 
           meta.moldPoApproved === true ||
-          d.DesignApprovalStatus === "검토완료" ||
-          meta.moldDesignStatus === "검토완료" ||
+          isDesignDone ||
           meta.materialOrderStatus === "승인완료" ||
           (meta.currentStep && meta.currentStep >= 5);
 
@@ -64,9 +64,8 @@ export async function GET(req: Request) {
         // MpsiMoldManufacture에 이미 있는지 확인
         const existMfg = await query(`SELECT "ProjectID", "Note" FROM "MpsiMoldManufacture" WHERE "ProjectID" = $1`, [pid]);
         if (existMfg.rows.length === 0) {
-          const isDesignDone = d.DesignApprovalStatus === "검토완료" || meta.moldDesignStatus === "검토완료";
-          const currentMfgStatus = isDesignDone ? "가공 중" : "금형 설계 중";
-          const currentStep = isDesignDone ? 6 : 5;
+          const currentMfgStatus = "미입력";
+          const currentStep = 5;
 
           const initNote = {
             id: 1,
@@ -91,8 +90,8 @@ export async function GET(req: Request) {
               {
                 id: `memo-${Date.now()}`,
                 authorId: "MPSI_HQ",
-                authorName: "MPSI 구매개발실",
-                company: "MPSI 본사",
+                authorName: "MPSI",
+                company: "MPSI",
                 tag: isDesignDone ? "설계승인완료" : "금형발주완료",
                 content: isDesignDone
                   ? `[금형설계 승인 연동] 금형 3D 설계 승인이 완료되어 금형제작 일정 관제 대장에 정식 등재되었습니다. (가공 착수)`
@@ -139,7 +138,7 @@ export async function GET(req: Request) {
           if (isDesignDone) {
             let existingNote: any = {};
             try { existingNote = JSON.parse(existMfg.rows[0].Note || "{}"); } catch {}
-            if (existingNote.manufactureStatus === "금형 설계 중") {
+            if (existingNote.scheduleFile && (existingNote.manufactureStatus === "금형 설계 중" || existingNote.manufactureStatus === "미입력")) {
               existingNote.manufactureStatus = "가공 중";
               existingNote.currentStep = 6;
               existingNote.updatedAt = new Date().toLocaleString("ko-KR", { hour12: false }).replace(/\./g, "-").slice(0, 16);
@@ -147,8 +146,8 @@ export async function GET(req: Request) {
                 {
                   id: `memo-${Date.now()}`,
                   authorId: "MPSI_HQ",
-                  authorName: "MPSI 구매개발실",
-                  company: "MPSI 본사",
+                  authorName: "MPSI",
+                  company: "MPSI",
                   tag: "설계승인완료",
                   content: `[금형설계 승인 연동] 금형 3D 설계 검토가 완료되어 제작 상태가 '가공 중'으로 전환되었습니다.`,
                   createdAt: new Date().toLocaleString("ko-KR", { hour12: false }).replace(/\./g, "-").slice(0, 16)
@@ -259,7 +258,12 @@ export async function GET(req: Request) {
         }
 
         const overallProgress = Number(r.OverallProgressRate ?? meta.overallProgress ?? 0);
-        const manufactureStatus = r.ManufactureStatus || meta.manufactureStatus || "미입력";
+        let manufactureStatus = r.ManufactureStatus || meta.manufactureStatus || "미입력";
+        const hasSchedule = Boolean(meta.scheduleFile && (meta.scheduleFile.fileName || meta.scheduleFile.fileUrl));
+        // 일정표 엑셀이 업로드되지 않은 초기 등재 상태의 경우 "미입력" 상태 보장
+        if (!hasSchedule && (!meta.manufactureStatus || meta.manufactureStatus === "미입력" || r.ManufactureStatus === "가공 중" || meta.manufactureStatus === "가공 중" || meta.manufactureStatus === "금형 설계 중")) {
+          manufactureStatus = "미입력";
+        }
 
         return {
           id: Number(r.ManufactureSequenceNo),

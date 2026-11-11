@@ -97,9 +97,17 @@ export function getManufactureStatusBadge(status: MoldManufactureStatus | string
     case "금형 육성 중":
       return "bg-amber-50 text-amber-700 border-amber-300 dark:bg-amber-950/40 dark:text-amber-300 font-bold";
     case "미입력":
+    case "미입력 (일정표 미입력 상태)":
     default:
-      return "bg-zinc-100 text-zinc-500 border-zinc-300 dark:bg-zinc-800 dark:text-zinc-400 font-medium";
+      return "bg-zinc-100 text-zinc-600 border-zinc-300 dark:bg-zinc-800 dark:text-zinc-400 font-medium";
   }
+}
+
+export function getManufactureStatusText(status: MoldManufactureStatus | string) {
+  if (!status || status === "미입력") {
+    return "미입력 (일정표 미입력 상태)";
+  }
+  return status;
 }
 
 // 더미 데이터 초기값 전면 비움
@@ -128,10 +136,18 @@ export function getStoredMoldManufactures(): MoldManufactureItem[] {
       if (cleaned.length !== parsed.length) {
         localStorage.setItem(STORAGE_KEY, JSON.stringify(cleaned));
       }
-      return cleaned.map((item: any) => ({
-        ...item,
-        moldNo: item.moldNo || (item.projectNo ? `${item.projectNo.split("-")[0].replace(/P0$/, "")}M` : "-"),
-      }));
+      return cleaned.map((item: any) => {
+        const hasSchedule = Boolean(item.scheduleFile && (item.scheduleFile.fileName || item.scheduleFile.fileUrl));
+        let mfgStatus = item.manufactureStatus;
+        if (!hasSchedule && (!mfgStatus || mfgStatus === "가공 중")) {
+          mfgStatus = "미입력";
+        }
+        return {
+          ...item,
+          manufactureStatus: mfgStatus,
+          moldNo: item.moldNo || (item.projectNo ? `${item.projectNo.split("-")[0].replace(/P0$/, "")}M` : "-"),
+        };
+      });
     }
     return [];
   } catch (e) {

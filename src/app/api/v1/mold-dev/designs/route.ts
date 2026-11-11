@@ -405,8 +405,8 @@ export async function PUT(request: NextRequest) {
 
       if (isDesignApproved || isPoApproved || isMaterialApproved) {
         const existMfg = await query(`SELECT "ProjectID", "Note" FROM "MpsiMoldManufacture" WHERE "ProjectID" = $1`, [designId]);
-        const mfgStatus = isDesignApproved ? '가공 중' : '금형 설계 중';
-        const stepNum = isDesignApproved ? 6 : 5;
+        const mfgStatus = '미입력';
+        const stepNum = 6;
 
         if (existMfg.rows.length === 0) {
           const initNote = {
@@ -485,7 +485,7 @@ export async function PUT(request: NextRequest) {
         } else if (isDesignApproved) {
           let existingNote: any = {};
           try { existingNote = JSON.parse(existMfg.rows[0].Note || "{}"); } catch {}
-          if (existingNote.manufactureStatus === "금형 설계 중") {
+          if (existingNote.scheduleFile && (existingNote.manufactureStatus === "금형 설계 중" || existingNote.manufactureStatus === "미입력")) {
             existingNote.manufactureStatus = "가공 중";
             existingNote.currentStep = 6;
             existingNote.updatedAt = new Date().toLocaleString("ko-KR", { hour12: false }).replace(/\./g, "-").slice(0, 16);
@@ -493,8 +493,8 @@ export async function PUT(request: NextRequest) {
               {
                 id: `memo-${Date.now()}`,
                 authorId: "MPSI_HQ",
-                authorName: "MPSI 구매개발실",
-                company: "MPSI 본사",
+                authorName: "MPSI",
+                company: "MPSI",
                 tag: "설계승인완료",
                 content: `[금형설계 승인 연동] 금형 3D 설계 검토가 완료되어 제작 상태가 '가공 중'으로 전환되었습니다.`,
                 createdAt: new Date().toLocaleString("ko-KR", { hour12: false }).replace(/\./g, "-").slice(0, 16)

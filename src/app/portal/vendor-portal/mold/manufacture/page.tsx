@@ -25,7 +25,8 @@ import {
   MoldManufactureItem, 
   MoldManufactureStatus,
   ManufactureScheduleFile,
-  getManufactureStatusBadge
+  getManufactureStatusBadge,
+  getManufactureStatusText
 } from "@/lib/mold-manufacture-store";
 import { cleanCompanyAuthor } from "@/lib/notification-store";
 
@@ -493,7 +494,7 @@ export default function VendorMoldManufacturePage() {
                       {/* 금형제작 현황 */}
                       <td className="p-2 border-r text-center">
                         <span className={`inline-block px-2.5 py-0.5 rounded-full text-[11px] border shadow-2xs ${getManufactureStatusBadge(row.manufactureStatus)}`}>
-                          {row.manufactureStatus}
+                          {getManufactureStatusText(row.manufactureStatus)}
                         </span>
                       </td>
 
@@ -603,7 +604,7 @@ export default function VendorMoldManufacturePage() {
                   </div>
                   {/* 2-2) 상태 배지 */}
                   <span className={`px-3 py-1 rounded-full text-xs font-bold border shadow-xs ${getManufactureStatusBadge(formStatus)}`}>
-                    {formStatus}
+                    {getManufactureStatusText(formStatus)}
                   </span>
                 </div>
 
