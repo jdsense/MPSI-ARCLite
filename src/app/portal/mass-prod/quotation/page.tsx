@@ -120,8 +120,47 @@ export default function MassProductionQuotationPage() {
     }
   }, [estimates]);
 
-  // 외주 사출업체 목록 (MPSI 자체 생산라인 제외한 순수 외주 협력사 목록)
-  const OUTSOURCE_MASS_VENDORS = MASS_VENDOR_LIST.filter((v) => !v.isSelf);
+  // DB VendorPartyMaster 테이블 기반 실제 사출양산처 인터페이스
+  interface DbMassVendor {
+    id: string;
+    name: string;
+    bizRegNo?: string;
+    managerName?: string;
+    telNo?: string;
+  }
+
+  const DEFAULT_MASS_VENDORS_FROM_DB: DbMassVendor[] = [
+    { id: "S-NM-002", name: "뉴몰드 (사출양산)", bizRegNo: "134-81-67890", managerName: "김영수 부장 (품질보증)" },
+    { id: "S-KP-004", name: "(주)한국정밀사출 (사출양산)", bizRegNo: "135-86-44332", managerName: "강성호 부장 (품질관리)" }
+  ];
+
+  // 실제 DB 사출양산처 목록 상태
+  const [dbMassVendors, setDbMassVendors] = useState<DbMassVendor[]>(DEFAULT_MASS_VENDORS_FROM_DB);
+
+  // DB VendorPartyMaster 테이블에서 실제 사출양산처 목록 동기화
+  useEffect(() => {
+    async function loadMassVendors() {
+      try {
+        const res = await fetch("/api/v1/basic-info/vendors?type=mass");
+        if (res.ok) {
+          const json = await res.json();
+          if (json.success && Array.isArray(json.data) && json.data.length > 0) {
+            const mapped: DbMassVendor[] = json.data.map((v: any) => ({
+              id: v.vendorCode,
+              name: v.companyName,
+              bizRegNo: v.bizRegNo,
+              managerName: v.managerName,
+              telNo: v.telNo
+            }));
+            setDbMassVendors(mapped);
+          }
+        }
+      } catch (err) {
+        console.warn("[loadMassVendors fallback to default]", err);
+      }
+    }
+    loadMassVendors();
+  }, []);
 
   const handleSelectProject = (pNo: string) => {
     setSelectedProjectNo(pNo);
@@ -134,11 +173,18 @@ export default function MassProductionQuotationPage() {
     if (found) {
       let matchedVendor = "";
       if (found.massVendor) {
-        if (found.massVendor.includes("뉴몰드")) matchedVendor = "(주)뉴몰드";
-        else if (found.massVendor.includes("세원")) matchedVendor = "세원사출(주)";
-        else if (found.massVendor.includes("제일")) matchedVendor = "제일프라테크";
-        else if (found.massVendor.includes("한일")) matchedVendor = "한일엔프라";
-        else matchedVendor = found.massVendor;
+        // DB 사출양산처 목록에서 매칭되는 실제 업체 찾기
+        const foundDbVendor = dbMassVendors.find((v) => 
+          v.name.includes(found.massVendor) || 
+          found.massVendor.includes(v.name) ||
+          (found.massVendor.includes("뉴몰드") && v.name.includes("뉴몰드")) ||
+          (found.massVendor.includes("한국정밀") && v.name.includes("한국정밀"))
+        );
+        if (foundDbVendor) {
+          matchedVendor = foundDbVendor.name;
+        } else {
+          matchedVendor = found.massVendor;
+        }
       }
 
       const resin = (found as any).resinSpec || found.material || "PP-TD20";
@@ -171,7 +217,7 @@ export default function MassProductionQuotationPage() {
         ? "MPSI 자체사출공장"
         : matchedVendor
         ? matchedVendor
-        : `전체 양산처 (${OUTSOURCE_MASS_VENDORS.length}개사)`;
+        : `전체 양산처 (${dbMassVendors.length}개사)`;
 
       setNewForm((prev) => ({
         ...prev,
@@ -202,7 +248,7 @@ export default function MassProductionQuotationPage() {
     }
   };
 
-  // 외주처 다중 선택 토글 핸들러 (체크박스 필터 방식)
+  // 외주처 다중 선택 토글 핸들러 (체크박스 필터 방식 - DB 사출양산처 목록 기준)
   const handleToggleVendor = (vendorName: string) => {
     if (vendorName === "전체 업체") {
       setNewForm((prev) => ({
@@ -221,7 +267,7 @@ export default function MassProductionQuotationPage() {
       }
       return {
         ...prev,
-        assignedVendors: current.length === OUTSOURCE_MASS_VENDORS.length ? ["전체 업체"] : current
+        assignedVendors: current.length === dbMassVendors.length ? ["전체 업체"] : current
       };
     });
   };
@@ -399,7 +445,7 @@ export default function MassProductionQuotationPage() {
     if (newForm.productionType === "IN_HOUSE") {
       vendorDisplayName = "MPSI 자체사출공장";
     } else if (newForm.assignedVendors.includes("전체 업체")) {
-      vendorDisplayName = `전체 양산처 (${OUTSOURCE_MASS_VENDORS.length}개사)`;
+      vendorDisplayName = `전체 양산처 (${dbMassVendors.length}개사)`;
     } else if (newForm.assignedVendors.length === 1) {
       vendorDisplayName = newForm.assignedVendors[0];
     } else {
@@ -563,7 +609,7 @@ export default function MassProductionQuotationPage() {
       } else {
         // 아직 접수된 견적이 없는 경우 (배포 대상 외주처에게 알림)
         const targetVendors = selectedItem.assignedVendors?.includes("전체 업체")
-          ? OUTSOURCE_MASS_VENDORS.map((v) => v.name)
+          ? dbMassVendors.map((v) => v.name)
           : (selectedItem.assignedVendors && selectedItem.assignedVendors.length > 0)
           ? selectedItem.assignedVendors
           : [selectedItem.vendorName];
@@ -766,8 +812,8 @@ export default function MassProductionQuotationPage() {
       return item.estimateFileName ? "1/1" : "0/1";
     }
     const totalVendors = item.assignedVendors?.includes("전체 업체") 
-      ? MASS_VENDOR_LIST.length 
-      : (item.assignedVendors?.length || MASS_VENDOR_LIST.length);
+      ? dbMassVendors.length 
+      : (item.assignedVendors?.length || dbMassVendors.length);
     const submittedCount = item.vendorQuotes?.length || (item.estimateFileName ? 1 : 0);
     return `${submittedCount}/${totalVendors}`;
   };
@@ -837,7 +883,7 @@ export default function MassProductionQuotationPage() {
               className="h-7 rounded-md border bg-transparent px-2 text-xs font-semibold"
             >
               <option value="ALL">전체 사출처</option>
-              {MASS_VENDOR_LIST.map((v) => (
+              {dbMassVendors.map((v) => (
                 <option key={v.id} value={v.name}>{v.name}</option>
               ))}
               <option value="MPSI 자체사출공장">MPSI 자체사출공장</option>
@@ -1182,7 +1228,7 @@ export default function MassProductionQuotationPage() {
                       견적 요청 발송 대상 사출 양산처 (복수 선택 가능)
                     </label>
                     <span className="text-[10px] text-zinc-400">
-                      선택: {newForm.assignedVendors.includes("전체 업체") ? "전체 협력사 (4개사)" : (newForm.assignedVendors.join(", ") || "미선택")}
+                      선택: {newForm.assignedVendors.includes("전체 업체") ? `전체 협력사 (${dbMassVendors.length}개사)` : (newForm.assignedVendors.join(", ") || "미선택")}
                     </span>
                   </div>
 
@@ -1202,11 +1248,11 @@ export default function MassProductionQuotationPage() {
                       ) : (
                         <Square className="h-3.5 w-3.5" />
                       )}
-                      전체 업체 (4개사 일괄 배포)
+                      전체 업체 ({dbMassVendors.length}개사 일괄 배포)
                     </button>
 
-                    {/* 개별 사출처 체크박스 (외주 사출업체만 표시) */}
-                    {OUTSOURCE_MASS_VENDORS.map((v) => {
+                    {/* 개별 사출처 체크박스 (DB 실제 사출양산처 목록 연동) */}
+                    {dbMassVendors.map((v) => {
                       const isSelected = newForm.assignedVendors.includes("전체 업체") || newForm.assignedVendors.includes(v.name);
                       return (
                         <button

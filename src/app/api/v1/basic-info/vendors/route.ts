@@ -203,6 +203,15 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    const type = searchParams.get('type');
+    if (type === 'mass') {
+      // 사출양산처만 필터링 (금형제작 전용 및 고객사 제외)
+      sql += ` AND ("VendorName" LIKE '%사출%' OR "VendorName" LIKE '%양산%' OR "Note" LIKE '%사출%' OR "Note" LIKE '%양산%') AND "VendorName" NOT LIKE '%금형제작%' AND "VendorID" NOT LIKE 'C-%'`;
+    } else if (type === 'mold') {
+      // 금형제작처만 필터링
+      sql += ` AND ("VendorName" LIKE '%금형%' OR "Note" LIKE '%금형%') AND "VendorID" NOT LIKE 'C-%'`;
+    }
+
     const companyName = searchParams.get('companyName');
     if (companyName) {
       sql += ` AND "VendorName" ILIKE $${paramIdx}`;
