@@ -189,28 +189,34 @@ export default function MassValidationPage() {
     );
   };
 
-  // 1-3) 양산성 검증상태 배지 렌더러 (검증완료, 검증 대기, 검증 진행 중)
-  const renderValidationStatusBadge = (status: "검증완료" | "검증 대기" | "검증 진행 중") => {
+  // 1-3) 양산성 검증상태 배지 렌더러
+  const renderValidationStatusBadge = (status?: string) => {
     switch (status) {
       case "검증완료":
+      case "양산승인 완료":
+      case "CPK 검증완료":
         return (
           <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded text-[11px] font-bold bg-emerald-700 text-white shadow-2xs">
             <CheckCircle2 className="h-3 w-3" />
-            검증완료
+            {status}
           </span>
         );
       case "검증 대기":
+      case "시양산 대기":
         return (
           <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded text-[11px] font-bold bg-rose-600 text-white shadow-2xs">
             <Clock className="h-3 w-3" />
-            검증 대기
+            {status}
           </span>
         );
       case "검증 진행 중":
+      case "시양산 진행중":
+      case "12H 연속사출중":
+      default:
         return (
           <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded text-[11px] font-bold bg-amber-600 text-white shadow-2xs">
             <Activity className="h-3 w-3 animate-pulse" />
-            검증 진행 중
+            {status || "검증 진행 중"}
           </span>
         );
     }
@@ -748,7 +754,7 @@ export default function MassValidationPage() {
 
                       {/* 1-3) 양산성 검증상태 (검증완료, 검증 대기, 검증 진행 중) */}
                       <td className="py-2.5 px-3 text-center whitespace-nowrap">
-                        {renderValidationStatusBadge(validationStatus)}
+                        {renderValidationStatusBadge(proj.overallStatus || validationStatus)}
                       </td>
 
                       {/* 1-4) 양산 승인 납기일 (최종 갱신일 대체) */}

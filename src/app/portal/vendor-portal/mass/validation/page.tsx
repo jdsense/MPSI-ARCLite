@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { CurrencyInput } from "@/components/ui/currency-input";
 import { DateRangeFilter, isWithinDateRange, DatePresetType } from "@/components/common/date-range-filter";
 import { 
   useProjectMaster, 
@@ -176,28 +177,34 @@ export default function VendorMassValidationPage() {
     );
   };
 
-  // 1-3) 양산성 검증상태 배지 렌더러 (검증완료, 검증 대기, 검증 진행 중)
-  const renderValidationStatusBadge = (status: "검증완료" | "검증 대기" | "검증 진행 중") => {
+  // 1-3) 양산성 검증상태 배지 렌더러
+  const renderValidationStatusBadge = (status?: string) => {
     switch (status) {
       case "검증완료":
+      case "양산승인 완료":
+      case "CPK 검증완료":
         return (
           <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded text-[11px] font-bold bg-emerald-700 text-white shadow-2xs">
             <CheckCircle2 className="h-3 w-3" />
-            검증완료
+            {status}
           </span>
         );
       case "검증 대기":
+      case "시양산 대기":
         return (
           <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded text-[11px] font-bold bg-rose-600 text-white shadow-2xs">
             <Clock className="h-3 w-3" />
-            검증 대기
+            {status}
           </span>
         );
       case "검증 진행 중":
+      case "시양산 진행중":
+      case "12H 연속사출중":
+      default:
         return (
           <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded text-[11px] font-bold bg-amber-600 text-white shadow-2xs">
             <Activity className="h-3 w-3 animate-pulse" />
-            검증 진행 중
+            {status || "검증 진행 중"}
           </span>
         );
     }
@@ -225,9 +232,9 @@ export default function VendorMassValidationPage() {
       : true;
     
     const latestTrial = item.trials[item.trials.length - 1];
-    const currentValidationStatus = getValidationStatus(latestTrial);
+    const currentValidationStatus = item.overallStatus || getValidationStatus(latestTrial);
     const matchStatus = filterStatus !== "ALL"
-      ? (item.overallStatus === filterStatus || currentValidationStatus === filterStatus)
+      ? (currentValidationStatus === filterStatus)
       : true;
     const targetDate = filterDateType === "testDate"
       ? latestTrial?.testDate || ""
@@ -250,7 +257,7 @@ export default function VendorMassValidationPage() {
     setSelectedProject(project);
     setEditingTrials(JSON.parse(JSON.stringify(project.trials)));
     const latestTrial = project.trials[project.trials.length - 1];
-    setEditingOverallStatus(getValidationStatus(latestTrial));
+    setEditingOverallStatus(project.overallStatus || getValidationStatus(latestTrial) || "검증 대기");
     setEditingUrgentRevision(
       project.urgentRevisionDetail ? JSON.parse(JSON.stringify(project.urgentRevisionDetail)) : undefined
     );
@@ -408,13 +415,13 @@ export default function VendorMassValidationPage() {
     });
 
     // MPSI 본사에 알림 전송 (DB 연동)
-    const pNo = selectedProject?.projectNo || "MI26005P0";
+    const pNo = selectedProject ? getProjectNoDisplay(selectedProject) : "MI26001P0";
     sendAppNotification({
       menuName: "양산성 검증/시양산",
       menuPath: "/portal/mass-prod/validation",
       senderCompany: currentVendor,
-      content: `[${pNo} / ${uploadModalItem.category}] ${uploadForm.memo}`,
-      projectNo: pNo,
+      content: `[${pNo} 시양산 검증] ${currentVendor}에서 [${uploadModalItem.category}] 성적서 및 업무 메모를 등록하였습니다: "${uploadForm.memo}"`,
+      projectNo: selectedProject?.projectNo || pNo,
       targetRole: "MPSI",
     });
 
@@ -458,7 +465,7 @@ export default function VendorMassValidationPage() {
   };
 
   // 2-7) 양산 검증 자료 제출 처리
-  const handleSaveModal = () => {
+  const handleSaveModal = async () => {
     if (!selectedProject) return;
 
     const latestTrial = editingTrials[editingTrials.length - 1] || editingTrials[0];
@@ -466,13 +473,13 @@ export default function VendorMassValidationPage() {
     const dateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")} ${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
 
     const reportCount = getReportCount(latestTrial);
-    const calculatedStatus = getValidationStatus(latestTrial);
+    const finalOverallStatus = editingOverallStatus || getValidationStatus(latestTrial);
 
-    // 1. MassValidationStore 업데이트
+    // 1. MassValidationStore 및 DB 업데이트
     updateValidationProject(selectedProject.id, {
       trials: editingTrials,
-      currentTrial: latestTrial.trialDegree,
-      overallStatus: calculatedStatus,
+      currentTrial: activeTab || latestTrial.trialDegree,
+      overallStatus: finalOverallStatus,
       urgentRevisionDetail: editingUrgentRevision,
       urgentMoldRevision: editingUrgentRevision 
         ? `${selectedProject.moldVendor} 긴급 출장지원 요청 접수 (${editingUrgentRevision.defectType})`
@@ -483,12 +490,28 @@ export default function VendorMassValidationPage() {
     // 2. ProjectMaster 스토어 동기화
     updateStep(selectedProject.projectNo, {
       currentStep: 11, // Step 11: 양산승인사출
-      stepStatus: calculatedStatus === "검증완료" ? "완료" : "진행중",
-      notes: `[${currentVendor}] ${latestTrial.trialDegree} 시양산 및 양산성 검증 자료 제출 (보고서 ${reportCount}/6, Cpk ${latestTrial.measuredCpk}, 불량률 ${latestTrial.defectRate}%) - MPSI 검토 진행`,
+      stepStatus: finalOverallStatus === "검증완료" ? "완료" : "진행중",
+      notes: `[${currentVendor}] ${activeTab || latestTrial.trialDegree} 시양산 및 양산성 검증 자료 제출 (상태: ${finalOverallStatus}, 보고서 ${reportCount}/6, Cpk ${latestTrial.measuredCpk}, 불량률 ${latestTrial.defectRate}%) - MPSI 검토 진행`,
+    });
+
+    // 3. 상태 변경 및 실적 제출 알림 전송 (MPSI 본사로 전송)
+    const isStatusChanged = selectedProject.overallStatus !== finalOverallStatus;
+    const pNo = getProjectNoDisplay(selectedProject);
+    const notifyContent = isStatusChanged
+      ? `[${pNo} 시양산 검증] ${currentVendor}에서 전체 프로젝트 상태를 [${selectedProject.overallStatus || "검증 대기"} ➔ ${finalOverallStatus}]로 변경 제출하였습니다.`
+      : `[${pNo} 시양산 검증] ${currentVendor}에서 ${activeTab || latestTrial.trialDegree} 실적 및 검증 자료를 제출하였습니다. (상태: ${finalOverallStatus}, 불량률: ${latestTrial.defectRate}%, Cpk: ${latestTrial.measuredCpk})`;
+
+    sendAppNotification({
+      menuName: "양산성 검증/시양산",
+      menuPath: "/portal/mass-prod/validation",
+      senderCompany: currentVendor,
+      content: notifyContent,
+      projectNo: selectedProject.projectNo,
+      targetRole: "MPSI",
     });
 
     setIsDetailModalOpen(false);
-    showToast(`[${getProjectNoDisplay(selectedProject)}] 시양산 및 양산성 검증 실적이 성공적으로 제출되었습니다.`);
+    showToast(`[${pNo}] 시양산 및 양산성 검증 실적이 성공적으로 제출되었습니다. (상태: ${finalOverallStatus})`);
   };
 
   return (
@@ -688,7 +711,7 @@ export default function VendorMassValidationPage() {
 
                       {/* 1-3) 양산성 검증상태 (검증완료, 검증 대기, 검증 진행 중) */}
                       <td className="py-2.5 px-3 text-center whitespace-nowrap">
-                        {renderValidationStatusBadge(validationStatus)}
+                        {renderValidationStatusBadge(project.overallStatus || validationStatus)}
                       </td>
 
                       {/* 1-4) 양산 승인 납기일 */}
@@ -901,30 +924,30 @@ export default function VendorMassValidationPage() {
                 <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
                   <div>
                     <span className="text-[11px] text-zinc-500 block mb-1">총 사출 타수 (Shot)</span>
-                    <Input
-                      type="number"
+                    <CurrencyInput
                       value={currentRecord.totalShotCount}
-                      onChange={(e) => updateCurrentRecord({ totalShotCount: Number(e.target.value) || 0 })}
+                      onChange={(val) => updateCurrentRecord({ totalShotCount: val })}
+                      placeholder="0"
                       className="h-8 text-xs font-mono font-bold"
                     />
                   </div>
 
                   <div>
                     <span className="text-[11px] text-zinc-500 block mb-1">총 생산 수량 (EA)</span>
-                    <Input
-                      type="number"
+                    <CurrencyInput
                       value={currentRecord.totalProduced}
-                      onChange={(e) => updateCurrentRecord({ totalProduced: Number(e.target.value) || 0 })}
+                      onChange={(val) => updateCurrentRecord({ totalProduced: val })}
+                      placeholder="0"
                       className="h-8 text-xs font-mono font-bold"
                     />
                   </div>
 
                   <div>
                     <span className="text-[11px] text-zinc-500 block mb-1">불량 수량 (EA)</span>
-                    <Input
-                      type="number"
+                    <CurrencyInput
                       value={currentRecord.defectCount}
-                      onChange={(e) => updateCurrentRecord({ defectCount: Number(e.target.value) || 0 })}
+                      onChange={(val) => updateCurrentRecord({ defectCount: val })}
+                      placeholder="0"
                       className="h-8 text-xs font-mono font-bold text-rose-600"
                     />
                   </div>
@@ -953,7 +976,7 @@ export default function VendorMassValidationPage() {
                     <div className="h-8 rounded border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 flex items-center px-3 font-mono font-bold text-xs text-rose-600 justify-between">
                       <span>{currentRecord.defectRate}%</span>
                       <span className="text-[10px] text-zinc-400 font-normal">
-                        ({currentRecord.defectCount}/{currentRecord.totalProduced}EA)
+                        ({currentRecord.defectCount.toLocaleString()}/{currentRecord.totalProduced.toLocaleString()}EA)
                       </span>
                     </div>
                   </div>
@@ -1055,19 +1078,19 @@ export default function VendorMassValidationPage() {
                       <span className="text-[10.5px] text-zinc-500 block mb-1">
                         요구 캐파 (EA/일) <span className="text-[9px] text-purple-600">(입력가능)</span>
                       </span>
-                      <Input
-                        type="number"
+                      <CurrencyInput
                         value={currentRecord.targetDailyCapa ?? 4500}
-                        onChange={(e) => updateCurrentRecord({ targetDailyCapa: Number(e.target.value) || 0 })}
+                        onChange={(val) => updateCurrentRecord({ targetDailyCapa: val })}
+                        placeholder="4,500"
                         className="h-7 text-xs font-mono font-bold bg-purple-50/50 text-purple-800 border-purple-200"
                       />
                     </div>
                     <div>
                       <span className="text-[10.5px] text-zinc-500 block mb-1">실제 캐파 (EA/일)</span>
-                      <Input
-                        type="number"
+                      <CurrencyInput
                         value={currentRecord.dailyCapa}
-                        onChange={(e) => updateCurrentRecord({ dailyCapa: Number(e.target.value) || 0 })}
+                        onChange={(val) => updateCurrentRecord({ dailyCapa: val })}
+                        placeholder="0"
                         className="h-7 text-xs font-mono font-bold text-sky-700"
                       />
                     </div>
