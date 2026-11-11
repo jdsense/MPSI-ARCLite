@@ -96,6 +96,47 @@ export const INITIAL_PPAP_DATA: PPAPApprovalItem[] = [];
 const STORAGE_KEY = "mpsi_mass_ppap_store_v5";
 const SYNC_EVENT_NAME = "mpsi_mass_ppap_updated";
 
+// 더미 프로젝트 필터링 헬퍼 (실제 프로젝트 MI26001 등은 정상 보존)
+export function isDummyPpap(item: any): boolean {
+  if (!item) return true;
+  const pNo = String(item.projectNo || item.ProjectID || "").trim();
+  const pName = String(item.projectName || item.ProjectName || "").trim();
+  if (!pNo || pNo === "undefined" || pNo === "null" || pNo === "DUMMY") return true;
+  return (
+    pNo === "MI25001P1" ||
+    pNo === "MI25001P2" ||
+    pName.includes("현대 NT5") ||
+    pName.includes("NQ5")
+  );
+}
+
+export function getStoredPpapItems(): PPAPApprovalItem[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const stored = localStorage.getItem(STORAGE_KEY);
+    if (stored) {
+      const parsed = JSON.parse(stored);
+      if (Array.isArray(parsed)) {
+        return parsed.filter((it: any) => !isDummyPpap(it));
+      }
+    }
+  } catch (e) {
+    console.error("Failed to read PPAP from storage", e);
+  }
+  return [];
+}
+
+export function savePpapItemsToStorage(items: PPAPApprovalItem[]): void {
+  if (typeof window === "undefined") return;
+  try {
+    const cleanList = items.filter((it) => !isDummyPpap(it));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(cleanList));
+    window.dispatchEvent(new CustomEvent(SYNC_EVENT_NAME, { detail: cleanList }));
+  } catch (e) {
+    console.error("Failed to save PPAP items to storage", e);
+  }
+}
+
 // 백엔드 API DB 동기화 함수
 export async function syncPpapToBackend(item: PPAPApprovalItem) {
   try {
@@ -112,6 +153,53 @@ export async function syncPpapToBackend(item: PPAPApprovalItem) {
   }
 }
 
+// 양산성 검증 완료 시 PPAP 자동 등재 전역 함수
+export async function autoEnrollMassPpapFromValidation(valProject: any): Promise<PPAPApprovalItem | null> {
+  if (typeof window === "undefined" || !valProject?.projectNo || isDummyPpap(valProject)) return null;
+
+  const current = getStoredPpapItems();
+  const pid = valProject.officialProjectNo || valProject.projectNo;
+  const existing = current.find((p) => p.projectNo === pid || p.projectNo === valProject.projectNo);
+  if (existing) return existing;
+
+  const now = new Date();
+  const dateFormatted = `${now.getFullYear()}.${String(now.getMonth() + 1).padStart(2, "0")}.${String(now.getDate()).padStart(2, "0")}`;
+
+  const lastTrial = valProject.trials?.[valProject.trials.length - 1];
+
+  const newPpap: PPAPApprovalItem = {
+    id: Date.now(),
+    ppapNo: `PPAP-${pid}`,
+    projectNo: pid,
+    partNo: valProject.partNo || valProject.partNumber || "-",
+    projectName: valProject.projectName || pid,
+    productName: valProject.productName || "사출 성형 부품",
+    moldVendor: valProject.moldVendor || "우성정공(주)",
+    massVendor: valProject.massVendor || "(주)뉴몰드",
+    moldNo: valProject.moldNo || `${pid}M`,
+    machineNo: lastTrial?.machineNo || "사출 6호기 (650T)",
+    packageSubmissions: [],
+    ppapStatus: "검토 대기",
+    continuousHours: lastTrial?.continuousHours ?? 12,
+    totalShotCount: lastTrial?.totalShotCount ?? 0,
+    totalProduced: lastTrial?.totalProduced ?? 0,
+    defectRate: lastTrial?.defectRate ?? 0,
+    measuredCpk: lastTrial?.measuredCpk ?? 1.33,
+    oqcResult: "OK",
+    vendorOpinion: lastTrial?.opinion || "",
+    completionRate: 0,
+    documents: DEFAULT_PPAP_DOCUMENTS,
+    mpsiOpinion: "",
+    currentStep: 12,
+    updatedAt: `${dateFormatted} 09:00`,
+  };
+
+  const nextItems = [...current, newPpap];
+  savePpapItemsToStorage(nextItems);
+  await syncPpapToBackend(newPpap);
+  return newPpap;
+}
+
 export function useMassPpapStore() {
   const [items, setItems] = useState<PPAPApprovalItem[]>([]);
   const [isLoaded, setIsLoaded] = useState(false);
@@ -125,15 +213,9 @@ export function useMassPpapStore() {
       if (res.ok) {
         const json = await res.json();
         if (json.success && Array.isArray(json.data)) {
-          const cleaned = json.data.filter(
-            (it: PPAPApprovalItem) =>
-              !it.projectName?.includes("현대 NT5") &&
-              !it.projectNo?.includes("MI26001") &&
-              !it.projectNo?.includes("MI26002") &&
-              !it.projectNo?.includes("MI26003")
-          );
+          const cleaned = json.data.filter((it: any) => !isDummyPpap(it));
           setItems(cleaned);
-          localStorage.setItem(STORAGE_KEY, JSON.stringify(cleaned));
+          savePpapItemsToStorage(cleaned);
           setIsLoaded(true);
           setIsLoading(false);
           return;
@@ -144,22 +226,8 @@ export function useMassPpapStore() {
     }
 
     // 로컬 스토리지 Fallback
-    try {
-      const stored = localStorage.getItem(STORAGE_KEY);
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        if (Array.isArray(parsed)) {
-          const cleaned = parsed.filter(
-            (it: any) =>
-              !it.projectName?.includes("현대 NT5") &&
-              !it.projectNo?.includes("MI26001") &&
-              !it.projectNo?.includes("MI26002") &&
-              !it.projectNo?.includes("MI26003")
-          );
-          setItems(cleaned);
-        }
-      }
-    } catch {}
+    const stored = getStoredPpapItems();
+    setItems(stored);
     setIsLoaded(true);
     setIsLoading(false);
   }, []);
@@ -170,10 +238,8 @@ export function useMassPpapStore() {
 
     const handleSync = () => {
       try {
-        const stored = localStorage.getItem(STORAGE_KEY);
-        if (stored) {
-          setItems(JSON.parse(stored));
-        }
+        const stored = getStoredPpapItems();
+        setItems(stored);
       } catch (e) {
         console.error("Failed to sync PPAP store:", e);
       }
@@ -189,55 +255,14 @@ export function useMassPpapStore() {
   }, [refreshFromDb]);
 
   const saveItems = (newItems: PPAPApprovalItem[]) => {
-    setItems(newItems);
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(newItems));
-      window.dispatchEvent(new CustomEvent(SYNC_EVENT_NAME));
-    } catch (e) {
-      console.error("Failed to save PPAP items:", e);
-    }
+    const cleaned = newItems.filter((it) => !isDummyPpap(it));
+    setItems(cleaned);
+    savePpapItemsToStorage(cleaned);
   };
 
   // 양산성 검증 완료 시 PPAP 자동 등재
   const autoEnrollPpapFromValidation = async (valProject: any) => {
-    const pid = valProject.projectNo;
-    const existing = items.find((p) => p.projectNo === pid);
-    if (existing) return existing;
-
-    const now = new Date();
-    const dateFormatted = `${now.getFullYear()}.${String(now.getMonth() + 1).padStart(2, "0")}.${String(now.getDate()).padStart(2, "0")}`;
-
-    const newPpap: PPAPApprovalItem = {
-      id: Date.now(),
-      ppapNo: `PPAP-${pid}`,
-      projectNo: pid,
-      partNo: valProject.partNo || "-",
-      projectName: valProject.projectName || pid,
-      productName: valProject.productName || "사출 성형 부품",
-      moldVendor: valProject.moldVendor || "우성정공(주)",
-      massVendor: valProject.massVendor || "(주)뉴몰드",
-      moldNo: valProject.moldNo || `${pid}M`,
-      machineNo: valProject.trials?.[valProject.trials.length - 1]?.machineNo || "사출 6호기 (650T)",
-      packageSubmissions: [],
-      ppapStatus: "검토 대기",
-      continuousHours: valProject.trials?.[valProject.trials.length - 1]?.continuousHours ?? 12,
-      totalShotCount: valProject.trials?.[valProject.trials.length - 1]?.totalShotCount ?? 1300,
-      totalProduced: valProject.trials?.[valProject.trials.length - 1]?.totalProduced ?? 2600,
-      defectRate: valProject.trials?.[valProject.trials.length - 1]?.defectRate ?? 0.58,
-      measuredCpk: valProject.trials?.[valProject.trials.length - 1]?.measuredCpk ?? 1.45,
-      oqcResult: "OK",
-      vendorOpinion: "",
-      completionRate: 0,
-      documents: DEFAULT_PPAP_DOCUMENTS,
-      mpsiOpinion: "",
-      currentStep: 12,
-      updatedAt: `${dateFormatted} 09:00`,
-    };
-
-    const nextItems = [...items, newPpap];
-    saveItems(nextItems);
-    await syncPpapToBackend(newPpap);
-    return newPpap;
+    return autoEnrollMassPpapFromValidation(valProject);
   };
 
   // 신규 회차 양산 승인 서류 패키지 업로드 및 메모 등록 (영구 보존, 기존 파일 미삭제)

@@ -32,6 +32,7 @@ import {
   UrgentMoldRevisionDetail,
   INITIAL_MASS_VALIDATIONS 
 } from "@/lib/mass-validation-store";
+import { autoEnrollMassPpapFromValidation } from "@/lib/mass-ppap-store";
 
 export default function MassValidationPage() {
   const router = useRouter();
@@ -466,24 +467,9 @@ export default function MassValidationPage() {
       targetVendorName: currentProject.massVendor,
     });
 
-    // PPAP 테이블 자동 등재 트리거 (백엔드 MpsiMassPpap 동기화)
+    // PPAP 테이블 자동 등재 트리거 (스토어 및 백엔드 MpsiMassPpap 동기화)
     if (verdict === "양산승인(내부)") {
-      fetch("/api/v1/mass-prod/ppap", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          projectNo: currentProject.projectNo,
-          ppapNo: `PPAP-${currentProject.projectNo}`,
-          partNo: (currentProject as any).partNo || (currentProject as any).partNumber || "-",
-          projectName: currentProject.projectName,
-          productName: currentProject.productName,
-          moldVendor: currentProject.moldVendor,
-          massVendor: currentProject.massVendor,
-          ppapStatus: "검토 대기",
-          currentStep: 12,
-          completionRate: 0,
-        }),
-      }).catch((e) => console.warn("Auto-sync PPAP failed:", e));
+      autoEnrollMassPpapFromValidation(currentProject);
     }
 
     if (verdict === "양산승인(내부)") {

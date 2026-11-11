@@ -145,9 +145,9 @@ export default function MassProdPPAPPage() {
   const filteredData = items.filter((item) => {
     if (
       item.projectName?.includes("현대 NT5") ||
-      item.projectNo.includes("MI26001") ||
-      item.projectNo.includes("MI26002") ||
-      item.projectNo.includes("MI26003")
+      item.projectName?.includes("NQ5") ||
+      item.projectNo === "MI25001P1" ||
+      item.projectNo === "MI25001P2"
     ) {
       return false;
     }

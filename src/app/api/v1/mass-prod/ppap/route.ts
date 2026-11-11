@@ -90,12 +90,10 @@ export async function GET(req: NextRequest) {
         const pid = v.ProjectID || vMeta.projectNo;
         if (!pid) continue;
 
-        // 더미 프로젝트 배제
+        // 더미 프로젝트 배제 (실제 프로젝트 MI26001 등은 정상 보존)
         if (
-          pid.includes("MI25001") ||
-          pid.includes("MI26001") ||
-          pid.includes("MI26002") ||
-          pid.includes("MI26003") ||
+          pid === "MI25001P1" ||
+          pid === "MI25001P2" ||
           vMeta.projectName?.includes("NQ5") ||
           vMeta.projectName?.includes("현대 NT5")
         ) {
@@ -206,9 +204,9 @@ export async function GET(req: NextRequest) {
       .filter(
         (it) =>
           !it.projectName?.includes("현대 NT5") &&
-          !it.projectNo.includes("MI26001") &&
-          !it.projectNo.includes("MI26002") &&
-          !it.projectNo.includes("MI26003")
+          !it.projectName?.includes("NQ5") &&
+          it.projectNo !== "MI25001P1" &&
+          it.projectNo !== "MI25001P2"
       );
 
     return NextResponse.json({
