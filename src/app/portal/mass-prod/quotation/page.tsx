@@ -120,6 +120,9 @@ export default function MassProductionQuotationPage() {
     }
   }, [estimates]);
 
+  // 외주 사출업체 목록 (MPSI 자체 생산라인 제외한 순수 외주 협력사 목록)
+  const OUTSOURCE_MASS_VENDORS = MASS_VENDOR_LIST.filter((v) => !v.isSelf);
+
   const handleSelectProject = (pNo: string) => {
     setSelectedProjectNo(pNo);
     if (!pNo) {
@@ -129,10 +132,12 @@ export default function MassProductionQuotationPage() {
 
     const found = projects.find((p) => p.projectNo === pNo);
     if (found) {
-      let matchedVendor = "(주)뉴몰드";
+      let matchedVendor = "";
       if (found.massVendor) {
         if (found.massVendor.includes("뉴몰드")) matchedVendor = "(주)뉴몰드";
         else if (found.massVendor.includes("세원")) matchedVendor = "세원사출(주)";
+        else if (found.massVendor.includes("제일")) matchedVendor = "제일프라테크";
+        else if (found.massVendor.includes("한일")) matchedVendor = "한일엔프라";
         else matchedVendor = found.massVendor;
       }
 
@@ -154,15 +159,29 @@ export default function MassProductionQuotationPage() {
         ? found.projectNo
         : `MI${found.projectNo.replace(/^Q/i, "")}`;
 
+      // 실제 프로젝트 마스터에 지정된 사출처가 있으면 해당 업체 선택, 없으면 전체 배포
+      const isSelfMass = found.massProductionType === "IN_HOUSE" || found.massVendor?.includes("자체");
+      const initialAssignedVendors = isSelfMass
+        ? ["MPSI 자체사출공장"]
+        : matchedVendor
+        ? [matchedVendor]
+        : ["전체 업체"];
+
+      const initialVendorName = isSelfMass
+        ? "MPSI 자체사출공장"
+        : matchedVendor
+        ? matchedVendor
+        : `전체 양산처 (${OUTSOURCE_MASS_VENDORS.length}개사)`;
+
       setNewForm((prev) => ({
         ...prev,
         projectNo: pjtDisplayName,
         projectName: found.projectName,
         productName: found.productName,
         customerName: found.customerName,
-        vendorName: found.massProductionType === "IN_HOUSE" ? "MPSI 자체사출공장" : matchedVendor,
-        assignedVendors: found.massProductionType === "IN_HOUSE" ? ["MPSI 자체사출공장"] : [matchedVendor],
-        productionType: found.massProductionType === "IN_HOUSE" ? "IN_HOUSE" : "OUTSOURCING",
+        vendorName: initialVendorName,
+        assignedVendors: initialAssignedVendors,
+        productionType: isSelfMass ? "IN_HOUSE" : "OUTSOURCING",
         targetMassApprovalDate: found.targetMassDate || "2026-12-20",
         targetCycleTime: 35,
         machineTonnage: machineTon,
@@ -176,7 +195,7 @@ export default function MassProductionQuotationPage() {
         processingCost: calc.processingCost,
         packagingCost: calc.packagingCost,
         logisticsCost: calc.logisticsCost,
-        finalUnitPrice: found.massProductionType === "IN_HOUSE" ? calc.finalUnitPrice : 0,
+        finalUnitPrice: isSelfMass ? calc.finalUnitPrice : 0,
         sph: calc.sph,
         notes: found.notes || `${found.projectName} - ${found.productName} 양산 사출 견적 요청`
       }));
@@ -202,7 +221,7 @@ export default function MassProductionQuotationPage() {
       }
       return {
         ...prev,
-        assignedVendors: current.length === MASS_VENDOR_LIST.length ? ["전체 업체"] : current
+        assignedVendors: current.length === OUTSOURCE_MASS_VENDORS.length ? ["전체 업체"] : current
       };
     });
   };
@@ -380,7 +399,7 @@ export default function MassProductionQuotationPage() {
     if (newForm.productionType === "IN_HOUSE") {
       vendorDisplayName = "MPSI 자체사출공장";
     } else if (newForm.assignedVendors.includes("전체 업체")) {
-      vendorDisplayName = `전체 양산처 (${MASS_VENDOR_LIST.length}개사)`;
+      vendorDisplayName = `전체 양산처 (${OUTSOURCE_MASS_VENDORS.length}개사)`;
     } else if (newForm.assignedVendors.length === 1) {
       vendorDisplayName = newForm.assignedVendors[0];
     } else {
@@ -504,21 +523,63 @@ export default function MassProductionQuotationPage() {
         nextProcCost = winner.processingCost;
         nextPackCost = winner.packagingCost;
         nextLogCost = winner.logisticsCost;
-
-        sendAppNotification({
-          menuName: "양산외주 - 양산견적관리",
-          menuPath: "/portal/vendor-portal/mass/quotation",
-          senderCompany: "MPSI",
-          content: `[${selectedItem.projectNo || selectedItem.estimateNo}] 양산 견적 수주 확정 완료! (양산성 검증 단계로 연계됩니다)`,
-          projectNo: selectedItem.projectNo || selectedItem.estimateNo,
-          targetRole: "VENDOR_MASS",
-          targetVendorName: winner.vendorName,
-        });
       } else if (draftStatus === "반려/미성사" || (draftQuotes.length > 0 && draftQuotes.every((vq) => vq.status === "반려/미성사"))) {
         nextStatus = "반려/미성사";
         nextUnitPrice = 0;
       } else {
         nextStatus = draftStatus;
+      }
+
+      // 상태 변경 알림 발송: 모달에서 상태 변경 후 [확인] 클릭 시 해당 업체에게 알림 전송
+      const pjtDisplayName = selectedItem.projectNo || selectedItem.estimateNo;
+      const prevQuotesMap = new Map((selectedItem.vendorQuotes || []).map((q) => [q.id, q.status]));
+
+      if (draftQuotes && draftQuotes.length > 0) {
+        draftQuotes.forEach((vq) => {
+          const prevStatus = prevQuotesMap.get(vq.id);
+          let notifyMsg = "";
+          if (vq.status === "수주확정") {
+            notifyMsg = `[${pjtDisplayName}] 양산 견적 [단가합의완료 / 수주확정] (단가: ${vq.unitPrice.toLocaleString()}원) - 양산성 검증(시양산) 단계로 연계됩니다.`;
+          } else if (vq.status === "검토협의") {
+            notifyMsg = `[${pjtDisplayName}] MPSI 본사에서 양산 견적 [원가검토 및 단가협의]를 진행 중입니다.`;
+          } else if (vq.status === "반려/미성사") {
+            notifyMsg = `[${pjtDisplayName}] 제출하신 양산 견적이 [반려 / 미성사] 처리되었습니다.`;
+          } else if (vq.status !== prevStatus) {
+            notifyMsg = `[${pjtDisplayName}] 양산 견적 진행상태가 [${vq.status}]로 변경되었습니다.`;
+          }
+
+          if (notifyMsg) {
+            sendAppNotification({
+              menuName: "양산외주 - 양산견적관리",
+              menuPath: "/portal/vendor-portal/mass/quotation",
+              senderCompany: "MPSI",
+              content: notifyMsg,
+              projectNo: pjtDisplayName,
+              targetRole: "VENDOR_MASS",
+              targetVendorName: vq.vendorName,
+            });
+          }
+        });
+      } else {
+        // 아직 접수된 견적이 없는 경우 (배포 대상 외주처에게 알림)
+        const targetVendors = selectedItem.assignedVendors?.includes("전체 업체")
+          ? OUTSOURCE_MASS_VENDORS.map((v) => v.name)
+          : (selectedItem.assignedVendors && selectedItem.assignedVendors.length > 0)
+          ? selectedItem.assignedVendors
+          : [selectedItem.vendorName];
+
+        targetVendors.forEach((tv) => {
+          if (!tv || tv === "전체 업체" || tv.includes("자체")) return;
+          sendAppNotification({
+            menuName: "양산외주 - 양산견적관리",
+            menuPath: "/portal/vendor-portal/mass/quotation",
+            senderCompany: "MPSI",
+            content: `[${pjtDisplayName}] 양산 견적 진행상태가 [${nextStatus}] 상태로 변경되었습니다.`,
+            projectNo: pjtDisplayName,
+            targetRole: "VENDOR_MASS",
+            targetVendorName: tv,
+          });
+        });
       }
 
       const mergedItem: MassProductionEstimateItem = {
@@ -1144,8 +1205,8 @@ export default function MassProductionQuotationPage() {
                       전체 업체 (4개사 일괄 배포)
                     </button>
 
-                    {/* 개별 사출처 체크박스 */}
-                    {MASS_VENDOR_LIST.map((v) => {
+                    {/* 개별 사출처 체크박스 (외주 사출업체만 표시) */}
+                    {OUTSOURCE_MASS_VENDORS.map((v) => {
                       const isSelected = newForm.assignedVendors.includes("전체 업체") || newForm.assignedVendors.includes(v.name);
                       return (
                         <button
@@ -1154,7 +1215,7 @@ export default function MassProductionQuotationPage() {
                           onClick={() => handleToggleVendor(v.name)}
                           className={`px-2.5 py-1.5 rounded-md text-xs font-semibold flex items-center gap-1.5 border transition-all cursor-pointer ${
                             isSelected
-                              ? "bg-blue-50 text-blue-800 border-blue-300 dark:bg-blue-950 dark:text-blue-200"
+                              ? "bg-blue-50 text-blue-800 border-blue-300 dark:bg-blue-950 dark:text-blue-200 font-bold"
                               : "bg-white dark:bg-zinc-900 text-zinc-600 dark:text-zinc-400 border-zinc-200 hover:bg-zinc-50"
                           }`}
                         >
