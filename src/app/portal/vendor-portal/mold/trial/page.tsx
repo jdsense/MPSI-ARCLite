@@ -138,6 +138,10 @@ export default function VendorMoldTrialPage() {
     setIsDetailModalOpen(true);
   };
 
+  // 실시간 최신 프로젝트 정보 및 메모 이력 (스토어/로컬 상태 실시간 반영)
+  const liveProject = trials.find((p) => p.id === selectedProject?.id || p.projectNo === selectedProject?.projectNo) || selectedProject;
+  const currentMemoLogs = selectedProject?.memoLogs || liveProject?.memoLogs || [];
+
   // 현재 탭의 TrialRecord 찾기
   const currentRecordIndex = editingTrials.findIndex((t) => t.trialDegree === activeTab);
   const currentRecord = currentRecordIndex >= 0 ? editingTrials[currentRecordIndex] : editingTrials[0];
@@ -354,12 +358,33 @@ export default function VendorMoldTrialPage() {
     setEditingTrials((prev) => [...prev, newRec]);
     setActiveTab(nextDegree);
 
+    const now = new Date();
+    const dateStr = `${now.getFullYear()}.${String(now.getMonth() + 1).padStart(2, "0")}.${String(now.getDate()).padStart(2, "0")} ${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+
+    const newLog: MoldTrialMemoLog = {
+      id: `trial-memo-${Date.now()}`,
+      authorId: "vendor-dev",
+      authorName: currentVendor,
+      company: currentVendor,
+      tag: `${nextDegree}차수추가`,
+      content: `[차수 추가] ${nextDegree} 시사출 차수가 신규 추가되었습니다. (이전 차수(${prevRec?.trialDegree || "T1"}) 검사 데이터 연계)`,
+      createdAt: dateStr,
+    };
+
+    // 모달 내 로컬 상태 즉시 갱신
+    setSelectedProject((prev) => prev ? {
+      ...prev,
+      memoLogs: [newLog, ...(prev.memoLogs || [])],
+      updatedAt: dateStr,
+    } : null);
+
     addMemoLog(selectedProject.id, {
       authorId: "vendor-dev",
       authorName: currentVendor,
       company: currentVendor,
       tag: `${nextDegree}차수추가`,
       content: `[차수 추가] ${nextDegree} 시사출 차수가 신규 추가되었습니다. (이전 차수(${prevRec?.trialDegree || "T1"}) 검사 데이터 연계)`,
+      createdAt: dateStr,
     });
 
     showToast(`신규 ${nextDegree} 시사출 차수가 추가되었습니다.`);
@@ -369,15 +394,37 @@ export default function VendorMoldTrialPage() {
   const handleAddMemo = async () => {
     if (!memoInput.trim() || !selectedProject) return;
     const content = memoInput.trim();
+    const now = new Date();
+    const dateStr = `${now.getFullYear()}.${String(now.getMonth() + 1).padStart(2, "0")}.${String(now.getDate()).padStart(2, "0")} ${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+
+    const newLog: MoldTrialMemoLog = {
+      id: `trial-memo-${Date.now()}`,
+      authorId: "vendor-dev",
+      authorName: currentVendor,
+      company: currentVendor,
+      tag: memoTag || "업무메모",
+      content,
+      createdAt: dateStr,
+    };
+
+    // 1. selectedProject 로컬 상태 즉시 갱신 (모달 화면 즉시 반영)
+    setSelectedProject((prev) => prev ? {
+      ...prev,
+      memoLogs: [newLog, ...(prev.memoLogs || [])],
+      updatedAt: dateStr,
+    } : null);
+
+    // 2. 전역 스토어 및 백엔드 동기화
     addMemoLog(selectedProject.id, {
       authorId: "vendor-dev",
       authorName: currentVendor,
       company: currentVendor,
       tag: memoTag || "업무메모",
       content,
+      createdAt: dateStr,
     });
 
-    // MPSI로 알림 발송 (사용자 이름 제외, 회사명 단독)
+    // 3. MPSI로 알림 발송 (사용자 이름 제외, 회사명 단독)
     await sendAppNotification({
       menuName: "금형 육성 및 시사출",
       menuPath: "/portal/mold-dev/trial",
@@ -1330,12 +1377,12 @@ export default function VendorMoldTrialPage() {
                     </div>
 
                     <div className="flex flex-col gap-1.5 max-h-[140px] overflow-y-auto">
-                      {selectedProject.memoLogs.length === 0 ? (
+                      {currentMemoLogs.length === 0 ? (
                         <div className="p-2 text-center text-zinc-400 text-xs bg-white rounded border">
                           등록된 업무 메모가 없습니다.
                         </div>
                       ) : (
-                        selectedProject.memoLogs.map((m) => (
+                        currentMemoLogs.map((m) => (
                           <div key={m.id} className="p-2 rounded border bg-white dark:bg-zinc-900 text-xs flex flex-col gap-0.5 shadow-2xs">
                             <div className="flex items-center justify-between">
                               <div className="flex items-center gap-1.5">
@@ -1546,12 +1593,12 @@ export default function VendorMoldTrialPage() {
                     </div>
 
                     <div className="flex flex-col gap-1.5 max-h-[160px] overflow-y-auto">
-                      {selectedProject.memoLogs.length === 0 ? (
+                      {currentMemoLogs.length === 0 ? (
                         <div className="p-3 text-center text-zinc-400 bg-white rounded border text-xs">
                           등록된 업무 이력 메모가 없습니다.
                         </div>
                       ) : (
-                        selectedProject.memoLogs.map((m) => (
+                        currentMemoLogs.map((m) => (
                           <div key={m.id} className="p-2 rounded border bg-white dark:bg-zinc-900 text-xs flex flex-col gap-0.5 shadow-2xs">
                             <div className="flex items-center justify-between">
                               <div className="flex items-center gap-1.5">
