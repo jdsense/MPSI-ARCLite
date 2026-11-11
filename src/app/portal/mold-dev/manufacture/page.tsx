@@ -586,31 +586,6 @@ export default function MoldManufacturePage() {
                     </span>
                   </div>
                 </div>
-
-                {/* 2-3) 7대 세부 공정 목록 조회 */}
-                <div className="bg-white dark:bg-zinc-900 rounded-lg border p-3 flex flex-col gap-2">
-                  <div className="flex items-center justify-between">
-                    <span className="font-bold text-zinc-800 dark:text-zinc-200 text-[11px] flex items-center gap-1.5">
-                      <Activity className="h-3.5 w-3.5 text-sky-600" />
-                      7대 핵심 가공 공정 실적 현황:
-                    </span>
-                    <span className="text-[10px] text-zinc-400">외주사 포털 관제</span>
-                  </div>
-                  <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-1.5 text-[10px]">
-                    {selectedItem.processes.map((proc) => (
-                      <div key={proc.code} className="p-2 rounded border bg-zinc-50 dark:bg-zinc-800/60 flex flex-col items-center text-center">
-                        <span className="font-mono text-zinc-400 text-[9px]">{proc.code}</span>
-                        <b className="text-zinc-800 dark:text-zinc-200 my-0.5 truncate w-full">{proc.name}</b>
-                        <span className={`px-1.5 rounded text-[10px] font-bold ${
-                          proc.status === "완료" ? "bg-emerald-100 text-emerald-800" : proc.status === "진행중" ? "bg-blue-100 text-blue-800" : "bg-zinc-200 text-zinc-600"
-                        }`}>
-                          {proc.progress}%
-                        </span>
-                        <span className="text-[9px] text-zinc-400 mt-0.5">{proc.actualDate || proc.planDate || "-"}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
               </div>
 
               {/* 2. 2-7) 업무 이력 메모 카드 */}

@@ -7,7 +7,7 @@ import {
   Sparkles, X, ChevronRight, Layers, FileText,
   Building2, ExternalLink, Download, UploadCloud,
   Check, Activity, ListTree, Settings, Info,
-  MessageSquare, Send, Calendar, Sliders
+  MessageSquare, Send, Calendar
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -25,7 +25,6 @@ import {
   MoldManufactureItem, 
   MoldManufactureStatus,
   ManufactureScheduleFile,
-  ProcessStep,
   getManufactureStatusBadge
 } from "@/lib/mold-manufacture-store";
 import { cleanCompanyAuthor } from "@/lib/notification-store";
@@ -64,8 +63,6 @@ export default function VendorMoldManufacturePage() {
   const [selectedItem, setSelectedItem] = useState<MoldManufactureItem | null>(null);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
   const [formStatus, setFormStatus] = useState<MoldManufactureStatus>("미입력");
-  const [showProcessEdit, setShowProcessEdit] = useState(false);
-  const [formProcesses, setFormProcesses] = useState<ProcessStep[]>([]);
 
   // 2-7 업무 이력 메모 입력 상태
   const [memoAuthorName, setMemoAuthorName] = useState(currentVendor);
@@ -116,8 +113,6 @@ export default function VendorMoldManufacturePage() {
   const handleOpenDetail = (item: MoldManufactureItem) => {
     setSelectedItem(item);
     setFormStatus(item.manufactureStatus || "미입력");
-    setFormProcesses(item.processes.map(p => ({ ...p })));
-    setShowProcessEdit(false);
     setMemoContent("");
     setSelectedUploadFileName("");
     setIsDetailModalOpen(true);
@@ -281,13 +276,17 @@ export default function VendorMoldManufacturePage() {
   const handleSaveStatusAndProcesses = () => {
     if (!selectedItem) return;
 
-    // 세부 공정 진행률 기반 전체 공정률 계산
-    const sum = formProcesses.reduce((acc, cur) => acc + cur.progress, 0);
-    const avgProg = Math.round(sum / (formProcesses.length || 1));
+    const statusProgMap: Record<MoldManufactureStatus, number> = {
+      "미입력": 0,
+      "금형 설계 중": 20,
+      "가공 중": 50,
+      "습합 중": 80,
+      "금형 육성 중": 100,
+    };
+    const avgProg = statusProgMap[formStatus] ?? (selectedItem.overallProgress || 50);
 
     updateManufacture(selectedItem.id, {
       manufactureStatus: formStatus,
-      processes: formProcesses,
       overallProgress: avgProg,
     });
 
@@ -301,22 +300,8 @@ export default function VendorMoldManufacturePage() {
       console.error(e);
     }
 
-    showToast(`[${selectedItem.projectNo}] 금형제작 현황(${formStatus}) 및 세부공정 실적이 저장되었습니다.`);
+    showToast(`[${selectedItem.projectNo}] 금형제작 현황(${formStatus})이 저장되었습니다.`);
     setIsDetailModalOpen(false);
-  };
-
-  // 세부 공정 진행률 변경 핸들러
-  const handleProcessProgressChange = (code: string, newProg: number) => {
-    const clamped = Math.max(0, Math.min(100, Math.round(newProg)));
-    setFormProcesses(prev => prev.map(proc => {
-      if (proc.code !== code) return proc;
-      return {
-        ...proc,
-        progress: clamped,
-        status: (clamped >= 100 ? "완료" : clamped > 0 ? "진행중" : "대기") as any,
-        actualDate: clamped >= 100 && !proc.actualDate ? new Date().toISOString().slice(5, 10) : proc.actualDate,
-      };
-    }));
   };
 
   return (
@@ -652,21 +637,6 @@ export default function VendorMoldManufacturePage() {
                       {formStatus === "습합 중" && "현 시점의 진척도가 가공이 진행되면서 습합 시작 상태입니다."}
                       {formStatus === "금형 육성 중" && "시사출이 시작되었을 때 금형육성 중으로 표기됩니다."}
                     </div>
-
-                    {/* 2-3) 공정 일정 입력 토글 버튼 */}
-                    <div className="pt-2 border-t flex items-center justify-between">
-                      <Button
-                        type="button"
-                        onClick={() => setShowProcessEdit(!showProcessEdit)}
-                        size="xs"
-                        variant="outline"
-                        className="h-7 text-[11px] gap-1.5 border-purple-300 text-purple-700 hover:bg-purple-50 font-bold cursor-pointer"
-                      >
-                        <Sliders className="h-3.5 w-3.5" />
-                        {showProcessEdit ? "7대 세부공정 닫기" : "공정 일정 세부 입력 (7대 공정)"}
-                      </Button>
-                      <span className="text-[10px] text-zinc-400">금형처 직접 입력</span>
-                    </div>
                   </div>
 
                   {/* 2-4) 일정표 업로드 카드 (금형처 화면은 첨부) */}
@@ -726,49 +696,6 @@ export default function VendorMoldManufacturePage() {
                     </span>
                   </div>
                 </div>
-
-                {/* 2-3) 세부 공정 일정 입력 영역 (토글형) */}
-                {showProcessEdit && (
-                  <div className="bg-white dark:bg-zinc-900 rounded-lg border p-3.5 flex flex-col gap-2.5 animate-in fade-in">
-                    <div className="flex items-center justify-between">
-                      <span className="font-bold text-zinc-800 dark:text-zinc-200 text-[11px] flex items-center gap-1.5">
-                        <Sliders className="h-3.5 w-3.5 text-purple-600" />
-                        7대 세부 가공 공정 실적 직접 입력:
-                      </span>
-                      <span className="text-[10px] text-zinc-400">공정별 슬라이더 또는 수치 조정</span>
-                    </div>
-
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 text-[11px]">
-                      {formProcesses.map((proc) => (
-                        <div key={proc.code} className="p-2.5 rounded-lg border bg-zinc-50 dark:bg-zinc-800/40 flex flex-col gap-1.5">
-                          <div className="flex items-center justify-between">
-                            <span className="font-bold text-zinc-800 dark:text-zinc-200">{proc.name}</span>
-                            <span className={`px-1.5 py-0.2 rounded text-[10px] font-bold ${
-                              proc.status === "완료" ? "bg-emerald-100 text-emerald-800" : proc.status === "진행중" ? "bg-blue-100 text-blue-800" : "bg-zinc-200 text-zinc-600"
-                            }`}>
-                              {proc.status}
-                            </span>
-                          </div>
-
-                          <div className="flex items-center gap-2">
-                            <input 
-                              type="range" 
-                              min="0" 
-                              max="100" 
-                              step="5"
-                              value={proc.progress} 
-                              onChange={(e) => handleProcessProgressChange(proc.code, Number(e.target.value))}
-                              className="flex-1 accent-purple-600 h-1.5 bg-zinc-200 rounded cursor-pointer"
-                            />
-                            <span className="font-mono font-bold w-10 text-right text-[10px] text-purple-700">
-                              {proc.progress}%
-                            </span>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
               </div>
 
               {/* 2. 2-7) 업무 이력 메모 카드 */}
