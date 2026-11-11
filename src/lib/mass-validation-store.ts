@@ -110,16 +110,13 @@ export interface MassValidationProject {
 export const STORAGE_KEY = "mpsi_mass_validations_v4";
 export const EVENT_NAME = "mpsi_mass_validation_update";
 
-// 더미 프로젝트 필터링 헬퍼
+// 구형 레거시 정적 더미 프로젝트 필터링 헬퍼 (실제 프로젝트 MI26001P0 등은 정상 허용)
 export function isDummyValidation(p: Partial<MassValidationProject>): boolean {
   const pNo = p.projectNo || "";
   const name = p.projectName || "";
   return (
     pNo === "MI25001P1" ||
     pNo === "MI25001P2" ||
-    pNo === "MI26001P0" ||
-    pNo === "MI26002P0" ||
-    pNo === "MI26003P0" ||
     name.includes("현대 NT5") ||
     name.includes("NQ5")
   );
@@ -318,15 +315,34 @@ export function autoEnrollMassValidationFromQuotation(quoteItem: any) {
 
   const current = getStoredMassValidations();
   const pid = quoteItem.projectNo;
-  const exists = current.some((it) => it.projectNo === pid || it.officialProjectNo === pid);
-  if (exists) return;
-
   const isSelf = quoteItem.productionType === "IN_HOUSE" || quoteItem.status === "자체진행";
   const selectedVendor =
     quoteItem.selectedVendorName ||
     quoteItem.vendorQuotes?.find((vq: any) => vq.status === "수주확정")?.vendorName ||
     quoteItem.vendorName ||
     (isSelf ? "MPSI 자체사출공장" : "(주)뉴몰드");
+
+  const exists = current.some((it) => it.projectNo === pid || it.officialProjectNo === pid);
+  if (exists) {
+    // 이미 등록된 경우 최신 수주확정 양산처 및 사양 정보로 업데이트
+    const updated = current.map((it) => {
+      if (it.projectNo === pid || it.officialProjectNo === pid) {
+        return {
+          ...it,
+          massVendor: selectedVendor,
+          projectName: quoteItem.projectName || it.projectName,
+          productName: quoteItem.productName || it.productName,
+          customerName: quoteItem.customerName || it.customerName,
+          targetMassApprovalDate: quoteItem.targetMassApprovalDate || it.targetMassApprovalDate,
+        };
+      }
+      return it;
+    });
+    saveMassValidationsToStorage(updated);
+    const target = updated.find((it) => it.projectNo === pid || it.officialProjectNo === pid);
+    if (target) syncMassValidationToBackend(target);
+    return;
+  }
 
   const dateStr = new Date().toISOString().slice(0, 10);
   const newProject: MassValidationProject = {

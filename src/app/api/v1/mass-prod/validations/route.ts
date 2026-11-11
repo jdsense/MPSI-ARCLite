@@ -156,12 +156,9 @@ export async function GET(req: NextRequest) {
         const pid = q.ProjectID || qMeta.projectNo;
         if (!pid) continue;
 
-        // 더미 프로젝트 배제
+        // 구형 레거시 더미 프로젝트 배제 (실제 프로젝트 MI26001P0 등은 정상 등록)
         if (
           pid.includes("MI25001") ||
-          pid.includes("MI26001") ||
-          pid.includes("MI26002") ||
-          pid.includes("MI26003") ||
           qMeta.projectName?.includes("NQ5") ||
           qMeta.projectName?.includes("현대 NT5")
         ) {
@@ -296,13 +293,10 @@ export async function GET(req: NextRequest) {
     const items = rows
       .map(mapRowToProject)
       .filter((it: MassValidationProject) => {
-        // 더미 데이터 엄격 제외
+        // 구형 레거시 더미 데이터 엄격 제외 (실제 프로젝트 MI26001P0 등은 정상 조회)
         if (
           it.projectNo === "MI25001P1" ||
           it.projectNo === "MI25001P2" ||
-          it.projectNo === "MI26001P0" ||
-          it.projectNo === "MI26002P0" ||
-          it.projectNo === "MI26003P0" ||
           it.projectName?.includes("현대 NT5") ||
           it.projectName?.includes("NQ5")
         ) {
