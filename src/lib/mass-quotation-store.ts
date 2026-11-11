@@ -119,8 +119,8 @@ export interface MassProductionEstimateItem {
   submissionHistory?: MassQuoteSubmissionHistoryItem[]; // 견적서 및 메모 이력 영구 보존
 }
 
-const STORAGE_KEY = "mpsi_mass_quotations_v11";
-const EVENT_NAME = "mpsi_mass_quotation_update_v11";
+const STORAGE_KEY = "mpsi_mass_quotations_v12";
+const EVENT_NAME = "mpsi_mass_quotation_update_v12";
 
 // 더미 데이터 초기값 전면 비움
 export const INITIAL_MASS_ESTIMATES: MassProductionEstimateItem[] = [];
@@ -128,17 +128,17 @@ export const INITIAL_MASS_ESTIMATES: MassProductionEstimateItem[] = [];
 // 더미 판별 헬퍼
 export function isDummyMassEstimate(item: any): boolean {
   if (!item) return true;
-  const pNo = String(item.projectNo || "");
-  const pName = String(item.projectName || "");
+  const pNo = String(item.projectNo || "").trim();
+  const pName = String(item.projectName || "").trim();
+  if (!pNo || pNo === "undefined" || pNo === "null" || pNo === "DUMMY") return true;
+  // 과거 하드코딩 샘플 데이터만 배제 (실제 프로젝트 MI26001, MI26002 등은 정상 보존)
   if (
-    pNo.includes("MI25001") ||
-    pNo.includes("MI26001") ||
-    pNo.includes("MI26002") ||
-    pNo.includes("MI26003") ||
-    pName.includes("NQ5") ||
-    pName.includes("현대 NT5") ||
-    pName.includes("A2XT") ||
-    pName.includes("SPX")
+    pNo === "MI25001P1" ||
+    pNo === "MI25001P2" ||
+    pName.includes("현대 NT5 도어 트림") ||
+    pName.includes("NQ5 Door Armrest") ||
+    pName === "A2XT" ||
+    pName === "SPX"
   ) {
     return true;
   }
@@ -148,6 +148,7 @@ export function isDummyMassEstimate(item: any): boolean {
 export function getStoredMassEstimates(): MassProductionEstimateItem[] {
   if (typeof window === "undefined") return [];
   try {
+    localStorage.removeItem("mpsi_mass_quotations_v11");
     localStorage.removeItem("mpsi_mass_quotations_v10");
     localStorage.removeItem("mpsi_mass_quotations_v9");
     const raw = localStorage.getItem(STORAGE_KEY);

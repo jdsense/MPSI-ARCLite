@@ -131,14 +131,12 @@ export async function GET(req: NextRequest) {
         const pid = t.ProjectID || trialMeta.projectNo;
         if (!pid) continue;
 
-        // 더미 프로젝트 배제
+        // 더미 프로젝트 배제 (과거 초기 테스트 데이터만 배제)
         if (
-          pid.includes("MI25001") ||
-          pid.includes("MI26001") ||
-          pid.includes("MI26002") ||
-          pid.includes("MI26003") ||
-          trialMeta.projectName?.includes("NQ5") ||
-          trialMeta.projectName?.includes("현대 NT5")
+          pid === "MI25001P1" ||
+          pid === "MI25001P2" ||
+          trialMeta.projectName?.includes("현대 NT5 도어 트림") ||
+          trialMeta.projectName?.includes("NQ5 Door Armrest")
         ) {
           continue;
         }
@@ -257,15 +255,12 @@ export async function GET(req: NextRequest) {
     const items = rows
       .map(mapRowToItem)
       .filter((it: MassProductionEstimateItem) => {
-        // 더미 데이터 엄격 제외
+        // 과거 더미 테스트 데이터만 제외 (실제 프로젝트 MI26xxx 등은 정상 표출)
         if (
           it.projectNo === "MI25001P1" ||
           it.projectNo === "MI25001P2" ||
-          it.projectNo === "MI26001P0" ||
-          it.projectNo === "MI26002P0" ||
-          it.projectNo === "MI26003P0" ||
-          it.projectName?.includes("현대 NT5") ||
-          it.projectName?.includes("NQ5")
+          it.projectName?.includes("현대 NT5 도어 트림") ||
+          it.projectName?.includes("NQ5 Door Armrest")
         ) {
           return false;
         }
