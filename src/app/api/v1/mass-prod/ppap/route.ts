@@ -25,25 +25,51 @@ async function ensureTableInitialized() {
   `);
 }
 
+function deriveMoldNo(projectNo?: string): string {
+  if (!projectNo) return "-";
+  const base = projectNo.replace(/^[Qq]/, "MI").replace(/P\d+$/i, "").replace(/-\d+$/, "");
+  return `${base}M`;
+}
+
 function mapRowToPpapItem(row: any): PPAPApprovalItem {
   let note: any = {};
   try {
     note = JSON.parse(row.Note || "{}");
   } catch {}
 
+  let pmNote: any = {};
+  if (row.ProjectNote) {
+    try {
+      pmNote = JSON.parse(row.ProjectNote || "{}");
+    } catch {}
+  }
+
   const packageSubmissions: PPAPPackageSubmissionHistoryItem[] = note.packageSubmissions || [];
+  const pid = row.ProjectID || note.projectNo;
+
+  const moldNo = (note.moldNo && note.moldNo !== "MI26005P0M")
+    ? note.moldNo
+    : (pmNote.moldNo || deriveMoldNo(pid));
+
+  const partNo = (note.partNo && note.partNo !== "-")
+    ? note.partNo
+    : (pmNote.partNo || row.ProjectItemID || "-");
+
+  const machineNo = (note.machineNo && note.machineNo !== "사출 6호기 (650T)")
+    ? note.machineNo
+    : (pmNote.machineTon ? `${pmNote.machineTon}T` : (note.machineNo || "사출 6호기 (650T)"));
 
   return {
     id: Number(row.PpapSequenceNo),
-    ppapNo: row.PpapID || note.ppapNo || `PPAP-${row.ProjectID}`,
-    projectNo: row.ProjectID || note.projectNo,
-    partNo: note.partNo || "-",
-    projectName: note.projectName || row.ProjectID || "양산 프로젝트",
-    productName: note.productName || "사출 성형 부품",
-    moldVendor: note.moldVendor || "우성정공(주)",
-    massVendor: row.MassVendorID || note.massVendor || "(주)뉴몰드",
-    moldNo: note.moldNo || "MI26005P0M",
-    machineNo: note.machineNo || "사출 6호기 (650T)",
+    ppapNo: row.PpapID || note.ppapNo || `PPAP-${pid}`,
+    projectNo: pid,
+    partNo,
+    projectName: note.projectName || pmNote.projectName || row.PmProjectName || pid || "양산 프로젝트",
+    productName: note.productName || pmNote.productName || "사출 성형 부품",
+    moldVendor: note.moldVendor || pmNote.moldVendor || "우성정공(주)",
+    massVendor: row.MassVendorID || note.massVendor || pmNote.massVendor || "(주)뉴몰드",
+    moldNo,
+    machineNo,
     packageSubmissions,
     ppapStatus: row.PpapStatus || note.ppapStatus || (packageSubmissions.length > 0 ? "검토 진행 중" : "검토 대기"),
     continuousHours: note.continuousHours ?? 12,
@@ -120,31 +146,41 @@ export async function GET(req: NextRequest) {
           const dateStr = new Date().toISOString().slice(0, 10);
 
           let pmInfo: any = {};
+          let pmNote: any = {};
           try {
-            const pmRes = await query(`SELECT "ItemID", "ProjectName", "PartName" FROM "ProjectMaster" WHERE "ProjectID" = $1 LIMIT 1`, [pid]);
+            const pmRes = await query(`SELECT "ItemID", "ProjectName", "Note" FROM "ProjectMaster" WHERE "ProjectID" = $1 LIMIT 1`, [pid]);
             if (pmRes.rows.length > 0) {
               pmInfo = pmRes.rows[0];
+              try { pmNote = JSON.parse(pmInfo.Note || "{}"); } catch {}
             }
           } catch {}
+
+          const moldNo = (vMeta.moldNo && vMeta.moldNo !== "MI26005P0M")
+            ? vMeta.moldNo
+            : (pmNote.moldNo || deriveMoldNo(pid));
+          const partNo = (vMeta.partNo && vMeta.partNo !== "-")
+            ? vMeta.partNo
+            : (pmNote.partNo || pmInfo.ItemID || "-");
+          const machineNo = vMeta.trials?.[vMeta.trials.length - 1]?.machineNo || (pmNote.machineTon ? `${pmNote.machineTon}T` : "사출 6호기 (650T)");
 
           const initialPpapMeta: Partial<PPAPApprovalItem> = {
             id: 0,
             ppapNo: ppapId,
             projectNo: pid,
-            partNo: vMeta.partNo || pmInfo.ItemID || "-",
-            projectName: vMeta.projectName || pmInfo.ProjectName || pid,
-            productName: vMeta.productName || pmInfo.PartName || "사출 성형 부품",
-            moldVendor: vMeta.moldVendor || "우성정공(주)",
+            partNo,
+            projectName: vMeta.projectName || pmNote.projectName || pmInfo.ProjectName || pid,
+            productName: vMeta.productName || pmNote.productName || "사출 성형 부품",
+            moldVendor: vMeta.moldVendor || pmNote.moldVendor || "우성정공(주)",
             massVendor: massVendor,
-            moldNo: vMeta.moldNo || `${pid}M`,
-            machineNo: vMeta.trials?.[vMeta.trials.length - 1]?.machineNo || "사출 6호기 (650T)",
+            moldNo,
+            machineNo,
             packageSubmissions: [],
             ppapStatus: "검토 대기",
             continuousHours: vMeta.trials?.[vMeta.trials.length - 1]?.continuousHours ?? 12,
-            totalShotCount: vMeta.trials?.[vMeta.trials.length - 1]?.totalShotCount ?? 1300,
-            totalProduced: vMeta.trials?.[vMeta.trials.length - 1]?.totalProduced ?? 2600,
-            defectRate: vMeta.trials?.[vMeta.trials.length - 1]?.defectRate ?? 0.58,
-            measuredCpk: vMeta.trials?.[vMeta.trials.length - 1]?.measuredCpk ?? 1.45,
+            totalShotCount: vMeta.trials?.[vMeta.trials.length - 1]?.totalShotCount ?? 0,
+            totalProduced: vMeta.trials?.[vMeta.trials.length - 1]?.totalProduced ?? 0,
+            defectRate: vMeta.trials?.[vMeta.trials.length - 1]?.defectRate ?? 0,
+            measuredCpk: vMeta.trials?.[vMeta.trials.length - 1]?.measuredCpk ?? 1.33,
             oqcResult: "OK",
             completionRate: 0,
             documents: DEFAULT_PPAP_DOCUMENTS,
@@ -182,20 +218,22 @@ export async function GET(req: NextRequest) {
       console.warn("Auto-enroll PPAP from validation warning:", err);
     }
 
-    // 2. PPAP 목록 조회
+    // 2. PPAP 목록 조회 (ProjectMaster와 LEFT JOIN하여 정식 moldNo, partNo, machineNo 동기화)
     let sql = `
-      SELECT "PpapSequenceNo", "PpapID", "ProjectID", "MassVendorID", "PpapStatus",
-             "CurrentStep", "CompletionRate", "TargetApprovalDate", "ModificationDateTime", "Note"
-      FROM "MpsiMassPpap"
+      SELECT p."PpapSequenceNo", p."PpapID", p."ProjectID", p."MassVendorID", p."PpapStatus",
+             p."CurrentStep", p."CompletionRate", p."TargetApprovalDate", p."ModificationDateTime", p."Note",
+             pm."Note" as "ProjectNote", pm."ItemID" as "ProjectItemID", pm."ProjectName" as "PmProjectName"
+      FROM "MpsiMassPpap" p
+      LEFT JOIN "ProjectMaster" pm ON pm."ProjectID" = p."ProjectID"
     `;
     const params: any[] = [];
 
     if (projectId) {
-      sql += ` WHERE "ProjectID" = $1`;
+      sql += ` WHERE p."ProjectID" = $1`;
       params.push(projectId);
     }
 
-    sql += ` ORDER BY "PpapSequenceNo" ASC`;
+    sql += ` ORDER BY p."PpapSequenceNo" ASC`;
 
     const res = await query(sql, params);
 

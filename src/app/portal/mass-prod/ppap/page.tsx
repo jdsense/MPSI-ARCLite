@@ -359,22 +359,23 @@ export default function MassProdPPAPPage() {
   // Fail (보완/수정 요청) 처리
   const handleApproveFail = async () => {
     if (!selectedItem) return;
-    if (!rejectReasonText.trim()) {
-      alert("Fail / 보완 요청 시 보완 사유를 반드시 입력해야 합니다.");
+    const failReason = mpsiOpinionText.trim();
+    if (!failReason) {
+      alert("Fail / 보완 및 금형수정 요청 시 심사의견에 사유를 반드시 입력해야 합니다.");
       return;
     }
 
     if (confirm(`[보완 및 금형수정 요청]\n\n보완 사유를 ${selectedItem.massVendor} 및 ${selectedItem.moldVendor}(으)로 전송하시겠습니까?`)) {
       await reviewMpsiDecision(selectedItem.id, {
         status: "수정요청 (Fail)",
-        mpsiOpinion: mpsiOpinionText.trim(),
-        rejectReason: rejectReasonText.trim(),
+        mpsiOpinion: failReason,
+        rejectReason: failReason,
       });
 
       updateStep(selectedItem.projectNo, {
         currentStep: 12,
         stepStatus: "진행중",
-        notes: `[MPSI] PPAP 서류 보완요청 통보: ${rejectReasonText.trim()}`,
+        notes: `[MPSI] PPAP 서류 보완요청 통보: ${failReason}`,
       });
 
       // 외주사(뉴몰드)로 보완요청 알림 발송
@@ -382,7 +383,7 @@ export default function MassProdPPAPPage() {
         menuName: "양산외주 - 양산승인 (PPAP)",
         menuPath: "/portal/vendor-portal/mass/ppap",
         senderCompany: "MPSI",
-        content: `[${selectedItem.projectNo}] PPAP 보완 및 금형수정 요청: ${rejectReasonText.trim()}`,
+        content: `[${selectedItem.projectNo}] PPAP 보완 및 금형수정 요청: ${failReason}`,
         projectNo: selectedItem.projectNo,
         targetRole: "VENDOR_MASS",
         targetVendorName: selectedItem.massVendor,
@@ -986,29 +987,16 @@ export default function MassProdPPAPPage() {
                 </div>
               </div>
 
-              {/* 3. MPSI 품질책임자 종합 심사의견 */}
+              {/* 2. MPSI 품질책임자 종합 심사의견 */}
               <div>
                 <label className="block text-zinc-700 dark:text-zinc-300 font-bold mb-1 text-xs">
-                  3. MPSI 품질책임자 종합 심사의견
+                  2. MPSI 품질책임자 종합 심사의견
                 </label>
                 <textarea
                   value={mpsiOpinionText}
                   onChange={(e) => setMpsiOpinionText(e.target.value)}
                   placeholder="12시간 연속 사출 및 CPK 1.45로 양호. OQC 출하성적서 확인 후 SOP 등록 확인 시 최종 Pass 확정"
                   className="w-full h-14 p-2 rounded border text-xs bg-white dark:bg-zinc-900 resize-none text-zinc-900 dark:text-zinc-100"
-                />
-              </div>
-
-              {/* 4. 보완/수정 요청 사유 */}
-              <div>
-                <label className="block text-zinc-700 dark:text-zinc-300 font-bold mb-1 text-xs">
-                  4. 보완/수정 요청 사유 (반려 시 {selectedItem.massVendor}·{selectedItem.moldVendor} 자동 전달)
-                </label>
-                <Input
-                  value={rejectReasonText}
-                  onChange={(e) => setRejectReasonText(e.target.value)}
-                  placeholder="보완이 필요한 서류명 또는 금형/사출조건 수정 내용을 입력하세요."
-                  className="h-7 text-xs bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100"
                 />
               </div>
             </div>

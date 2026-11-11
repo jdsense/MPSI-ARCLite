@@ -96,6 +96,12 @@ export const INITIAL_PPAP_DATA: PPAPApprovalItem[] = [];
 const STORAGE_KEY = "mpsi_mass_ppap_store_v5";
 const SYNC_EVENT_NAME = "mpsi_mass_ppap_updated";
 
+export function deriveMoldNo(projectNo?: string): string {
+  if (!projectNo) return "-";
+  const base = projectNo.replace(/^[Qq]/, "MI").replace(/P\d+$/i, "").replace(/-\d+$/, "");
+  return `${base}M`;
+}
+
 // 더미 프로젝트 필터링 헬퍼 (실제 프로젝트 MI26001 등은 정상 보존)
 export function isDummyPpap(item: any): boolean {
   if (!item) return true;
@@ -165,7 +171,11 @@ export async function autoEnrollMassPpapFromValidation(valProject: any): Promise
   const now = new Date();
   const dateFormatted = `${now.getFullYear()}.${String(now.getMonth() + 1).padStart(2, "0")}.${String(now.getDate()).padStart(2, "0")}`;
 
-  const lastTrial = valProject.trials?.[valProject.trials.length - 1];
+  const lastTrial = valProject.trials?.[valProject.trials.length - 1] || valProject.trials?.[0];
+  const derivedMoldNo = (valProject.moldNo && valProject.moldNo !== "MI26005P0M") 
+    ? valProject.moldNo 
+    : deriveMoldNo(pid);
+  const derivedMachineNo = lastTrial?.machineNo || valProject.machineNo || "사출 6호기 (650T)";
 
   const newPpap: PPAPApprovalItem = {
     id: Date.now(),
@@ -176,8 +186,8 @@ export async function autoEnrollMassPpapFromValidation(valProject: any): Promise
     productName: valProject.productName || "사출 성형 부품",
     moldVendor: valProject.moldVendor || "우성정공(주)",
     massVendor: valProject.massVendor || "(주)뉴몰드",
-    moldNo: valProject.moldNo || `${pid}M`,
-    machineNo: lastTrial?.machineNo || "사출 6호기 (650T)",
+    moldNo: derivedMoldNo,
+    machineNo: derivedMachineNo,
     packageSubmissions: [],
     ppapStatus: "검토 대기",
     continuousHours: lastTrial?.continuousHours ?? 12,
