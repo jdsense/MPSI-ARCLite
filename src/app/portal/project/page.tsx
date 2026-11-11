@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { CurrencyInput } from "@/components/ui/currency-input";
 import { FileUploader, UploadedFileInfo } from "@/components/common/file-uploader";
 
 import { 
@@ -602,11 +603,12 @@ export default function ProjectStatus13StepsPage() {
       const nextChangeType = existing.changeType?.startsWith("E")
         ? `E${String((parseInt(existing.changeType.replace("E", ""), 10) || 1) + 1).padStart(3, "0")}`
         : "E001";
+      const isEChange = nextChangeType.startsWith("E");
 
       setFormState((prev) => ({
         ...prev,
         projectNo: existing.projectNo,
-        estimateNo: nextQNo,
+        estimateNo: isEChange ? "수주확정" : nextQNo,
         projectName: existing.projectName,
         customerName: existing.customerName,
         productName: existing.productName,
@@ -657,8 +659,10 @@ export default function ProjectStatus13StepsPage() {
     const today = new Date();
     const dateStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
 
-    const estimateNo = formState.estimateNo?.trim() || generateNextQuoteNo(projects);
-    const isQuote = Number(formState.currentStep) === 0;
+    const rawChangeType = formState.changeType || (projectCreationMode === "EXISTING" ? "E001" : "N001");
+    const isEChange = rawChangeType.startsWith("E");
+    const estimateNo = isEChange ? "수주확정" : (formState.estimateNo?.trim() || generateNextQuoteNo(projects));
+    const isQuote = !isEChange && Number(formState.currentStep) === 0;
 
     // 원청사 견적 승격 건 등록 완료 처리 (기존 행 갱신)
     if (projectCreationMode === "PROMOTED") {
@@ -764,11 +768,11 @@ export default function ProjectStatus13StepsPage() {
       partNo: formState.partNo,
       moldNo: formState.moldNo || `${trimmedNo}M`,
       moldDegree: formState.moldDegree || "M1",
-      changeType: formState.changeType || (projectCreationMode === "EXISTING" ? "E001" : "N001"),
-      isContractConfirmed: !isQuote,
-      isQuotePending: isQuote,
-      quotationStatus: isQuote ? "고객 답변 대기" : undefined,
-      stepNameCustom: isQuote ? "고객 답변 대기" : undefined,
+      changeType: rawChangeType,
+      isContractConfirmed: isEChange ? true : !isQuote,
+      isQuotePending: isEChange ? false : isQuote,
+      quotationStatus: isEChange ? "수주확정" : (isQuote ? "고객 답변 대기" : undefined),
+      stepNameCustom: isEChange ? undefined : (isQuote ? "고객 답변 대기" : undefined),
       moldProductionType: formState.moldProductionType || "OUTSOURCING",
       moldVendor: formState.moldVendor || "우성정공(주)",
       massProductionType: formState.massProductionType || "OUTSOURCING",
@@ -825,8 +829,16 @@ export default function ProjectStatus13StepsPage() {
       return;
     }
 
+    const rawChangeType = editFormState.changeType || "N001";
+    const isEChange = rawChangeType.startsWith("E");
+    const estimateNo = isEChange ? "수주확정" : (editFormState.estimateNo?.trim() || "");
+
     const updatedData: Partial<ProjectItem> = {
       ...editFormState,
+      estimateNo,
+      changeType: rawChangeType,
+      isContractConfirmed: isEChange ? true : editFormState.isContractConfirmed,
+      quotationStatus: isEChange ? "수주확정" : editFormState.quotationStatus,
       projectNo: editingProject.projectNo, // 프로젝트 ID는 협력사 연계 고유 식별자로 수정 불가 유지
       productName: editFormState.productName.trim(),
       notes: editFormState.notes || "",
@@ -2157,7 +2169,7 @@ export default function ProjectStatus13StepsPage() {
 
                       {/* 2-1. 견적번호 (수주확정 시 "수주확정" 상태값 표기, 견적 단계 시 순수 텍스트 표기) */}
                       <td className="p-2 border-r border-slate-200 dark:border-zinc-800 text-center font-mono">
-                        {(row.isContractConfirmed || row.quotationStatus === "수주확정") ? (
+                        {(row.isContractConfirmed || row.quotationStatus === "수주확정" || row.estimateNo === "수주확정") ? (
                           <span 
                             className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300 dark:bg-emerald-950/60 dark:text-emerald-300 shadow-2xs"
                             title={row.estimateNo ? `견적번호: ${row.estimateNo} (수주확정 완료)` : "수주확정 완료"}
@@ -3187,8 +3199,12 @@ export default function ProjectStatus13StepsPage() {
                     <Input 
                       value={formState.estimateNo || ""} 
                       onChange={(e) => setFormState({ ...formState, estimateNo: e.target.value })}
-                      placeholder="예: Q26001-01"
-                      className="h-7 text-xs bg-indigo-50/50 dark:bg-zinc-800 font-mono font-bold text-indigo-900 dark:text-indigo-200 border-indigo-300"
+                      placeholder="예: Q26001-01 또는 수주확정"
+                      className={`h-7 text-xs font-mono font-bold border-indigo-300 ${
+                        formState.estimateNo === "수주확정"
+                          ? "bg-emerald-50 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border-emerald-400"
+                          : "bg-indigo-50/50 dark:bg-zinc-800 text-indigo-900 dark:text-indigo-200"
+                      }`}
                     />
                   </div>
 
@@ -3202,7 +3218,17 @@ export default function ProjectStatus13StepsPage() {
                     </label>
                     <select
                       value={formState.changeType || "N001"}
-                      onChange={(e) => setFormState({ ...formState, changeType: e.target.value })}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        const isEChange = val.startsWith("E");
+                        setFormState((prev) => ({
+                          ...prev,
+                          changeType: val,
+                          estimateNo: isEChange
+                            ? "수주확정"
+                            : (prev.estimateNo === "수주확정" ? generateNextQuoteNo(projects) : prev.estimateNo),
+                        }));
+                      }}
                       className="h-7 w-full rounded border bg-white dark:bg-zinc-900 px-2 text-xs font-mono font-bold text-amber-800"
                     >
                       <option value="N001">N001 (초도 신작)</option>
@@ -3534,19 +3560,17 @@ export default function ProjectStatus13StepsPage() {
                     <div>
                       <label className="block text-purple-700 dark:text-purple-400 mb-1 font-semibold">5) 목표 금형 제작 일수</label>
                       <div className="relative">
-                        <Input 
-                          type="number"
+                        <CurrencyInput 
                           placeholder="예: 45"
                           value={formState.targetMoldDays || ""} 
-                          onChange={(e) => {
-                            const val = e.target.value ? Number(e.target.value) : "";
+                          onChange={(val) => {
                             let newT1 = formState.targetT1Date;
                             if (val && formState.kickoffDate) {
                               const d = new Date(formState.kickoffDate);
                               d.setDate(d.getDate() + Number(val));
                               newT1 = new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().split("T")[0];
                             }
-                            setFormState({ ...formState, targetMoldDays: val, targetT1Date: newT1 });
+                            setFormState({ ...formState, targetMoldDays: val || "", targetT1Date: newT1 });
                           }}
                           className="h-7 text-xs bg-white font-mono pr-7"
                         />
@@ -3630,11 +3654,10 @@ export default function ProjectStatus13StepsPage() {
                     </div>
                     <div>
                       <label className="block text-zinc-600 dark:text-zinc-400 mb-0.5">3. 연간 볼륨(EAU)</label>
-                      <Input 
-                        type="number"
+                      <CurrencyInput 
                         value={formState.annualVolume || ""} 
-                        onChange={(e) => setFormState({ ...formState, annualVolume: e.target.value ? Number(e.target.value) : "" })}
-                        placeholder="예: 50000"
+                        onChange={(val) => setFormState({ ...formState, annualVolume: val || "" })}
+                        placeholder="예: 50,000"
                         className="h-7 text-xs bg-white font-mono"
                       />
                     </div>
@@ -3676,11 +3699,10 @@ export default function ProjectStatus13StepsPage() {
                     </div>
                     <div>
                       <label className="block text-zinc-600 dark:text-zinc-400 mb-0.5">8. 보증 수명(Shot)</label>
-                      <Input 
-                        type="number"
+                      <CurrencyInput 
                         value={formState.warrantyShots || ""} 
-                        onChange={(e) => setFormState({ ...formState, warrantyShots: e.target.value ? Number(e.target.value) : "" })}
-                        placeholder="예: 500000"
+                        onChange={(val) => setFormState({ ...formState, warrantyShots: val || "" })}
+                        placeholder="예: 500,000"
                         className="h-7 text-xs bg-white font-mono"
                       />
                     </div>
@@ -3794,8 +3816,12 @@ export default function ProjectStatus13StepsPage() {
                     <Input 
                       value={editFormState.estimateNo || ""} 
                       onChange={(e) => setEditFormState({ ...editFormState, estimateNo: e.target.value })}
-                      placeholder="예: Q26001-01"
-                      className="h-7 text-xs bg-white font-mono font-bold text-indigo-900 border-indigo-300"
+                      placeholder="예: Q26001-01 또는 수주확정"
+                      className={`h-7 text-xs font-mono font-bold border-indigo-300 ${
+                        editFormState.estimateNo === "수주확정"
+                          ? "bg-emerald-50 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border-emerald-400"
+                          : "bg-white text-indigo-900"
+                      }`}
                     />
                   </div>
 
@@ -3809,7 +3835,17 @@ export default function ProjectStatus13StepsPage() {
                     </label>
                     <select
                       value={editFormState.changeType || "N001"}
-                      onChange={(e) => setEditFormState({ ...editFormState, changeType: e.target.value })}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        const isEChange = val.startsWith("E");
+                        setEditFormState((prev) => ({
+                          ...prev,
+                          changeType: val,
+                          estimateNo: isEChange
+                            ? "수주확정"
+                            : (prev.estimateNo === "수주확정" ? generateNextQuoteNo(projects) : prev.estimateNo),
+                        }));
+                      }}
                       className="h-7 w-full rounded border bg-white dark:bg-zinc-900 px-2 text-xs font-mono font-bold text-amber-800"
                     >
                       <option value="N001">N001 (초도 신작)</option>
@@ -4082,10 +4118,9 @@ export default function ProjectStatus13StepsPage() {
                   </div>
                   <div>
                     <label className="block text-zinc-600 dark:text-zinc-400 mb-0.5">5) 목표 금형 제작 일수</label>
-                    <Input 
-                      type="number"
-                      value={editFormState.targetMoldDays || 45} 
-                      onChange={(e) => setEditFormState({ ...editFormState, targetMoldDays: Number(e.target.value) })}
+                    <CurrencyInput 
+                      value={editFormState.targetMoldDays || ""} 
+                      onChange={(val) => setEditFormState({ ...editFormState, targetMoldDays: val || 0 })}
                       placeholder="예: 45"
                       className="h-7 text-xs bg-white font-mono"
                     />
@@ -4159,11 +4194,10 @@ export default function ProjectStatus13StepsPage() {
                   </div>
                   <div>
                     <label className="block text-zinc-600 dark:text-zinc-400 mb-0.5">3. 연간 볼륨(EAU)</label>
-                    <Input 
-                      type="number"
-                      value={editFormState.annualVolume || 50000} 
-                      onChange={(e) => setEditFormState({ ...editFormState, annualVolume: Number(e.target.value) })}
-                      placeholder="예: 50000"
+                    <CurrencyInput 
+                      value={editFormState.annualVolume || ""} 
+                      onChange={(val) => setEditFormState({ ...editFormState, annualVolume: val || 0 })}
+                      placeholder="예: 50,000"
                       className="h-7 text-xs bg-white font-mono"
                     />
                   </div>
@@ -4205,11 +4239,10 @@ export default function ProjectStatus13StepsPage() {
                   </div>
                   <div>
                     <label className="block text-zinc-600 dark:text-zinc-400 mb-0.5">8. 보증 수명(Shot)</label>
-                    <Input 
-                      type="number"
-                      value={editFormState.warrantyShots || 500000} 
-                      onChange={(e) => setEditFormState({ ...editFormState, warrantyShots: Number(e.target.value) })}
-                      placeholder="예: 500000"
+                    <CurrencyInput 
+                      value={editFormState.warrantyShots || ""} 
+                      onChange={(val) => setEditFormState({ ...editFormState, warrantyShots: val || 0 })}
+                      placeholder="예: 500,000"
                       className="h-7 text-xs bg-white font-mono"
                     />
                   </div>
