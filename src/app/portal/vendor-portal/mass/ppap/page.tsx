@@ -45,7 +45,7 @@ export default function VendorMassPpapPage() {
 
   // 신규 회차 등록 폼 상태
   const [newFileName, setNewFileName] = useState("");
-  const [newFileSize, setNewFileSize] = useState("3.5 MB");
+  const [newFileSize, setNewFileSize] = useState("");
   const [newFileUrl, setNewFileUrl] = useState("");
   const [newMemo, setNewMemo] = useState("");
   const [authorName, setAuthorName] = useState(currentVendor);
@@ -163,15 +163,15 @@ export default function VendorMassPpapPage() {
   // 실적/서류 등록 모달 열기
   const handleOpenEdit = (item: PPAPApprovalItem) => {
     setSelectedItem(item);
-    const nextRound = (item.packageSubmissions?.length || 0) + 1;
-    const now = new Date();
-    const dateSimple = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, "0")}${String(now.getDate()).padStart(2, "0")}`;
-    setNewFileName(`${dateSimple}.양산승인서류_${item.productName.replace(/[\/\\]/g, "_")}.pdf`);
-    setNewFileSize("3.5 MB");
+    setNewFileName("");
+    setNewFileSize("");
     setNewFileUrl("");
-    setNewMemo(`${dateSimple.slice(2)}_양산승인서류 ${nextRound}차 등록`);
+    setNewMemo("");
     setAuthorName(currentVendor);
     setVendorOpinion(item.vendorOpinion || "");
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
     setIsModalOpen(true);
   };
 
@@ -179,6 +179,11 @@ export default function VendorMassPpapPage() {
   const handleSubmitNewRound = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (!selectedItem) return;
+
+    if (!newFileName.trim()) {
+      alert("양산 승인 통합 패키지 파일을 첨부해 주세요.");
+      return;
+    }
 
     if (!newMemo.trim()) {
       alert("업무 이력 메모를 반드시 입력해 주세요.\n(예: 261010_양산승인서류 등록, 치수 및 Cpk 성적서 보완)");
@@ -188,8 +193,8 @@ export default function VendorMassPpapPage() {
     const nextRound = (selectedItem.packageSubmissions?.length || 0) + 1;
     if (confirm(`[양산승인 패키지 서류 제출]\n\n프로젝트 [${selectedItem.projectNo}]의 ${nextRound}회차 양산 승인 통합 패키지를 MPSI 본사로 제출하시겠습니까?\n\n• 파일명: ${newFileName}\n• 업무 이력 메모: ${newMemo}\n• 작성 회사: ${authorName}\n\n* 제출된 파일과 메모는 시스템 DB에 저장됩니다.`)) {
       await submitPackageSubmission(selectedItem.id, {
-        fileName: newFileName,
-        fileSize: newFileSize,
+        fileName: newFileName.trim(),
+        fileSize: newFileSize || "-",
         fileUrl: newFileUrl,
         authorName: authorName.trim() || currentVendor,
         memo: newMemo.trim(),
@@ -205,6 +210,14 @@ export default function VendorMassPpapPage() {
         projectNo: selectedItem.projectNo,
         targetRole: "MPSI",
       });
+
+      setNewFileName("");
+      setNewFileSize("");
+      setNewFileUrl("");
+      setNewMemo("");
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
 
       setIsModalOpen(false);
       showToast(`[${selectedItem.projectNo}] ${nextRound}회차 양산 승인 서류 패키지가 MPSI 본사로 제출되었습니다.`);

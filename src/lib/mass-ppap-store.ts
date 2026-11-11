@@ -302,7 +302,7 @@ export function useMassPpapStore() {
         const newHistoryItem: PPAPPackageSubmissionHistoryItem = {
           round: nextRound,
           fileName: newFileName,
-          fileSize: submission.fileSize || "3.5 MB",
+          fileSize: submission.fileSize || "-",
           fileUrl: submission.fileUrl || `/api/v1/files/download?fileName=${encodeURIComponent(newFileName)}`,
           submittedAt: `${dateFormatted} 입력`,
           authorName: cleanCompanyAuthor(submission.authorName, item.massVendor || "(주)뉴몰드"),

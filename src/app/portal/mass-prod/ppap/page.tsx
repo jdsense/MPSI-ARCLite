@@ -65,7 +65,7 @@ export default function MassProdPPAPPage() {
   // MPSI 서류 패키지 신규/수정본 직접 업로드 폼 토글 및 상태
   const [showUploadForm, setShowUploadForm] = useState(false);
   const [uploadFileName, setUploadFileName] = useState("");
-  const [uploadFileSize, setUploadFileSize] = useState("3.5 MB");
+  const [uploadFileSize, setUploadFileSize] = useState("");
   const [uploadFileUrl, setUploadFileUrl] = useState("");
   const [uploadMemo, setUploadMemo] = useState("");
   const [uploadAuthor, setUploadAuthor] = useState("MPSI");
@@ -185,6 +185,14 @@ export default function MassProdPPAPPage() {
     setReviewingAction(null);
     setRoundComment("");
     setShowUploadForm(false);
+    setUploadFileName("");
+    setUploadFileSize("");
+    setUploadFileUrl("");
+    setUploadMemo("");
+    setUploadAuthor("MPSI");
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
     setIsModalOpen(true);
   };
 
@@ -239,21 +247,24 @@ export default function MassProdPPAPPage() {
     if (e) e.preventDefault();
     if (!selectedItem) return;
 
+    if (!uploadFileName.trim()) {
+      alert("서류 패키지 파일을 첨부해 주세요.");
+      return;
+    }
+
     if (!uploadMemo.trim()) {
       alert("업무 이력 메모를 반드시 입력해 주세요.");
       return;
     }
 
     const nextRound = (selectedItem.packageSubmissions?.length || 0) + 1;
-    const now = new Date();
-    const dateSimple = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, "0")}${String(now.getDate()).padStart(2, "0")}`;
-    const finalFileName = uploadFileName.trim() || `${dateSimple}.양산승인서류_${selectedItem.productName.replace(/[\/\\]/g, "_")}_Rev${nextRound}.pdf`;
+    const finalFileName = uploadFileName.trim();
 
     await submitPackageSubmission(selectedItem.id, {
       fileName: finalFileName,
-      fileSize: uploadFileSize,
+      fileSize: uploadFileSize || "-",
       fileUrl: uploadFileUrl,
-      authorName: "MPSI",
+      authorName: uploadAuthor.trim() || "MPSI",
       memo: uploadMemo.trim(),
     });
 
@@ -270,7 +281,12 @@ export default function MassProdPPAPPage() {
 
     setShowUploadForm(false);
     setUploadFileName("");
+    setUploadFileSize("");
+    setUploadFileUrl("");
     setUploadMemo("");
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
     showToast(`[${selectedItem.projectNo}] ${nextRound}회차 서류 패키지 및 메모가 DB에 등록되었습니다.`);
   };
 
