@@ -289,25 +289,26 @@ export default function VendorMassQuotationPage() {
     return (item.vendorQuotes || []).find((q) => isMatchingVendor(q.vendorName, currentVendor));
   };
 
-  // 현재 로그인한 양산 협력사(자사) 관점 진행상태 판별 (복수 협력사 데이터 격리)
+  // 현재 로그인한 양산 협력사(자사) 관점 진행상태 판별 (MPSI 본사 대장과 100% 동기화)
   const getVendorSpecificStatus = (item: MassProductionEstimateItem): MassQuotationStatus => {
-    // 1. MPSI에서 최종 수주/계약 확정한 경우
-    if (item.status === "양산계약확정") {
-      const isWinner = isMatchingVendor(item.selectedVendorName, currentVendor) || 
-                       isMatchingVendor(item.vendorName, currentVendor);
-      return isWinner ? "양산계약확정" : "단가합의완료";
+    // 1. MPSI 본사 진행상태가 단가합의완료/양산계약확정인 경우
+    if (item.status === "양산계약확정" || item.status === "단가합의완료") {
+      return item.status;
     }
-    // 2. 자사가 제출한 견적이 있는 경우
+    // 2. MPSI 본사 진행상태가 원가검토중인 경우
+    if (item.status === "원가검토중") {
+      return "원가검토중";
+    }
+    // 3. 자사 제출 내역 확인
     const myQuote = getMyVendorQuote(item);
     if (myQuote) {
-      if (myQuote.status === "제출완료") return "외주견적제출";
+      if (myQuote.status === "수주확정") return "단가합의완료";
       if (myQuote.status === "검토협의") return "원가검토중";
-      if (myQuote.status === "수주확정") return "양산계약확정";
-      if (myQuote.status === "반려/미성사") return "단가합의완료";
-      return "외주견적제출";
+      if (myQuote.status === "반려/미성사") return item.status || "외주견적제출";
+      return item.status || "외주견적제출";
     }
-    // 3. 자사가 아직 미제출한 경우 -> 무조건 "견적요청"
-    return "견적요청";
+    // 4. 자사가 아직 미제출한 경우 -> "견적요청"
+    return item.status || "견적요청";
   };
 
   const filtered = vendorEstimates.filter((item) => {
@@ -332,41 +333,41 @@ export default function VendorMassQuotationPage() {
     switch (status) {
       case "견적요청":
         return (
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-amber-50 text-amber-700 border border-amber-300">
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border border-amber-300">
             <Clock className="h-3 w-3 animate-pulse text-amber-600" />
             견적요청 (작성요망)
           </span>
         );
       case "자체진행":
         return (
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-purple-50 text-purple-700 border border-purple-200">
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 border border-purple-300">
             자체진행
           </span>
         );
       case "외주견적제출":
         return (
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-blue-50 text-blue-700 border border-blue-200">
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 border border-blue-300">
             <CheckCircle2 className="h-3 w-3 text-blue-600" />
-            견적제출완료
+            외주견적제출
           </span>
         );
       case "원가검토중":
         return (
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-yellow-50 text-yellow-700 border border-yellow-200">
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-yellow-50 dark:bg-yellow-950/40 text-yellow-700 dark:text-yellow-300 border border-yellow-300">
             <Calculator className="h-3 w-3 text-yellow-600" />
-            MPSI 원가협의중
+            원가검토/단가협의중
           </span>
         );
       case "단가합의완료":
         return (
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-teal-50 text-teal-700 border border-teal-200">
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-teal-50 dark:bg-teal-950/40 text-teal-700 dark:text-teal-300 border border-teal-300">
             <Check className="h-3 w-3 text-teal-600" />
             단가합의완료
           </span>
         );
       case "양산계약확정":
         return (
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-300">
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-300">
             <CheckCircle2 className="h-3 w-3 text-emerald-600" />
             양산계약확정 (수주)
           </span>
