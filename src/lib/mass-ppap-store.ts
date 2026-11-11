@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { SyncService } from "@/services/sync-service";
+import { cleanCompanyAuthor } from "./notification-store";
 
 // 1. PPAP 필수 제출 서류 6대 핵심 패키지 인터페이스 (레거시 호환용)
 export interface PPAPDocumentItem {
@@ -269,7 +270,7 @@ export function useMassPpapStore() {
           fileSize: submission.fileSize || "3.5 MB",
           fileUrl: submission.fileUrl || `/api/v1/files/download?fileName=${encodeURIComponent(newFileName)}`,
           submittedAt: `${dateFormatted} 입력`,
-          authorName: submission.authorName || "뉴몰드 한승호 부장",
+          authorName: cleanCompanyAuthor(submission.authorName, item.massVendor || "(주)뉴몰드"),
           memo: submission.memo || `${dateSimple.slice(2)}_양산승인서류 등록`,
           reviewStatus: "심사진행중",
           reviewComment: "MPSI 품질본부 서류 패키지 접수 완료. 정밀 심사진행 중입니다.",

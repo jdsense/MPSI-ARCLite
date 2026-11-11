@@ -22,7 +22,28 @@ export interface AppNotification {
 const STORAGE_KEY = "mpsi_app_notifications_v2";
 const SYNC_EVENT = "mpsi_notification_sync";
 
-// 2. 계정별 알림 필터링 헬퍼 함수
+// 2. 회사명 정제 헬퍼 (사람 이름, 직책을 완전히 제거하고 회사명만 반환)
+export function cleanCompanyAuthor(rawName: string | undefined, defaultCompany: string = "MPSI"): string {
+  if (!rawName) return defaultCompany;
+  const name = String(rawName).trim();
+  
+  if (name.includes("MPSI") || name.includes("엠피에스아이")) {
+    return "MPSI";
+  }
+  if (name.includes("우성정공")) return "우성정공(주)";
+  if (name.includes("대한금형")) return "대한금형정공";
+  if (name.includes("뉴몰드")) return "(주)뉴몰드";
+
+  // 사람 이름 및 직책 패턴 제거 (예: "홍길동 책임 (MPSI 개발실)", "한승호 부장", "김지원 차장" 등)
+  const cleaned = name
+    .replace(/\s+[가-힣]{2,4}(\s*(차장|부장|과장|대리|팀장|이사|수석|대표|전결|사원|책임|연구원|실장|매니저))?/g, "")
+    .replace(/\([가-힣\s]+\)/g, (match) => (match.includes("주") ? match : ""))
+    .trim();
+
+  return cleaned || defaultCompany;
+}
+
+// 2-1. 계정별 알림 필터링 헬퍼 함수
 export function filterNotificationsForAccount(
   notifications: AppNotification[],
   role: RoleType,

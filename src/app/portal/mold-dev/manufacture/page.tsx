@@ -27,6 +27,7 @@ import {
   ManufactureScheduleFile,
   getManufactureStatusBadge
 } from "@/lib/mold-manufacture-store";
+import { cleanCompanyAuthor } from "@/lib/notification-store";
 
 export default function MoldManufacturePage() {
   const router = useRouter();
@@ -137,8 +138,8 @@ export default function MoldManufacturePage() {
     const nowStr = new Date().toLocaleString("ko-KR", { hour12: false }).replace(/\./g, "-").slice(0, 16);
     addMemoLog(selectedItem.id, {
       authorId: "mpsi-dev",
-      authorName: "MPSI 금형개발팀",
-      company: "MPSI 본사",
+      authorName: "MPSI",
+      company: "MPSI",
       tag: mpsiMemoTag,
       content: mpsiMemoInput.trim(),
       createdAt: nowStr,
@@ -149,8 +150,8 @@ export default function MoldManufacturePage() {
       {
         id: `memo-${Date.now()}`,
         authorId: "mpsi-dev",
-        authorName: "MPSI 금형개발팀",
-        company: "MPSI 본사",
+        authorName: "MPSI",
+        company: "MPSI",
         tag: mpsiMemoTag,
         content: mpsiMemoInput.trim(),
         createdAt: nowStr,
@@ -658,13 +659,8 @@ export default function MoldManufacturePage() {
                               {log.tag || "업무메모"}
                             </span>
                             <span className="font-bold text-zinc-800 dark:text-zinc-200">
-                              {log.authorName}
+                              {cleanCompanyAuthor(log.authorName, log.company)}
                             </span>
-                            {log.authorId && (
-                              <span className="text-[10px] text-zinc-400 font-mono">
-                                ({log.authorId})
-                              </span>
-                            )}
                           </div>
                           <span className="text-[10px] text-zinc-400 font-mono">
                             {log.createdAt} 입력

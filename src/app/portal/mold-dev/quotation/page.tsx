@@ -25,7 +25,7 @@ import {
   MoldVendorQuoteSubmission,
   MoldSpecDocumentItem
 } from "@/lib/mold-quotation-store";
-import { sendAppNotification } from "@/lib/notification-store";
+import { sendAppNotification, cleanCompanyAuthor } from "@/lib/notification-store";
 
 export default function MoldDevQuotationPage() {
   const { projects } = useProjectMaster();
@@ -2200,7 +2200,7 @@ export default function MoldDevQuotationPage() {
                   {selectedItem.memos.map((m) => (
                     <div key={m.id} className="p-2 rounded border bg-zinc-50 dark:bg-zinc-800/40 text-xs">
                       <div className="flex items-center justify-between font-bold mb-0.5">
-                        <span className="text-purple-700 dark:text-purple-300">{m.author}</span>
+                        <span className="text-purple-700 dark:text-purple-300">{cleanCompanyAuthor(m.author, "MPSI")}</span>
                         <span className="text-[10px] text-zinc-400">{m.createdAt}</span>
                       </div>
                       <p className="text-zinc-700 dark:text-zinc-300">{m.content}</p>

@@ -1006,7 +1006,7 @@ export default function VendorMassProjectsPage() {
               moldCostQuote: "금형 수정비 9,800,000원 확정 / 사출 단가 +35원 변동 조정 확정 (금형견적, 사출견적)",
               moldTrialReport: "금형 수정 가공 진행 중 (방전 및 와이어 컷팅 보정)",
               massValidationReport: "금형 이관 후 시양산 및 재양산 승인 진행 예정",
-              author: "뉴몰드 김지원 차장",
+              author: "(주)뉴몰드",
               memo: "설변 수주 확정 및 단가조정 반영, 261010_치수검토보고서 등록",
               createdAt: "2026.10.10 10:54"
             }

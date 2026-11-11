@@ -14,7 +14,7 @@ import { Input } from "@/components/ui/input";
 import { DateRangeFilter, isWithinDateRange, DatePresetType } from "@/components/common/date-range-filter";
 import { useAuthRole } from "@/lib/role-store";
 import { useProjectMaster } from "@/lib/project-store";
-import { useNotificationStore } from "@/lib/notification-store";
+import { useNotificationStore, cleanCompanyAuthor } from "@/lib/notification-store";
 import { 
   usePmRevisionStore, 
   PmRevisionProjectItem,
@@ -136,7 +136,7 @@ export default function VendorMassPmRevisionPage() {
     if (!targetTransitionProject) return;
     changeProjectState(targetTransitionProject.id, transitionTargetState, {
       reason: transitionReason.trim() || (transitionTargetState === "설변 중" ? "설계변경 접수" : "PM 착수"),
-      author: "뉴몰드 김지원 차장"
+      author: currentVendor
     });
     setIsStateTransitionModalOpen(false);
     showToast(`[${targetTransitionProject.projectNo}] 프로젝트가 [${transitionTargetState}] 상태로 전환되었습니다.`);
@@ -240,7 +240,7 @@ export default function VendorMassPmRevisionPage() {
       }
     };
 
-    savePmRoundData(selectedProject.id, roundDataToSave, "뉴몰드 김지원 차장");
+    savePmRoundData(selectedProject.id, roundDataToSave, currentVendor);
     
     // 로컬 상태 즉시 동기화
     setSelectedProject((prev) => {
@@ -276,7 +276,7 @@ export default function VendorMassPmRevisionPage() {
       menuName: "양산외주 - PM 및 설변관리",
       menuPath: "/portal/vendor-portal/mass/revision",
       senderCompany: currentVendor,
-      senderName: "김지원 차장",
+      senderName: currentVendor,
       content: `[${selectedProject.projectNo} / ${selectedProject.productName}] ${pmActiveRound}차 PM 정보 저장 완료 (누적 ${pmCurrentShotsInput}샷, 공정: ${pmActiveProcess})`,
       projectNo: selectedProject.projectNo,
       targetRole: "MPSI",
@@ -296,7 +296,7 @@ export default function VendorMassPmRevisionPage() {
       alert("양산 시작일을 입력해 주세요.");
       return;
     }
-    updateRevisionMassStartDate(selectedProject.id, revDateInput, `${currentVendor} 김지원 차장`, revMemoInput);
+    updateRevisionMassStartDate(selectedProject.id, revDateInput, currentVendor, revMemoInput);
     setIsRevisionModalOpen(false);
     showToast(`[${selectedProject.projectNo}] 설계변경 양산 시작일(${revDateInput})이 등록되었습니다.`);
   };
@@ -308,14 +308,14 @@ export default function VendorMassPmRevisionPage() {
       return;
     }
     const content = revFileInput ? `[${revFileInput}] ${revMemoInput.trim()}` : revMemoInput.trim();
-    addMemo(selectedProject.id, "REVISION", content, `${currentVendor} 김지원 차장`);
+    addMemo(selectedProject.id, "REVISION", content, currentVendor);
 
     // [공통 알림 발송]
     addNotification({
       menuName: "양산외주 - PM 및 설변관리",
       menuPath: "/portal/vendor-portal/mass/revision",
       senderCompany: currentVendor,
-      senderName: "김지원 차장",
+      senderName: currentVendor,
       content: `[${selectedProject.projectNo} 설계변경(E채번) 메모] ${content}`,
       projectNo: selectedProject.projectNo,
       targetRole: "MPSI",
@@ -328,7 +328,7 @@ export default function VendorMassPmRevisionPage() {
   // PM 공정 버튼 클릭
   const handleSelectPmProcess = (processName: string) => {
     if (!selectedProject) return;
-    updatePmProcess(selectedProject.id, processName, `${currentVendor} 김지원 차장`);
+    updatePmProcess(selectedProject.id, processName, currentVendor);
     showToast(`PM 공정이 [${processName}]으로 등록 및 메모 기록되었습니다.`);
   };
 
@@ -339,7 +339,7 @@ export default function VendorMassPmRevisionPage() {
       planStartDate: planStart,
       planEndDate: planEnd,
       planMassStartDate: planMass,
-    }, `${currentVendor} 김지원 차장`, `PM 계획일정 등록 (시작: ${planStart}, 완료: ${planEnd}, 양산시작: ${planMass})`);
+    }, currentVendor, `PM 계획일정 등록 (시작: ${planStart}, 완료: ${planEnd}, 양산시작: ${planMass})`);
     showToast("PM 계획 일정이 등록되었습니다.");
   };
 
@@ -350,7 +350,7 @@ export default function VendorMassPmRevisionPage() {
       actualStartDate: actStart,
       actualEndDate: actEnd,
       actualMassStartDate: actMass,
-    }, `${currentVendor} 김지원 차장`, `PM 실적일정 등록 (시작: ${actStart}, 완료: ${actEnd}, 양산시작: ${actMass})`);
+    }, currentVendor, `PM 실적일정 등록 (시작: ${actStart}, 완료: ${actEnd}, 양산시작: ${actMass})`);
     showToast("PM 실적 일정이 등록되었습니다.");
   };
 
@@ -360,14 +360,14 @@ export default function VendorMassPmRevisionPage() {
       alert("업무 이력 메모를 입력해 주세요.");
       return;
     }
-    addMemo(selectedProject.id, "PM", pmMemoInput.trim(), `${currentVendor} 김지원 차장`);
+    addMemo(selectedProject.id, "PM", pmMemoInput.trim(), currentVendor);
 
     // [공통 알림 발송] 공급업체가 메모 등록 시 MPSI 본사에 알림 전송
     addNotification({
       menuName: "양산외주 - PM 및 설변관리",
       menuPath: "/portal/vendor-portal/mass/revision",
       senderCompany: currentVendor,
-      senderName: "김지원 차장",
+      senderName: currentVendor,
       content: `[${selectedProject.projectNo} / ${selectedProject.productName} PM메모] ${pmMemoInput.trim()}`,
       projectNo: selectedProject.projectNo,
       targetRole: "MPSI",
@@ -1245,7 +1245,7 @@ export default function VendorMassPmRevisionPage() {
                     <span>3-4) 업무 이력 메모</span>
                   </div>
                   <span className="text-[10px] text-slate-400">
-                    예) 뉴몰드 김지원 차장: 261010_치수검토보고서 등록, 2026.10.10. 10:54 입력
+                    예) (주)뉴몰드: 261010_치수검토보고서 등록, 2026.10.10. 10:54 입력
                   </span>
                 </div>
 
@@ -1289,7 +1289,7 @@ export default function VendorMassPmRevisionPage() {
                   {(selectedProject.revisionMemos || []).map((m) => (
                     <div key={m.id} className="p-2 rounded bg-slate-800/80 border border-slate-700 text-[11px] flex items-center justify-between gap-2">
                       <div className="flex items-center gap-2">
-                        <span className="font-bold text-orange-400 shrink-0">{m.author}:</span>
+                        <span className="font-bold text-orange-400 shrink-0">{cleanCompanyAuthor(m.author, currentVendor)}:</span>
                         <span className="text-slate-200">{m.content}</span>
                       </div>
                       <span className="text-[10px] text-slate-400 font-mono shrink-0">{m.createdAt}</span>
@@ -1324,7 +1324,7 @@ export default function VendorMassPmRevisionPage() {
           moldCostQuote: "금형 수정비 및 사출 단가 조정 확정 (금형견적, 사출견적)",
           moldTrialReport: "우성정공 가공 진행 중 (방전/와이어 완료 후 피팅)",
           massValidationReport: "자체검증 및 시양산 일정 확정",
-          author: "뉴몰드 김지원 차장",
+          author: currentVendor,
           memo: "도면 변경에 따른 설계변경 확정",
           createdAt: "2026.10.14 09:30"
         };

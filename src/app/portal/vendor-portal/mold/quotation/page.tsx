@@ -19,7 +19,7 @@ import {
   MoldQuotationStatus,
   MoldSpecDocumentItem 
 } from "@/lib/mold-quotation-store";
-import { sendAppNotification } from "@/lib/notification-store";
+import { sendAppNotification, cleanCompanyAuthor } from "@/lib/notification-store";
 
 export default function VendorMoldQuotationPage() {
   const { vendorName } = useAuthRole();
@@ -1200,7 +1200,7 @@ export default function VendorMoldQuotationPage() {
                                   }`}>
                                     [{hist.revisionNo}차] {hist.submissionType}
                                   </span>
-                                  <span className="font-bold text-zinc-800">{hist.author}</span>
+                                  <span className="font-bold text-zinc-800">{cleanCompanyAuthor(hist.author, currentVendor)}</span>
                                   <span className="text-zinc-400 font-mono text-[10px]">{hist.submittedAt}</span>
                                 </div>
                                 <div className="font-mono font-bold text-purple-700">
@@ -1453,7 +1453,7 @@ export default function VendorMoldQuotationPage() {
                               }`}>
                                 [{hist.revisionNo}차] {hist.submissionType}
                               </span>
-                              <span className="font-bold text-zinc-800">{hist.author}</span>
+                              <span className="font-bold text-zinc-800">{cleanCompanyAuthor(hist.author, currentVendor)}</span>
                               <span className="text-zinc-400 font-mono text-[10px]">{hist.submittedAt}</span>
                             </div>
                             <div className="font-mono font-bold text-purple-700">

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { dispatchGlobalNotification } from "./notification-store";
+import { dispatchGlobalNotification, cleanCompanyAuthor } from "./notification-store";
 import { SyncService } from "@/services/sync-service";
 
 // 1. 회차별 체크시트 항목 인터페이스
@@ -346,11 +346,15 @@ export function useMoldTrialStore() {
     const now = new Date();
     const dateStr = memo.createdAt || `${now.getFullYear()}.${String(now.getMonth() + 1).padStart(2, "0")}.${String(now.getDate()).padStart(2, "0")} ${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
 
+    const isMpsi = memo.company.includes("MPSI") || memo.authorName?.includes("MPSI");
+    const cleanAuthor = isMpsi ? "MPSI" : cleanCompanyAuthor(memo.authorName || memo.company, memo.company);
+    const cleanComp = isMpsi ? "MPSI" : cleanCompanyAuthor(memo.company, "협력사");
+
     const newLog: MoldTrialMemoLog = {
       id: `trial-memo-${Date.now()}`,
       authorId: memo.authorId,
-      authorName: memo.authorName,
-      company: memo.company,
+      authorName: cleanAuthor,
+      company: cleanComp,
       tag: memo.tag,
       content: memo.content,
       createdAt: dateStr,
@@ -377,18 +381,17 @@ export function useMoldTrialStore() {
       syncTrialToBackend(updatedTarget);
     }
 
-    // 전역 알림 발송
+    // 전역 알림 발송 (해당하는 상대 회사에게만 격리 발송)
     const targetProject = current.find((p) => p.id === projectId);
-    const isMpsi = memo.company.includes("MPSI");
     dispatchGlobalNotification({
-      menuName: "금형외주 - 시사출 육성관리",
+      menuName: isMpsi ? "금형외주 - 시사출 육성관리" : "금형개발 - 시사출 육성 및 승인",
       menuPath: isMpsi ? "/portal/vendor-portal/mold/trial" : "/portal/mold-dev/trial",
-      senderCompany: memo.company,
-      senderName: memo.authorName,
+      senderCompany: cleanComp,
+      senderName: cleanAuthor,
       content: `[${targetProject?.projectNo} 시사출육성 메모] ${memo.content}`,
       projectNo: targetProject?.projectNo,
       targetRole: isMpsi ? "VENDOR_MOLD" : "MPSI",
-      targetVendorName: isMpsi ? targetProject?.moldVendor : undefined,
+      targetVendorName: isMpsi ? (targetProject?.moldVendor || "우성정공(주)") : undefined,
     });
   };
 

@@ -30,6 +30,7 @@ import {
   MoldDesignReviewStatus, 
   MoldDesignWorkLog 
 } from "@/lib/mold-design-store";
+import { cleanCompanyAuthor } from "@/lib/notification-store";
 
 export default function ProductReviewAndMoldDesignPage() {
   const router = useRouter();
@@ -84,7 +85,7 @@ export default function ProductReviewAndMoldDesignPage() {
   });
   const [uploadFileName, setUploadFileName] = useState("");
   const [uploadFileNote, setUploadFileNote] = useState("");
-  const [uploadAuthorName, setUploadAuthorName] = useState("MPSI 담당자");
+  const [uploadAuthorName, setUploadAuthorName] = useState("MPSI");
   const [selectedUploadFile, setSelectedUploadFile] = useState<UploadedFileInfo | null>(null);
   const [isUploadingFile, setIsUploadingFile] = useState(false);
 
@@ -99,7 +100,7 @@ export default function ProductReviewAndMoldDesignPage() {
   const [expandedStep, setExpandedStep] = useState<number | null>(null);
 
   // 개별 메모 입력 상태 (모달 내부)
-  const [manualNoteAuthor, setManualNoteAuthor] = useState("MPSI 김양훈 부장");
+  const [manualNoteAuthor, setManualNoteAuthor] = useState("MPSI");
   const [manualNoteContent, setManualNoteContent] = useState("");
 
   // 스토어의 designs 상태 변경 시 열려있는 모달 아이템 실시간 동기화
@@ -227,7 +228,7 @@ export default function ProductReviewAndMoldDesignPage() {
     setSelectedUploadFile(null);
     setUploadFileName(defaultName);
     setUploadFileNote("");
-    setUploadAuthorName("MPSI 김양훈 부장");
+    setUploadAuthorName("MPSI");
   };
 
   // 파일 업로드 모달 확인 (실제 서버 업로드 연동)
@@ -326,7 +327,7 @@ export default function ProductReviewAndMoldDesignPage() {
     }
 
     addWorkLog(designId, {
-      authorName: manualNoteAuthor.trim() || "MPSI 담당자",
+      authorName: "MPSI",
       authorRole: "MPSI",
       content: manualNoteContent.trim(),
     });
@@ -903,7 +904,7 @@ export default function ProductReviewAndMoldDesignPage() {
                         <div key={log.id} className="bg-slate-800/80 p-1.5 rounded border border-slate-700/60 flex flex-col gap-0.5">
                           <div className="flex items-center justify-between text-[10px]">
                             <span className={`font-bold ${log.authorRole === "MPSI" ? "text-sky-300" : "text-emerald-300"}`}>
-                              {log.authorName}
+                              {cleanCompanyAuthor(log.authorName, log.authorRole === "MPSI" ? "MPSI" : "협력사")}
                             </span>
                             <span className="text-slate-400">{log.timestamp}</span>
                           </div>
@@ -926,13 +927,10 @@ export default function ProductReviewAndMoldDesignPage() {
                   </div>
 
                   {/* 메모 직접 등록창 */}
-                  <div className="flex gap-1.5 pt-1 border-t border-slate-800">
-                    <Input 
-                      value={manualNoteAuthor}
-                      onChange={(e) => setManualNoteAuthor(e.target.value)}
-                      placeholder="작성자"
-                      className="h-6 w-28 bg-slate-800 border-slate-700 text-white text-[10px]"
-                    />
+                  <div className="flex gap-1.5 pt-1 border-t border-slate-800 items-center">
+                    <div className="h-6 px-2.5 bg-slate-800 border border-slate-700 rounded text-sky-300 font-bold text-[10px] flex items-center shrink-0">
+                      MPSI
+                    </div>
                     <Input 
                       value={manualNoteContent}
                       onChange={(e) => setManualNoteContent(e.target.value)}
@@ -959,7 +957,7 @@ export default function ProductReviewAndMoldDesignPage() {
                       updateProductReviewStatus(
                         productReviewItem.id, 
                         "수정요청", 
-                        "MPSI 김양훈 부장",
+                        "MPSI",
                         "[제품 모델링 수정 요청] MPSI가 고객사/금형처에 모델링 형상 및 게이트 위치 수정 검토를 요청하였습니다."
                       );
                       setProductReviewItem({ ...productReviewItem, drStatus: "수정요청" });
@@ -978,7 +976,7 @@ export default function ProductReviewAndMoldDesignPage() {
                       updateProductReviewStatus(
                         productReviewItem.id, 
                         "최종검토완료", 
-                        "MPSI 김양훈 부장",
+                        "MPSI",
                         "[최종검토완료 확정] 제품 모델링 성형성(DR) 검토 완료 및 원청 고객사 최종 데이터 확정 완료 (금형 발주 진행 가능)"
                       );
                       setProductReviewItem({ ...productReviewItem, drStatus: "최종검토완료" });
@@ -1346,7 +1344,7 @@ export default function ProductReviewAndMoldDesignPage() {
                         <div key={log.id} className="bg-slate-800/80 p-1.5 rounded border border-slate-700/60 flex flex-col gap-0.5">
                           <div className="flex items-center justify-between text-[10px]">
                             <span className={`font-bold ${log.authorRole === "MPSI" ? "text-purple-300" : "text-emerald-300"}`}>
-                              {log.authorName}
+                              {cleanCompanyAuthor(log.authorName, log.authorRole === "MPSI" ? "MPSI" : "협력사")}
                             </span>
                             <span className="text-slate-400">{log.timestamp}</span>
                           </div>
@@ -1369,13 +1367,10 @@ export default function ProductReviewAndMoldDesignPage() {
                   </div>
 
                   {/* 메모 직접 등록창 */}
-                  <div className="flex gap-1.5 pt-1 border-t border-slate-800">
-                    <Input 
-                      value={manualNoteAuthor}
-                      onChange={(e) => setManualNoteAuthor(e.target.value)}
-                      placeholder="작성자"
-                      className="h-6 w-28 bg-slate-800 border-slate-700 text-white text-[10px]"
-                    />
+                  <div className="flex gap-1.5 pt-1 border-t border-slate-800 items-center">
+                    <div className="h-6 px-2.5 bg-slate-800 border border-slate-700 rounded text-purple-300 font-bold text-[10px] flex items-center shrink-0">
+                      MPSI
+                    </div>
                     <Input 
                       value={manualNoteContent}
                       onChange={(e) => setManualNoteContent(e.target.value)}
@@ -1402,7 +1397,7 @@ export default function ProductReviewAndMoldDesignPage() {
                       updateMoldDesignStatus(
                         moldDesignItem.id, 
                         "수정요청", 
-                        "MPSI 김양훈 부장",
+                        "MPSI",
                         "[금형 3D data 수정요청] MPSI가 금형 3D 설계 데이터 수정 보완을 요청하였습니다."
                       );
                       setMoldDesignItem({ ...moldDesignItem, moldDesignStatus: "수정요청" });
@@ -1421,7 +1416,7 @@ export default function ProductReviewAndMoldDesignPage() {
                       updateMoldDesignStatus(
                         moldDesignItem.id, 
                         "검토완료", 
-                        "MPSI 김양훈 부장",
+                        "MPSI",
                         "[금형 3D data 검토 완료] MPSI 담당자가 금형 3D 설계를 최종 검토 승인하였습니다. (가공 및 조립 착수)"
                       );
                       setMoldDesignItem({ ...moldDesignItem, moldDesignStatus: "검토완료" });
@@ -1462,7 +1457,7 @@ export default function ProductReviewAndMoldDesignPage() {
                       <span>몰드베이스 및 코어 특수강재 사전 발주 승인</span>
                       {moldDesignItem.materialOrderApprover && (
                         <span className="text-[10px] text-emerald-700 font-semibold">
-                          (최종승인: {moldDesignItem.materialOrderApprover}, {moldDesignItem.materialOrderApprovedDate})
+                          (최종승인: {cleanCompanyAuthor(moldDesignItem.materialOrderApprover, "MPSI")}, {moldDesignItem.materialOrderApprovedDate})
                         </span>
                       )}
                     </div>
@@ -1475,7 +1470,7 @@ export default function ProductReviewAndMoldDesignPage() {
                   <div className="shrink-0 flex items-center gap-2">
                     <Button 
                       onClick={() => {
-                        const approver = "홍길동 책임 (MPSI 개발실)";
+                        const approver = "MPSI";
                         approveMaterialOrder(
                           moldDesignItem.id, 
                           approver, 
@@ -1579,12 +1574,9 @@ export default function ProductReviewAndMoldDesignPage() {
 
               <div>
                 <label className="block text-zinc-600 font-medium mb-1">작성자 / 소속</label>
-                <Input 
-                  value={uploadAuthorName}
-                  onChange={(e) => setUploadAuthorName(e.target.value)}
-                  className="h-7 text-xs"
-                  placeholder="예: MPSI 김양훈 부장"
-                />
+                <div className="h-7 px-2.5 bg-zinc-100 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded text-xs text-sky-600 dark:text-sky-400 font-bold flex items-center">
+                  MPSI
+                </div>
               </div>
 
               <div>

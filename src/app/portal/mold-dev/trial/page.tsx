@@ -33,7 +33,7 @@ import {
   MoldTrialMemoLog,
   INITIAL_MOLD_TRIALS
 } from "@/lib/mold-trial-store";
-import { sendAppNotification } from "@/lib/notification-store";
+import { sendAppNotification, cleanCompanyAuthor } from "@/lib/notification-store";
 
 export default function MoldTrialPage() {
   const router = useRouter();
@@ -253,8 +253,8 @@ export default function MoldTrialPage() {
 
     addMemoLog(currentProject.id, {
       authorId: "mpsi-mgr",
-      authorName: "MPSI 개발총괄",
-      company: "MPSI 본사",
+      authorName: "MPSI",
+      company: "MPSI",
       tag: `시사출_${decision}`,
       content: `[${selectedTrialDegree} 시사출] ${decision} 처리 완료: ${mpsiDecisionOpinion || "소견 없음"}`,
     });
@@ -1056,7 +1056,7 @@ export default function MoldTrialPage() {
                                 <span className="px-1.5 py-0.2 rounded bg-indigo-100 text-indigo-800 font-bold text-[9px]">
                                   {m.tag}
                                 </span>
-                                <b className="text-zinc-800 dark:text-zinc-200">{m.authorName}</b>
+                                <b className="text-zinc-800 dark:text-zinc-200">{cleanCompanyAuthor(m.authorName, m.company)}</b>
                               </div>
                               <span className="text-[10px] text-zinc-400 font-mono">{m.createdAt}</span>
                             </div>
@@ -1354,7 +1354,7 @@ export default function MoldTrialPage() {
                               <span className="px-1.5 py-0.2 rounded bg-indigo-100 text-indigo-800 font-bold text-[9px]">
                                 {m.tag}
                               </span>
-                              <b className="text-zinc-800 dark:text-zinc-200">{m.authorName}</b>
+                              <b className="text-zinc-800 dark:text-zinc-200">{cleanCompanyAuthor(m.authorName, m.company)}</b>
                             </div>
                             <span className="text-[10px] text-zinc-400 font-mono">{m.createdAt}</span>
                           </div>
@@ -1452,8 +1452,8 @@ export default function MoldTrialPage() {
                   if (tempPlanDate) {
                     addMemoLog(currentProject.id, {
                       authorId: "mpsi-mgr",
-                      authorName: "MPSI 개발팀",
-                      company: "MPSI 본사",
+                      authorName: "MPSI",
+                      company: "MPSI",
                       tag: "시사출계획",
                       content: `시사출 계획일 등록 완료 (${tempPlanDate})`,
                     });

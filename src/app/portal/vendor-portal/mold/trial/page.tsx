@@ -32,7 +32,7 @@ import {
   calculateFinalCompletionStats,
   createDefaultFinalDocs
 } from "@/lib/mold-trial-store";
-import { sendAppNotification } from "@/lib/notification-store";
+import { sendAppNotification, cleanCompanyAuthor } from "@/lib/notification-store";
 
 export default function VendorMoldTrialPage() {
   const { trials, updateTrialProject, addMemoLog, refreshFromDb, isLoading } = useMoldTrialStore();
@@ -239,7 +239,7 @@ export default function VendorMoldTrialPage() {
 
     addMemoLog(selectedProject.id, {
       authorId: "vendor-qc",
-      authorName: `${currentVendor} 품질팀`,
+      authorName: currentVendor,
       company: currentVendor,
       tag: `${activeTab}.${currentUploadTitle}`,
       content: `${currentUploadTitle} 파일 업로드 완료 (${file.name})`,
@@ -1491,8 +1491,7 @@ export default function VendorMoldTrialPage() {
                                 <span className="px-1.5 py-0.2 rounded bg-purple-100 text-purple-800 font-bold text-[9px]">
                                   {m.tag}
                                 </span>
-                                <b className="text-zinc-800 dark:text-zinc-200">{m.authorName}</b>
-                                {m.authorId && <span className="text-zinc-400 font-mono text-[10px]">({m.authorId})</span>}
+                                <b className="text-zinc-800 dark:text-zinc-200">{cleanCompanyAuthor(m.authorName, m.company)}</b>
                               </div>
                               <span className="text-[10px] text-zinc-400 font-mono">{m.createdAt}</span>
                             </div>
@@ -1708,8 +1707,7 @@ export default function VendorMoldTrialPage() {
                                 <span className="px-1.5 py-0.2 rounded bg-purple-100 text-purple-800 font-bold text-[9px]">
                                   {m.tag}
                                 </span>
-                                <b className="text-zinc-800 dark:text-zinc-200">{m.authorName}</b>
-                                {m.authorId && <span className="text-zinc-400 font-mono text-[10px]">({m.authorId})</span>}
+                                <b className="text-zinc-800 dark:text-zinc-200">{cleanCompanyAuthor(m.authorName, m.company)}</b>
                               </div>
                               <span className="text-[10px] text-zinc-400 font-mono">{m.createdAt}</span>
                             </div>

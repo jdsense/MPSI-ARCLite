@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import { dispatchGlobalNotification } from "./notification-store";
+import { dispatchGlobalNotification, cleanCompanyAuthor } from "./notification-store";
 
 // 외주 금형 견적 진행 상태
 export type MoldQuotationStatus = 
@@ -383,11 +383,12 @@ export function useMoldQuotationStore() {
     }
 
     const currentItem = target;
+    const cleanSubmitAuthor = cleanCompanyAuthor(submission.authorName || submission.vendorName, submission.vendorName);
     const newMemos = [...(currentItem.memos || [])];
     if (submission.vendorMemo) {
       newMemos.push({
         id: `memo-${Date.now()}`,
-        author: submission.authorName || `${submission.vendorName} 견적제출`,
+        author: cleanSubmitAuthor,
         content: submission.vendorMemo,
         createdAt: timeStr,
       });
@@ -406,7 +407,7 @@ export function useMoldQuotationStore() {
       amountWon: submission.quoteAmountWon,
       availableMfgDays: Number(submission.availableMfgDays || currentItem.availableMfgDays || 40),
       submittedAt: timeStr,
-      author: submission.authorName || `${submission.vendorName}`,
+      author: cleanSubmitAuthor,
     };
 
     const existingQuotes = currentItem.vendorQuotes || [];
@@ -729,13 +730,17 @@ export function useMoldQuotationStore() {
     let target = estimatesRef.current.find((it) => it.estimateNo === estimateNo);
     if (!target) return;
 
+    const isMpsi = author.includes("MPSI");
+    const cleanAuthor = isMpsi ? "MPSI" : cleanCompanyAuthor(author, target?.vendorName || "협력사");
+    const cleanCompany = isMpsi ? "MPSI" : cleanCompanyAuthor(target?.vendorName, "협력사");
+
     const updatedItem: MoldDevEstimateItem = {
       ...target,
       memos: [
         ...(target.memos || []),
         {
           id: `memo-${Date.now()}`,
-          author,
+          author: cleanAuthor,
           content,
           createdAt: timeStr,
         },
@@ -754,13 +759,12 @@ export function useMoldQuotationStore() {
       window.dispatchEvent(new CustomEvent(EVENT_NAME));
     }
 
-    // 전역 알림 발송
-    const isMpsi = author.includes("MPSI");
+    // 전역 알림 발송 (해당 대상 회사에게만 격리 발송)
     dispatchGlobalNotification({
-      menuName: "금형외주 - 금형견적관리",
+      menuName: isMpsi ? "금형외주 - 금형견적관리" : "금형개발 - 금형견적관리",
       menuPath: isMpsi ? "/portal/vendor-portal/mold/quotation" : "/portal/mold-dev/quotation",
-      senderCompany: isMpsi ? "MPSI 본사" : target?.vendorName || "우성정공(주)",
-      senderName: author,
+      senderCompany: cleanCompany,
+      senderName: cleanAuthor,
       content: `[${estimateNo}] ${content}`,
       projectNo: target?.projectNo,
       targetRole: isMpsi ? "VENDOR_MOLD" : "MPSI",

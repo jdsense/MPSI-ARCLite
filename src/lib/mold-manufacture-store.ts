@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { dispatchGlobalNotification } from "./notification-store";
+import { dispatchGlobalNotification, cleanCompanyAuthor } from "./notification-store";
 import { SyncService } from "@/services/sync-service";
 
 // 금형 가공 공정 세부 인터페이스 (7대 핵심 공정: GUN, CNC, ML, HT, PL, WR, ASSY)
@@ -278,12 +278,13 @@ export function useMoldManufactureStore() {
     const updated = current.map((item) => {
       if (item.id !== id) return item;
 
+      const cleanAuthor = cleanCompanyAuthor(authorName || file.uploadedBy || item.moldVendor, item.moldVendor);
       const newLogs = [...(item.memoLogs || [])];
       if (memoContent || file) {
         newLogs.unshift({
           id: `memo-${Date.now()}`,
           authorId: authorId || "vendor-user",
-          authorName: authorName || file.uploadedBy || item.moldVendor,
+          authorName: cleanAuthor,
           company: item.moldVendor,
           tag: `${file.fileName.slice(0, 6)}.제작일정표`,
           content: memoContent || `금형 제작 일정표 엑셀 파일(${file.fileName})이 신규 등록되었습니다.`,
@@ -314,6 +315,15 @@ export function useMoldManufactureStore() {
 
     if (updatedTarget) {
       syncManufactureToBackend(updatedTarget);
+      dispatchGlobalNotification({
+        menuName: "금형개발 - 금형제작 관리",
+        menuPath: "/portal/mold-dev/manufacture",
+        senderCompany: (updatedTarget as MoldManufactureItem).moldVendor,
+        senderName: (updatedTarget as MoldManufactureItem).moldVendor,
+        content: `[${(updatedTarget as MoldManufactureItem).projectNo}] 금형 제작 일정표가 등록되었습니다.`,
+        projectNo: (updatedTarget as MoldManufactureItem).projectNo,
+        targetRole: "MPSI",
+      });
     }
   };
 
@@ -326,6 +336,10 @@ export function useMoldManufactureStore() {
     const now = new Date();
     const dateStr = memo.createdAt || `${now.getFullYear()}.${String(now.getMonth() + 1).padStart(2, "0")}.${String(now.getDate()).padStart(2, "0")} ${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
 
+    const isMpsi = memo.company.includes("MPSI") || memo.authorName?.includes("MPSI");
+    const cleanAuthor = isMpsi ? "MPSI" : cleanCompanyAuthor(memo.authorName || memo.company, memo.company);
+    const cleanComp = isMpsi ? "MPSI" : cleanCompanyAuthor(memo.company, "협력사");
+
     let updatedTarget: MoldManufactureItem | undefined;
     const updated = current.map((item) => {
       if (item.id !== id) return item;
@@ -333,8 +347,8 @@ export function useMoldManufactureStore() {
       const newLog: ManufactureMemoLog = {
         id: `memo-${Date.now()}`,
         authorId: memo.authorId,
-        authorName: memo.authorName,
-        company: memo.company,
+        authorName: cleanAuthor,
+        company: cleanComp,
         tag: memo.tag || "업무메모",
         content: memo.content,
         createdAt: dateStr,
@@ -358,18 +372,17 @@ export function useMoldManufactureStore() {
       syncManufactureToBackend(updatedTarget);
     }
 
-    // 전역 알림 발송
+    // 전역 알림 발송 (해당하는 상대 회사에게만 격리 발송)
     const targetItem = current.find((it) => it.id === id);
-    const isMpsi = memo.company.includes("MPSI");
     dispatchGlobalNotification({
-      menuName: "금형외주 - 제작관리",
+      menuName: isMpsi ? "금형외주 - 제작관리" : "금형개발 - 금형제작 관리",
       menuPath: isMpsi ? "/portal/vendor-portal/mold/manufacture" : "/portal/mold-dev/manufacture",
-      senderCompany: memo.company,
-      senderName: memo.authorName,
+      senderCompany: cleanComp,
+      senderName: cleanAuthor,
       content: `[${targetItem?.projectNo} 금형제작 메모] ${memo.content}`,
       projectNo: targetItem?.projectNo,
       targetRole: isMpsi ? "VENDOR_MOLD" : "MPSI",
-      targetVendorName: isMpsi ? targetItem?.moldVendor : undefined,
+      targetVendorName: isMpsi ? (targetItem?.moldVendor || "우성정공(주)") : undefined,
     });
   };
 

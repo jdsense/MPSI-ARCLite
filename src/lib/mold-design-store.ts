@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { sendAppNotification, cleanCompanyAuthor } from "./notification-store";
 
 // 업무 이력 메모 로그 인터페이스
 export interface MoldDesignWorkLog {
@@ -240,7 +241,7 @@ export function useMoldDesignStore() {
     return newItem;
   };
 
-  // 3. 업무 이력 메모(로그) 추가 (DB PUT 연동)
+  // 3. 업무 이력 메모(로그) 추가 (DB PUT 연동 및 상대 회사 알림 발송)
   const addWorkLog = (
     designId: number,
     log: {
@@ -254,10 +255,13 @@ export function useMoldDesignStore() {
     const now = new Date();
     const dateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")} ${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
     
+    const isMpsi = log.authorRole === "MPSI" || log.authorName?.includes("MPSI");
+    const cleanAuthor = isMpsi ? "MPSI" : cleanCompanyAuthor(log.authorName, "협력사");
+
     const newLogItem: MoldDesignWorkLog = {
       id: `log-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
-      authorId: log.authorRole === "MPSI" ? "mpsi_user" : "vendor_user",
-      authorName: log.authorName,
+      authorId: isMpsi ? "mpsi_user" : "vendor_user",
+      authorName: cleanAuthor,
       authorRole: log.authorRole,
       fileName: log.fileName,
       content: log.content,
@@ -280,6 +284,18 @@ export function useMoldDesignStore() {
 
     if (targetItem) {
       syncDesignToBackend(targetItem, "PUT");
+
+      // 전역 알림 발송 (해당하는 상대방 회사에게만 발송)
+      const targetCompany = targetItem.moldVendor || "우성정공(주)";
+      sendAppNotification({
+        menuName: isMpsi ? "금형외주 - 도면/설계 협업" : "금형개발 - 도면/설계 관리",
+        menuPath: isMpsi ? "/portal/vendor-portal/mold/design" : "/portal/mold-dev/design",
+        senderCompany: isMpsi ? "MPSI" : targetCompany,
+        content: `[${targetItem.projectNo} 업무메모] ${log.content}`,
+        projectNo: targetItem.projectNo,
+        targetRole: isMpsi ? "VENDOR_MOLD" : "MPSI",
+        targetVendorName: isMpsi ? targetCompany : undefined,
+      });
     }
 
     return newLogItem;
@@ -289,12 +305,15 @@ export function useMoldDesignStore() {
   const updateProductReviewStatus = (
     designId: number,
     newStatus: ProductReviewStatus,
-    authorName: string = "MPSI 담당자",
+    authorName: string = "MPSI",
     autoLogText?: string
   ) => {
     const current = getStoredMoldDesigns();
     const now = new Date();
     const dateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")} ${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+
+    const isMpsi = authorName.includes("MPSI");
+    const cleanAuthor = isMpsi ? "MPSI" : cleanCompanyAuthor(authorName, "협력사");
 
     let targetItem: DrawingDesignItem | undefined;
     const updated = current.map((item) => {
@@ -304,9 +323,9 @@ export function useMoldDesignStore() {
       if (autoLogText) {
         newLogs.unshift({
           id: `log-${Date.now()}`,
-          authorId: "mpsi_user",
-          authorName,
-          authorRole: "MPSI",
+          authorId: isMpsi ? "mpsi_user" : "vendor_user",
+          authorName: cleanAuthor,
+          authorRole: isMpsi ? "MPSI" : "VENDOR",
           content: autoLogText,
           timestamp: dateStr,
         });
@@ -331,6 +350,19 @@ export function useMoldDesignStore() {
 
     if (targetItem) {
       syncDesignToBackend(targetItem, "PUT");
+
+      if (autoLogText) {
+        const targetCompany = targetItem.moldVendor || "우성정공(주)";
+        sendAppNotification({
+          menuName: isMpsi ? "금형외주 - 도면/설계 협업" : "금형개발 - 도면/설계 관리",
+          menuPath: isMpsi ? "/portal/vendor-portal/mold/design" : "/portal/mold-dev/design",
+          senderCompany: isMpsi ? "MPSI" : targetCompany,
+          content: `[${targetItem.projectNo}] ${autoLogText}`,
+          projectNo: targetItem.projectNo,
+          targetRole: isMpsi ? "VENDOR_MOLD" : "MPSI",
+          targetVendorName: isMpsi ? targetCompany : undefined,
+        });
+      }
     }
   };
 
@@ -338,12 +370,15 @@ export function useMoldDesignStore() {
   const updateMoldDesignStatus = (
     designId: number,
     newStatus: MoldDesignReviewStatus,
-    authorName: string = "MPSI 담당자",
+    authorName: string = "MPSI",
     autoLogText?: string
   ) => {
     const current = getStoredMoldDesigns();
     const now = new Date();
     const dateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")} ${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+
+    const isMpsi = authorName.includes("MPSI");
+    const cleanAuthor = isMpsi ? "MPSI" : cleanCompanyAuthor(authorName, "협력사");
 
     let targetItem: DrawingDesignItem | undefined;
     const updated = current.map((item) => {
@@ -353,9 +388,9 @@ export function useMoldDesignStore() {
       if (autoLogText) {
         newLogs.unshift({
           id: `log-${Date.now()}`,
-          authorId: "mpsi_user",
-          authorName,
-          authorRole: "MPSI",
+          authorId: isMpsi ? "mpsi_user" : "vendor_user",
+          authorName: cleanAuthor,
+          authorRole: isMpsi ? "MPSI" : "VENDOR",
           content: autoLogText,
           timestamp: dateStr,
         });
@@ -380,18 +415,33 @@ export function useMoldDesignStore() {
 
     if (targetItem) {
       syncDesignToBackend(targetItem, "PUT");
+
+      if (autoLogText) {
+        const targetCompany = targetItem.moldVendor || "우성정공(주)";
+        sendAppNotification({
+          menuName: isMpsi ? "금형외주 - 도면/설계 협업" : "금형개발 - 도면/설계 관리",
+          menuPath: isMpsi ? "/portal/vendor-portal/mold/design" : "/portal/mold-dev/design",
+          senderCompany: isMpsi ? "MPSI" : targetCompany,
+          content: `[${targetItem.projectNo}] ${autoLogText}`,
+          projectNo: targetItem.projectNo,
+          targetRole: isMpsi ? "VENDOR_MOLD" : "MPSI",
+          targetVendorName: isMpsi ? targetCompany : undefined,
+        });
+      }
     }
   };
 
   // 6. 소재 발주 승인 (설계 도중 선발주 가능) (DB PUT 연동)
   const approveMaterialOrder = (
     designId: number,
-    approver: string = "홍길동 책임 (MPSI 개발실)",
+    approver: string = "MPSI",
     note: string = "메인 몰드베이스 및 코어 강재 발주가 승인되었습니다."
   ) => {
     const current = getStoredMoldDesigns();
     const now = new Date();
     const dateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")} ${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+
+    const cleanAuthor = approver.includes("MPSI") ? "MPSI" : cleanCompanyAuthor(approver, "MPSI");
 
     let targetItem: DrawingDesignItem | undefined;
     const updated = current.map((item) => {
@@ -401,7 +451,7 @@ export function useMoldDesignStore() {
         {
           id: `log-${Date.now()}`,
           authorId: "mpsi_user",
-          authorName: approver,
+          authorName: cleanAuthor,
           authorRole: "MPSI" as const,
           content: `[소재 발주 승인] ${note}`,
           timestamp: dateStr,
@@ -412,7 +462,7 @@ export function useMoldDesignStore() {
       targetItem = {
         ...item,
         materialOrderStatus: "승인완료" as const,
-        materialOrderApprover: approver,
+        materialOrderApprover: cleanAuthor,
         materialOrderApprovedDate: dateStr,
         materialOrderNote: note,
         workLogs: newLogs,
@@ -426,17 +476,30 @@ export function useMoldDesignStore() {
 
     if (targetItem) {
       syncDesignToBackend(targetItem, "PUT");
+
+      const targetCompany = (targetItem as DrawingDesignItem).moldVendor || "우성정공(주)";
+      sendAppNotification({
+        menuName: "금형외주 - 금형설계 협업",
+        menuPath: "/portal/vendor-portal/mold/design",
+        senderCompany: "MPSI",
+        content: `[${(targetItem as DrawingDesignItem).projectNo}] 몰드베이스 및 코어 소재 발주가 MPSI에 의해 승인되었습니다.`,
+        projectNo: (targetItem as DrawingDesignItem).projectNo,
+        targetRole: "VENDOR_MOLD",
+        targetVendorName: targetCompany,
+      });
     }
   };
 
   // 7. 발주서 금형처 발송 승인 (DB PUT 연동)
   const approveMoldPo = (
     designId: number,
-    approver: string = "MPSI 구매팀"
+    approver: string = "MPSI"
   ) => {
     const current = getStoredMoldDesigns();
     const now = new Date();
     const dateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")} ${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+
+    const cleanAuthor = approver.includes("MPSI") ? "MPSI" : cleanCompanyAuthor(approver, "MPSI");
 
     let targetItem: DrawingDesignItem | undefined;
     const updated = current.map((item) => {
@@ -446,7 +509,7 @@ export function useMoldDesignStore() {
         {
           id: `log-${Date.now()}`,
           authorId: "mpsi_user",
-          authorName: approver,
+          authorName: cleanAuthor,
           authorRole: "MPSI" as const,
           content: `[금형 발주서 발송 승인] 금형 제작처(${item.moldVendor})로 금형제작 발주서(PO: ${item.moldPoNo || "신규"})가 발송 승인되었습니다.`,
           timestamp: dateStr,
@@ -470,6 +533,17 @@ export function useMoldDesignStore() {
 
     if (targetItem) {
       syncDesignToBackend(targetItem, "PUT");
+
+      const targetCompany = (targetItem as DrawingDesignItem).moldVendor || "우성정공(주)";
+      sendAppNotification({
+        menuName: "금형외주 - 도면/설계 협업",
+        menuPath: "/portal/vendor-portal/mold/design",
+        senderCompany: "MPSI",
+        content: `[${(targetItem as DrawingDesignItem).projectNo}] 금형제작 정식 발주서가 발송되었습니다.`,
+        projectNo: (targetItem as DrawingDesignItem).projectNo,
+        targetRole: "VENDOR_MOLD",
+        targetVendorName: targetCompany,
+      });
     }
   };
 
@@ -486,6 +560,9 @@ export function useMoldDesignStore() {
     const now = new Date();
     const dateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")} ${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
 
+    const isMpsi = authorRole === "MPSI" || authorName.includes("MPSI");
+    const cleanAuthor = isMpsi ? "MPSI" : cleanCompanyAuthor(authorName, "협력사");
+
     const fieldMap = {
       product3D: { fileKey: "product3DFile", noteKey: "product3DNote", title: "3D 제품 data" },
       moldMeetingReport: { fileKey: "moldMeetingReportFile", noteKey: "moldMeetingReportNote", title: "금형 제작 협의록" },
@@ -501,8 +578,8 @@ export function useMoldDesignStore() {
       const newLogs = [
         {
           id: `log-${Date.now()}`,
-          authorId: authorRole === "MPSI" ? "mpsi_user" : "vendor_user",
-          authorName,
+          authorId: isMpsi ? "mpsi_user" : "vendor_user",
+          authorName: cleanAuthor,
           authorRole,
           fileName,
           content: `[${fieldMap.title} 업로드] ${fileNote}`,
@@ -541,6 +618,17 @@ export function useMoldDesignStore() {
 
     if (targetItem) {
       syncDesignToBackend(targetItem, "PUT");
+
+      const targetCompany = (targetItem as DrawingDesignItem).moldVendor || "우성정공(주)";
+      sendAppNotification({
+        menuName: isMpsi ? "금형외주 - 도면/설계 협업" : "금형개발 - 도면/설계 관리",
+        menuPath: isMpsi ? "/portal/vendor-portal/mold/design" : "/portal/mold-dev/design",
+        senderCompany: isMpsi ? "MPSI" : targetCompany,
+        content: `[${(targetItem as DrawingDesignItem).projectNo}] ${fieldMap.title} 파일이 업로드되었습니다.`,
+        projectNo: (targetItem as DrawingDesignItem).projectNo,
+        targetRole: isMpsi ? "VENDOR_MOLD" : "MPSI",
+        targetVendorName: isMpsi ? targetCompany : undefined,
+      });
     }
   };
 

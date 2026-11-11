@@ -28,6 +28,7 @@ import {
   ProcessStep,
   getManufactureStatusBadge
 } from "@/lib/mold-manufacture-store";
+import { cleanCompanyAuthor } from "@/lib/notification-store";
 
 export default function VendorMoldManufacturePage() {
   const { 
@@ -67,8 +68,8 @@ export default function VendorMoldManufacturePage() {
   const [formProcesses, setFormProcesses] = useState<ProcessStep[]>([]);
 
   // 2-7 업무 이력 메모 입력 상태
-  const [memoAuthorName, setMemoAuthorName] = useState(`${currentVendor} 한승호부장`);
-  const [memoAuthorId, setMemoAuthorId] = useState("ws-hsh");
+  const [memoAuthorName, setMemoAuthorName] = useState(currentVendor);
+  const [memoAuthorId, setMemoAuthorId] = useState("");
   const [memoTag, setMemoTag] = useState("261010.제작일정표");
   const [memoContent, setMemoContent] = useState("");
   const [selectedUploadFileName, setSelectedUploadFileName] = useState("");
@@ -184,7 +185,7 @@ export default function VendorMoldManufacturePage() {
       fileName: file.name,
       fileSize: `${(file.size / 1024).toFixed(1)}KB`,
       uploadedAt: new Date().toLocaleString("ko-KR", { hour12: false }).replace(/\./g, "-").slice(0, 16),
-      uploadedBy: memoAuthorName || `${currentVendor} 담당자`,
+      uploadedBy: currentVendor,
       fileUrl: uploadedUrl || `/uploads/${encodeURIComponent(file.name)}`,
     };
 
@@ -192,8 +193,8 @@ export default function VendorMoldManufacturePage() {
       selectedItem.id,
       newFile,
       `[일정표 엑셀 업로드] ${file.name} 신규 등록 완료`,
-      memoAuthorName,
-      memoAuthorId
+      currentVendor,
+      ""
     );
 
     // 자동 상태 전이 (미입력 -> 금형 설계 중)
@@ -208,8 +209,8 @@ export default function VendorMoldManufacturePage() {
       memoLogs: [
         {
           id: `memo-${Date.now()}`,
-          authorId: memoAuthorId,
-          authorName: memoAuthorName,
+          authorId: "",
+          authorName: currentVendor,
           company: currentVendor,
           tag: `${file.name.slice(0, 6)}.제작일정표`,
           content: `금형 제작 일정표 엑셀 파일(${file.name})이 신규 업로드되었습니다.`,
@@ -253,8 +254,8 @@ export default function VendorMoldManufacturePage() {
 
     const nowStr = new Date().toLocaleString("ko-KR", { hour12: false }).replace(/\./g, "-").slice(0, 16);
     const newMemo = {
-      authorId: memoAuthorId,
-      authorName: memoAuthorName,
+      authorId: "",
+      authorName: currentVendor,
       company: currentVendor,
       tag: memoTag || "특이사항",
       content: memoContent.trim(),
@@ -792,24 +793,12 @@ export default function VendorMoldManufacturePage() {
 
                 {/* 메모 작성 폼 */}
                 <div className="bg-white dark:bg-zinc-900 p-3.5 rounded-lg border flex flex-col gap-2.5">
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                     <div>
-                      <label className="text-[10px] text-zinc-500 font-medium block mb-0.5">작성자 명 (ID)</label>
-                      <Input
-                        value={memoAuthorName}
-                        onChange={(e) => setMemoAuthorName(e.target.value)}
-                        placeholder="예: 우성정공 한승호부장"
-                        className="h-7 text-xs font-medium"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-[10px] text-zinc-500 font-medium block mb-0.5">사번 / ID</label>
-                      <Input
-                        value={memoAuthorId}
-                        onChange={(e) => setMemoAuthorId(e.target.value)}
-                        placeholder="예: ws-hsh"
-                        className="h-7 text-xs font-mono"
-                      />
+                      <label className="text-[10px] text-zinc-500 font-medium block mb-0.5">작성 회사</label>
+                      <div className="h-7 px-2.5 bg-zinc-100 dark:bg-zinc-800 border rounded text-xs text-purple-700 dark:text-purple-300 font-bold flex items-center">
+                        {currentVendor}
+                      </div>
                     </div>
                     <div>
                       <label className="text-[10px] text-zinc-500 font-medium block mb-0.5">메모 구분 (태그)</label>
@@ -900,13 +889,8 @@ export default function VendorMoldManufacturePage() {
                               {log.tag || "업무메모"}
                             </span>
                             <span className="font-bold text-zinc-800 dark:text-zinc-200">
-                              {log.authorName}
+                              {cleanCompanyAuthor(log.authorName, log.company)}
                             </span>
-                            {log.authorId && (
-                              <span className="text-[10px] text-zinc-400 font-mono">
-                                ({log.authorId})
-                              </span>
-                            )}
                           </div>
                           <span className="text-[10px] text-zinc-400 font-mono">
                             {log.createdAt} 입력

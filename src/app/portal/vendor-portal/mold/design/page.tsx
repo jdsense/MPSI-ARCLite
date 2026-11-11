@@ -28,6 +28,7 @@ import {
   ProductReviewStatus, 
   MoldDesignReviewStatus 
 } from "@/lib/mold-design-store";
+import { cleanCompanyAuthor } from "@/lib/notification-store";
 
 export default function VendorMoldDesignPage() {
   const router = useRouter();
@@ -85,7 +86,7 @@ export default function VendorMoldDesignPage() {
   });
   const [uploadFileName, setUploadFileName] = useState("");
   const [uploadFileNote, setUploadFileNote] = useState("");
-  const [uploadAuthorName, setUploadAuthorName] = useState(`${currentVendor} 한승호 부장`);
+  const [uploadAuthorName, setUploadAuthorName] = useState(currentVendor);
   const [selectedUploadFile, setSelectedUploadFile] = useState<UploadedFileInfo | null>(null);
   const [isUploadingFile, setIsUploadingFile] = useState(false);
 
@@ -233,7 +234,7 @@ export default function VendorMoldDesignPage() {
     setSelectedUploadFile(null);
     setUploadFileName(defaultName);
     setUploadFileNote("");
-    setUploadAuthorName(`${currentVendor} 한승호 부장`);
+    setUploadAuthorName(currentVendor);
   };
 
   // 파일 업로드 모달 확인 (실제 서버 업로드 연동)
@@ -324,7 +325,7 @@ export default function VendorMoldDesignPage() {
     }
 
     addWorkLog(designId, {
-      authorName: `${currentVendor} 담당자`,
+      authorName: currentVendor,
       authorRole: "VENDOR",
       content: manualNoteContent.trim(),
     });
@@ -880,7 +881,7 @@ export default function VendorMoldDesignPage() {
                         <div key={log.id} className="bg-slate-800/80 p-1.5 rounded border border-slate-700/60 flex flex-col gap-0.5">
                           <div className="flex items-center justify-between text-[10px]">
                             <span className={`font-bold ${log.authorRole === "MPSI" ? "text-sky-300" : "text-emerald-300"}`}>
-                              {log.authorName}
+                              {cleanCompanyAuthor(log.authorName, log.authorRole === "MPSI" ? "MPSI" : currentVendor)}
                             </span>
                             <span className="text-slate-400">{log.timestamp}</span>
                           </div>
@@ -903,7 +904,10 @@ export default function VendorMoldDesignPage() {
                   </div>
 
                   {/* 메모 직접 등록창 */}
-                  <div className="flex gap-1.5 pt-1 border-t border-slate-800">
+                  <div className="flex gap-1.5 pt-1 border-t border-slate-800 items-center">
+                    <div className="h-6 px-2 bg-slate-800 border border-slate-700 rounded text-emerald-300 font-bold text-[10px] flex items-center shrink-0">
+                      {currentVendor}
+                    </div>
                     <Input 
                       value={manualNoteContent}
                       onChange={(e) => setManualNoteContent(e.target.value)}
@@ -930,7 +934,7 @@ export default function VendorMoldDesignPage() {
                       updateProductReviewStatus(
                         selectedReviewItem.id, 
                         "수정요청", 
-                        `${currentVendor} 기술팀`,
+                        currentVendor,
                         `[도면 수정(DR) 피드백] ${currentVendor}에서 제품 형상 언더컷 부위 수정 피드백을 전달하였습니다.`
                       );
                       setSelectedReviewItem({ ...selectedReviewItem, drStatus: "수정요청" });
@@ -968,7 +972,7 @@ export default function VendorMoldDesignPage() {
                         updateProductReviewStatus(
                           selectedReviewItem.id, 
                           "검토요청", 
-                          `${currentVendor} 한승호 부장`,
+                          currentVendor,
                           `[금형제작협의록 및 CAE 재제출] 도면 보완 사항 반영에 따른 MPSI 승인 재요청.`
                         );
                         setSelectedReviewItem({ ...selectedReviewItem, drStatus: "검토요청" });
@@ -986,7 +990,7 @@ export default function VendorMoldDesignPage() {
                         updateProductReviewStatus(
                           selectedReviewItem.id, 
                           "검토요청", 
-                          `${currentVendor} 한승호 부장`,
+                          currentVendor,
                           `[금형제작협의록 및 CAE 제출] MPSI 본사 승인 요청 접수 완료.`
                         );
                         setSelectedReviewItem({ ...selectedReviewItem, drStatus: "검토요청" });
@@ -1291,7 +1295,7 @@ export default function VendorMoldDesignPage() {
                         <div key={log.id} className="bg-slate-800/80 p-1.5 rounded border border-slate-700/60 flex flex-col gap-0.5">
                           <div className="flex items-center justify-between text-[10px]">
                             <span className={`font-bold ${log.authorRole === "MPSI" ? "text-purple-300" : "text-emerald-300"}`}>
-                              {log.authorName}
+                              {cleanCompanyAuthor(log.authorName, log.authorRole === "MPSI" ? "MPSI" : currentVendor)}
                             </span>
                             <span className="text-slate-400">{log.timestamp}</span>
                           </div>
@@ -1311,6 +1315,29 @@ export default function VendorMoldDesignPage() {
                     ) : (
                       <div className="text-zinc-500 py-3 text-center">등록된 설계 이력 메모가 없습니다.</div>
                     )}
+                  </div>
+
+                  {/* 메모 직접 등록창 */}
+                  <div className="flex gap-1.5 pt-1 border-t border-slate-800 items-center">
+                    <div className="h-6 px-2 bg-slate-800 border border-slate-700 rounded text-emerald-300 font-bold text-[10px] flex items-center shrink-0">
+                      {currentVendor}
+                    </div>
+                    <Input 
+                      value={manualNoteContent}
+                      onChange={(e) => setManualNoteContent(e.target.value)}
+                      placeholder="MPSI 담당자에게 전달할 금형설계 검토 의견을 입력하세요"
+                      className="h-6 flex-1 bg-slate-800 border-slate-700 text-white text-[10px]"
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") handleAddManualNote(selectedDesignItem.id);
+                      }}
+                    />
+                    <Button 
+                      onClick={() => handleAddManualNote(selectedDesignItem.id)}
+                      size="xs"
+                      className="h-6 px-2.5 bg-purple-600 hover:bg-purple-500 text-white font-bold text-[10px]"
+                    >
+                      메모 등록
+                    </Button>
                   </div>
                 </div>
 
@@ -1340,7 +1367,7 @@ export default function VendorMoldDesignPage() {
                         updateMoldDesignStatus(
                           selectedDesignItem.id, 
                           "검토요청", 
-                          `${currentVendor} 설계팀`,
+                          currentVendor,
                           `[금형 3D 설계 재승인 요청] 도면 수정 보완 후 MPSI 최종 승인 재요청.`
                         );
                         setSelectedDesignItem({ ...selectedDesignItem, moldDesignStatus: "검토요청" });
@@ -1358,7 +1385,7 @@ export default function VendorMoldDesignPage() {
                         updateMoldDesignStatus(
                           selectedDesignItem.id, 
                           "검토요청", 
-                          `${currentVendor} 설계팀`,
+                          currentVendor,
                           `[금형 3D 설계 승인 요청] 3D CAD 설계 완료에 따른 MPSI 최종 컨펌 요청.`
                         );
                         setSelectedDesignItem({ ...selectedDesignItem, moldDesignStatus: "검토요청" });
@@ -1402,7 +1429,7 @@ export default function VendorMoldDesignPage() {
                         <span>MPSI 개발실의 소재 발주 공식 승인이 완료되었습니다.</span>
                         {selectedDesignItem.materialOrderApprover && (
                           <span className="text-zinc-500 font-normal">
-                            ({selectedDesignItem.materialOrderApprover}, {selectedDesignItem.materialOrderApprovedDate})
+                            ({cleanCompanyAuthor(selectedDesignItem.materialOrderApprover, "MPSI")}, {selectedDesignItem.materialOrderApprovedDate})
                           </span>
                         )}
                       </div>
@@ -1494,11 +1521,9 @@ export default function VendorMoldDesignPage() {
 
               <div>
                 <label className="block text-zinc-600 font-medium mb-1">작성자 / 소속</label>
-                <Input 
-                  value={uploadAuthorName}
-                  onChange={(e) => setUploadAuthorName(e.target.value)}
-                  className="h-7 text-xs"
-                />
+                <div className="h-7 px-2.5 bg-zinc-100 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded text-xs text-emerald-600 dark:text-emerald-400 font-bold flex items-center">
+                  {currentVendor}
+                </div>
               </div>
 
               <div>

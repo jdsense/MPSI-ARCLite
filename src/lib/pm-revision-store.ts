@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { cleanCompanyAuthor, dispatchGlobalNotification } from "./notification-store";
 
 // 1. 신작/설변 차수별 이력 인터페이스
 export interface RevisionHistoryItem {
@@ -134,13 +135,13 @@ const OLD_PM_REVISION_DATA: PmRevisionProjectItem[] = [
     revisionMemos: [
       {
         id: "rm-1",
-        author: "뉴몰드 김지원 차장",
+        author: "(주)뉴몰드",
         content: "261010_치수검토보고서 등록, 2026.10.10. 10:54 입력",
         createdAt: "2026.10.10. 10:54 입력"
       },
       {
         id: "rm-2",
-        author: "뉴몰드 한승호 부장",
+        author: "(주)뉴몰드",
         content: "261012_설계변경 양산 시작일자(2026-10-19) 공급업체 입력 완료",
         createdAt: "2026.10.12. 14:20 입력"
       }
@@ -222,7 +223,7 @@ const OLD_PM_REVISION_DATA: PmRevisionProjectItem[] = [
       memos: [
         {
           id: "pm-m-door-1",
-          author: "뉴몰드 김지원 차장",
+          author: "(주)뉴몰드",
           content: "261018_금형 PM 착수 및 상태 전환: 정기 타수 도달에 따른 금형 분해점검 PM 착수, 2026.10.18. 15:25 입력",
           createdAt: "2026.10.18. 15:25 입력"
         }
@@ -237,7 +238,7 @@ const OLD_PM_REVISION_DATA: PmRevisionProjectItem[] = [
         moldCostQuote: "금형 수정비 9,800,000원 확정 / 사출 단가 +35원 변동 조정 확정 (금형견적, 사출견적)",
         moldTrialReport: "우성정공 가공 진행 중 (방전 및 와이어 가공 보정)",
         massValidationReport: "금형 이관 후 시양산 및 재양산 승인 진행 예정",
-        author: "뉴몰드 김지원 차장",
+        author: "(주)뉴몰드",
         memo: "설변 수주 확정 및 단가조정 반영, 261010_치수검토보고서 등록",
         createdAt: "2026.10.12 10:54"
       }
@@ -347,13 +348,13 @@ const OLD_PM_REVISION_DATA: PmRevisionProjectItem[] = [
       memos: [
         {
           id: "pm-m-1",
-          author: "뉴몰드 김지원 차장",
+          author: "(주)뉴몰드",
           content: "PM공정 시사출 확인 등록, 2026.10.10. 10:54 입력",
           createdAt: "2026.10.10. 10:54 입력"
         },
         {
           id: "pm-m-2",
-          author: "뉴몰드 김지원 차장",
+          author: "(주)뉴몰드",
           content: "3차 정기 PM 착수 (누적 타수 120,000샷 도달), 금형 분해 점검 중",
           createdAt: "2026.10.19. 09:30 입력"
         }
@@ -368,7 +369,7 @@ const OLD_PM_REVISION_DATA: PmRevisionProjectItem[] = [
         moldCostQuote: "금형 수정비 8,200,000원 확정 / 사출 단가 +15원 조정 확정",
         moldTrialReport: "우성정공 가공 진행 중 (방전/와이어 완료 후 피팅)",
         massValidationReport: "자체검증 및 시양산 일정 2026-10-14 진행 예정",
-        author: "뉴몰드 김지원 차장",
+        author: "(주)뉴몰드",
         memo: "도면 변경에 따른 힌지 체결부 리브 추가 및 사출 조건 재수립",
         createdAt: "2026.10.14 09:30"
       }
@@ -495,7 +496,7 @@ export function usePmRevisionStore() {
   const updateRevisionMassStartDate = (
     id: number,
     date: string,
-    author: string = "뉴몰드 김지원 차장",
+    author: string = "(주)뉴몰드",
     memoContent?: string
   ) => {
     const now = new Date();
@@ -530,7 +531,7 @@ export function usePmRevisionStore() {
   const updatePmProcess = (
     id: number,
     processName: string,
-    author: string = "뉴몰드 김지원 차장"
+    author: string = "(주)뉴몰드"
   ) => {
     const now = new Date();
     const nowStr = `${now.getFullYear()}.${String(now.getMonth() + 1).padStart(2, "0")}.${String(now.getDate()).padStart(2, "0")}. ${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
@@ -572,7 +573,7 @@ export function usePmRevisionStore() {
       actualEndDate?: string;
       actualMassStartDate?: string;
     },
-    author: string = "뉴몰드 김지원 차장",
+    author: string = "(주)뉴몰드",
     memoContent?: string
   ) => {
     const now = new Date();
@@ -623,7 +624,7 @@ export function usePmRevisionStore() {
       warrantyShots?: number;
       pmCycleShots?: number;
     },
-    author: string = "뉴몰드 김지원 차장"
+    author: string = "(주)뉴몰드"
   ) => {
     const now = new Date();
     const nowStr = `${now.getFullYear()}.${String(now.getMonth() + 1).padStart(2, "0")}.${String(now.getDate()).padStart(2, "0")}. ${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
@@ -657,16 +658,19 @@ export function usePmRevisionStore() {
     id: number,
     type: "REVISION" | "PM",
     content: string,
-    author: string = "뉴몰드 김지원 차장"
+    author: string = "(주)뉴몰드"
   ) => {
     const now = new Date();
     const nowStr = `${now.getFullYear()}.${String(now.getMonth() + 1).padStart(2, "0")}.${String(now.getDate()).padStart(2, "0")}. ${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+
+    const isMpsi = author.includes("MPSI");
+    const cleanAuthor = isMpsi ? "MPSI" : cleanCompanyAuthor(author, "(주)뉴몰드");
 
     const nextItems = items.map((item) => {
       if (item.id === id) {
         const newMemo = {
           id: `memo-${Date.now()}`,
-          author,
+          author: cleanAuthor,
           content: `${content}, ${nowStr} 입력`,
           createdAt: `${nowStr} 입력`
         };
@@ -692,6 +696,20 @@ export function usePmRevisionStore() {
     });
 
     saveItems(nextItems);
+
+    // 대상 상대방 회사로만 알림 격리 발송
+    const targetItem = items.find((it) => it.id === id);
+    const targetVendor = targetItem?.massVendor || "(주)뉴몰드";
+    dispatchGlobalNotification({
+      menuName: type === "PM" ? "양산 - 금형 PM 보전" : "양산 - 설계변경 관리",
+      menuPath: isMpsi ? "/portal/vendor-portal/mass/revision" : "/portal/mass-prod/revision",
+      senderCompany: isMpsi ? "MPSI" : targetVendor,
+      senderName: cleanAuthor,
+      content: `[${targetItem?.projectNo} ${type === "PM" ? "PM" : "설변"} 메모] ${content}`,
+      projectNo: targetItem?.projectNo,
+      targetRole: isMpsi ? "VENDOR_MASS" : "MPSI",
+      targetVendorName: isMpsi ? targetVendor : undefined,
+    });
   };
 
   // 프로젝트 상태값 변경 (양산 중 ➔ 설변 중(E001 채번) or PM 중)
@@ -708,7 +726,7 @@ export function usePmRevisionStore() {
     const nowStr = `${now.getFullYear()}.${String(now.getMonth() + 1).padStart(2, "0")}.${String(now.getDate()).padStart(2, "0")}. ${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
     const dateSimple = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, "0")}${String(now.getDate()).padStart(2, "0")}`.slice(2);
     const dateDash = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
-    const author = options?.author || "뉴몰드 김지원 차장";
+    const author = options?.author || "(주)뉴몰드";
 
     const nextItems = items.map((item) => {
       if (item.id === id) {
@@ -819,7 +837,7 @@ export function usePmRevisionStore() {
   const savePmRoundData = (
     id: number,
     roundData: PmRoundItem,
-    author: string = "뉴몰드 김지원 차장"
+    author: string = "(주)뉴몰드"
   ) => {
     const now = new Date();
     const nowStr = `${now.getFullYear()}.${String(now.getMonth() + 1).padStart(2, "0")}.${String(now.getDate()).padStart(2, "0")}. ${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
