@@ -74,8 +74,10 @@ export default function VendorMassQuotationPage() {
     machineTonnage: "450T 정밀사출기",
     materialCost: 0,
     processingCost: 0,
-    packagingCost: 150,
-    logisticsCost: 100,
+    overheadCost: 0,
+    profitCost: 0,
+    packagingCost: 0,
+    logisticsCost: 0,
     submissionType: "최초 제출" as "최초 제출" | "수정 제출",
     vendorNotes: "",
     vendorComment: "",
@@ -116,9 +118,11 @@ export default function VendorMassQuotationPage() {
     // 자사 제출 내역이 있으면 자사 내역으로 채우고, 미제출이면 0원/빈값으로 완전 격리 초기화
     const matCost = myQuote?.materialCost || 0;
     const procCost = myQuote?.processingCost || 0;
+    const overCost = myQuote?.overheadCost || 0;
+    const profCost = myQuote?.profitCost || 0;
     const packCost = myQuote?.packagingCost || 0;
     const logCost = myQuote?.logisticsCost || 0;
-    const unitPrice = myQuote?.unitPrice || (matCost + procCost + packCost + logCost);
+    const unitPrice = myQuote?.unitPrice || (matCost + procCost + overCost + profCost + packCost + logCost);
 
     setSubmitForm({
       finalUnitPrice: unitPrice,
@@ -131,6 +135,8 @@ export default function VendorMassQuotationPage() {
       machineTonnage: item.machineTonnage || "",
       materialCost: matCost,
       processingCost: procCost,
+      overheadCost: overCost,
+      profitCost: profCost,
       packagingCost: packCost,
       logisticsCost: logCost,
       submissionType: isAlreadySubmitted ? "수정 제출" : "최초 제출",
@@ -141,12 +147,17 @@ export default function VendorMassQuotationPage() {
     setIsSubmitModalOpen(true);
   };
 
-  // 4대 세부 원가 수기 입력 시 합계 단가 자동 계산
-  const handleUpdateCost = (field: "materialCost" | "processingCost" | "packagingCost" | "logisticsCost", value: number) => {
+  // 6대 세부 원가 수기 입력 시 합계 단가 자동 계산
+  const handleUpdateCost = (
+    field: "materialCost" | "processingCost" | "overheadCost" | "profitCost" | "packagingCost" | "logisticsCost",
+    value: number
+  ) => {
     setSubmitForm((prev) => {
       const updated = { ...prev, [field]: value };
       const sum = Number(updated.materialCost || 0) + 
                   Number(updated.processingCost || 0) + 
+                  Number(updated.overheadCost || 0) + 
+                  Number(updated.profitCost || 0) + 
                   Number(updated.packagingCost || 0) + 
                   Number(updated.logisticsCost || 0);
       return {
@@ -220,6 +231,8 @@ export default function VendorMassQuotationPage() {
       authorName: currentVendor,
       materialCost: Number(submitForm.materialCost || 0),
       processingCost: Number(submitForm.processingCost || 0),
+      overheadCost: Number(submitForm.overheadCost || 0),
+      profitCost: Number(submitForm.profitCost || 0),
       packagingCost: Number(submitForm.packagingCost || 0),
       logisticsCost: Number(submitForm.logisticsCost || 0),
     });
@@ -748,7 +761,7 @@ export default function VendorMassQuotationPage() {
                 </div>
               </div>
 
-              {/* 3-4. 견적 단가 및 정보 입력 (미니 테이블 + 4대 세부 원가 구성) */}
+              {/* 3-4. 견적 단가 및 정보 입력 (미니 테이블 + 6대 세부 원가 구성) */}
               <div className="border rounded-md p-3.5 bg-white dark:bg-zinc-900 space-y-3">
                 <div className="font-bold text-xs text-zinc-800 dark:text-zinc-200 flex items-center justify-between">
                   <span className="flex items-center gap-1.5 text-zinc-800 dark:text-zinc-200">
@@ -756,7 +769,7 @@ export default function VendorMassQuotationPage() {
                     2. 3-4. 견적 단가 및 정보 입력
                   </span>
                   <span className="text-[11px] text-zinc-400">
-                    ※ 세부 원가(4대 항목)를 입력하면 견적 제출 단가가 자동 산출됩니다.
+                    ※ 세부 원가(6대 항목)를 입력하면 견적 제출 단가가 자동 산출됩니다.
                   </span>
                 </div>
 
@@ -786,18 +799,18 @@ export default function VendorMassQuotationPage() {
                   </table>
                 </div>
 
-                {/* 4대 세부 원가 구성 (원재료비, 사출가공비, 포장비, 물류/관리비) */}
+                {/* 6대 세부 원가 구성 (재료비, 사출가공비, 일반관리비, 이윤, 포장비, 운송비) */}
                 <div>
                   <span className="text-[11px] font-bold text-zinc-700 dark:text-zinc-300 block mb-1.5">
                     세부 원가 구성 (EA당, 수기 입력)
                   </span>
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  <div className="grid grid-cols-2 sm:grid-cols-6 gap-2">
                     <div>
-                      <label className="text-[10.5px] text-zinc-500 block mb-1">원재료비 (원)</label>
+                      <label className="text-[10.5px] text-zinc-500 block mb-1">재료비 (원)</label>
                       <CurrencyInput
                         value={submitForm.materialCost}
                         onChange={(val) => handleUpdateCost("materialCost", val)}
-                        placeholder="예: 1,600"
+                        placeholder="예: 700"
                         className="h-7 text-xs font-mono font-bold bg-white dark:bg-zinc-900"
                       />
                     </div>
@@ -811,20 +824,38 @@ export default function VendorMassQuotationPage() {
                       />
                     </div>
                     <div>
-                      <label className="text-[10.5px] text-zinc-500 block mb-1">포장비 (원)</label>
+                      <label className="text-[10.5px] text-zinc-500 block mb-1">일반관리비 (원)</label>
                       <CurrencyInput
-                        value={submitForm.packagingCost}
-                        onChange={(val) => handleUpdateCost("packagingCost", val)}
-                        placeholder="예: 150"
+                        value={submitForm.overheadCost}
+                        onChange={(val) => handleUpdateCost("overheadCost", val)}
+                        placeholder="예: 60"
                         className="h-7 text-xs font-mono font-bold bg-white dark:bg-zinc-900"
                       />
                     </div>
                     <div>
-                      <label className="text-[10.5px] text-zinc-500 block mb-1">물류/관리비 (원)</label>
+                      <label className="text-[10.5px] text-zinc-500 block mb-1">이윤 (원)</label>
+                      <CurrencyInput
+                        value={submitForm.profitCost}
+                        onChange={(val) => handleUpdateCost("profitCost", val)}
+                        placeholder="예: 40"
+                        className="h-7 text-xs font-mono font-bold bg-white dark:bg-zinc-900"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10.5px] text-zinc-500 block mb-1">포장비 (원)</label>
+                      <CurrencyInput
+                        value={submitForm.packagingCost}
+                        onChange={(val) => handleUpdateCost("packagingCost", val)}
+                        placeholder="예: 700"
+                        className="h-7 text-xs font-mono font-bold bg-white dark:bg-zinc-900"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10.5px] text-zinc-500 block mb-1">운송비 (원)</label>
                       <CurrencyInput
                         value={submitForm.logisticsCost}
                         onChange={(val) => handleUpdateCost("logisticsCost", val)}
-                        placeholder="예: 100"
+                        placeholder="예: 70,000"
                         className="h-7 text-xs font-mono font-bold bg-white dark:bg-zinc-900"
                       />
                     </div>
@@ -838,7 +869,7 @@ export default function VendorMassQuotationPage() {
                       견적 제출 단가 합계 (원/EA):
                     </span>
                     <span className="text-[11px] text-zinc-500">
-                      (원재료비 + 가공비 + 포장비 + 물류/관리비)
+                      (재료비 + 가공비 + 일반관리비 + 이윤 + 포장비 + 운송비)
                     </span>
                   </div>
                   <div className="flex items-center gap-2">
@@ -1121,39 +1152,76 @@ export default function VendorMassQuotationPage() {
                 </div>
               </div>
 
-              {/* 세부 4대 원가 구성 - 자사 제출 건만 표시 */}
+              {/* 협력사 세부 원가 산출 내역 (6대 원가 구성비) */}
               {(() => {
                 const myQuote = getMyVendorQuote(selectedItem);
                 const isMyItem = isMatchingVendor(selectedItem.vendorName, currentVendor);
                 const matCost = myQuote?.materialCost || (isMyItem ? selectedItem.materialCost : 0);
                 const procCost = myQuote?.processingCost || (isMyItem ? selectedItem.processingCost : 0);
+                const overCost = myQuote?.overheadCost || (isMyItem ? (selectedItem as any).overheadCost : 0) || 60;
+                const profCost = myQuote?.profitCost || (isMyItem ? (selectedItem as any).profitCost : 0) || 40;
                 const packCost = myQuote?.packagingCost || (isMyItem ? selectedItem.packagingCost : 0);
                 const logCost = myQuote?.logisticsCost || (isMyItem ? selectedItem.logisticsCost : 0);
+                const unitPrice = myQuote?.unitPrice || (matCost + procCost + overCost + profCost + packCost + logCost);
+                const submittedDate = myQuote?.submittedDate || (isMyItem ? selectedItem.submittedDate : "") || new Date().toISOString().split("T")[0];
 
-                if (!matCost && !procCost && !packCost && !logCost) return null;
+                if (!matCost && !procCost && !packCost && !logCost && !myQuote) return null;
+
+                const displayVendorName = myQuote?.vendorName || (isMyItem ? selectedItem.vendorName : currentVendor);
 
                 return (
-                  <div className="p-3 bg-white dark:bg-zinc-900 border rounded-md">
-                    <div className="font-bold text-zinc-700 dark:text-zinc-300 mb-1.5 flex items-center gap-1.5">
-                      <DollarSign className="h-3.5 w-3.5 text-blue-600" />
-                      <span>자사 제출 4대 원가 구성 (EA당)</span>
+                  <div className="p-3 bg-white dark:bg-zinc-900 border rounded-md space-y-2">
+                    <div className="flex items-center justify-between font-bold text-xs pb-1 border-b">
+                      <span className="flex items-center gap-1.5 text-blue-700 dark:text-blue-400">
+                        <DollarSign className="h-3.5 w-3.5" />
+                        1. [{displayVendorName}] 세부 원가 산출 내역 (6대 원가 구성비)
+                      </span>
+                      <span className="text-[11px] text-zinc-500 font-mono font-normal">
+                        제출일자: <b className="text-zinc-700 dark:text-zinc-300">{submittedDate}</b> (목표 C/T {selectedItem.targetCycleTime || 35}초)
+                      </span>
                     </div>
-                    <div className="grid grid-cols-4 gap-2 text-center text-xs">
-                      <div className="bg-zinc-50 dark:bg-zinc-800 p-2 rounded">
-                        <span className="text-[10px] text-zinc-400 block">원재료비</span>
-                        <span className="font-mono font-bold">{matCost?.toLocaleString() || 0}원</span>
+                    <div className="grid grid-cols-2 sm:grid-cols-7 gap-1.5 text-center text-xs">
+                      <div className="bg-zinc-50 dark:bg-zinc-800 p-2 rounded border">
+                        <span className="text-[10px] text-zinc-400 block">재료비</span>
+                        <span className="font-mono font-bold text-zinc-800 dark:text-zinc-200">
+                          {matCost ? `${matCost.toLocaleString()}원` : "0원"}
+                        </span>
                       </div>
-                      <div className="bg-zinc-50 dark:bg-zinc-800 p-2 rounded">
-                        <span className="text-[10px] text-zinc-400 block">사출가공비</span>
-                        <span className="font-mono font-bold">{procCost?.toLocaleString() || 0}원</span>
+                      <div className="bg-zinc-50 dark:bg-zinc-800 p-2 rounded border">
+                        <span className="text-[10px] text-zinc-400 block">가공비(임가공)</span>
+                        <span className="font-mono font-bold text-zinc-800 dark:text-zinc-200">
+                          {procCost ? `${procCost.toLocaleString()}원` : "0원"}
+                        </span>
                       </div>
-                      <div className="bg-zinc-50 dark:bg-zinc-800 p-2 rounded">
+                      <div className="bg-zinc-50 dark:bg-zinc-800 p-2 rounded border">
+                        <span className="text-[10px] text-zinc-400 block">일반관리비</span>
+                        <span className="font-mono font-bold text-zinc-800 dark:text-zinc-200">
+                          {overCost ? `${overCost.toLocaleString()}원` : "0원"}
+                        </span>
+                      </div>
+                      <div className="bg-zinc-50 dark:bg-zinc-800 p-2 rounded border">
+                        <span className="text-[10px] text-zinc-400 block">이윤</span>
+                        <span className="font-mono font-bold text-zinc-800 dark:text-zinc-200">
+                          {profCost ? `${profCost.toLocaleString()}원` : "0원"}
+                        </span>
+                      </div>
+                      <div className="bg-zinc-50 dark:bg-zinc-800 p-2 rounded border">
                         <span className="text-[10px] text-zinc-400 block">포장비</span>
-                        <span className="font-mono font-bold">{packCost?.toLocaleString() || 0}원</span>
+                        <span className="font-mono font-bold text-zinc-800 dark:text-zinc-200">
+                          {packCost ? `${packCost.toLocaleString()}원` : "0원"}
+                        </span>
                       </div>
-                      <div className="bg-zinc-50 dark:bg-zinc-800 p-2 rounded">
-                        <span className="text-[10px] text-zinc-400 block">물류/관리비</span>
-                        <span className="font-mono font-bold">{logCost?.toLocaleString() || 0}원</span>
+                      <div className="bg-zinc-50 dark:bg-zinc-800 p-2 rounded border">
+                        <span className="text-[10px] text-zinc-400 block">운송비</span>
+                        <span className="font-mono font-bold text-zinc-800 dark:text-zinc-200">
+                          {logCost ? `${logCost.toLocaleString()}원` : "0원"}
+                        </span>
+                      </div>
+                      <div className="bg-blue-50 dark:bg-blue-950/40 p-2 rounded border border-blue-300">
+                        <span className="text-[10px] text-blue-700 font-bold block">합계 단가</span>
+                        <span className="font-mono font-bold text-blue-900 dark:text-blue-200">
+                          {unitPrice ? `${unitPrice.toLocaleString()}원` : "0원"}
+                        </span>
                       </div>
                     </div>
                   </div>

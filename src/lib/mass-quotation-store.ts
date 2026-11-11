@@ -512,6 +512,8 @@ export function useMassQuotationStore() {
         vendorNotes: submission.vendorNotes || item.vendorNotes || "",
         materialCost: submission.materialCost ?? item.materialCost,
         processingCost: submission.processingCost ?? item.processingCost,
+        overheadCost: submission.overheadCost ?? item.overheadCost,
+        profitCost: submission.profitCost ?? item.profitCost,
         packagingCost: submission.packagingCost ?? item.packagingCost,
         logisticsCost: submission.logisticsCost ?? item.logisticsCost,
         status: "외주견적제출" as MassQuotationStatus,
