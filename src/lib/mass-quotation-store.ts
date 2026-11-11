@@ -11,7 +11,8 @@ export type MassQuotationStatus =
   | "외주견적제출"    // 외주사에서 양산 견적서 작성 후 제출 시
   | "원가검토중"     // MPSI 원가 분석 및 단가 협의 중
   | "단가합의완료"    // 단가 합의 완료
-  | "양산계약확정";   // 계약 확정
+  | "양산계약확정"   // 계약 확정
+  | "반려/미성사";   // 반려 또는 미성사
 
 // 양산 견적 협의 댓글
 export interface MassQuotationComment {

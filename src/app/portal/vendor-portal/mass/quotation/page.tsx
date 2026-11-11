@@ -5,7 +5,7 @@ import {
   FileSpreadsheet, Upload, Download, Search, RefreshCw, 
   Eye, CheckCircle2, Clock, AlertCircle, Building2, Send, 
   MessageSquare, Check, X, Paperclip, Plus, ArrowRight, Factory, Gauge,
-  DollarSign, Calculator, Edit3, Info
+  DollarSign, Calculator, Edit3, Info, XCircle
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -291,23 +291,19 @@ export default function VendorMassQuotationPage() {
 
   // 현재 로그인한 양산 협력사(자사) 관점 진행상태 판별 (MPSI 본사 대장과 100% 동기화)
   const getVendorSpecificStatus = (item: MassProductionEstimateItem): MassQuotationStatus => {
-    // 1. MPSI 본사 진행상태가 단가합의완료/양산계약확정인 경우
-    if (item.status === "양산계약확정" || item.status === "단가합의완료") {
+    // 1. MPSI 본사 진행상태가 명시되어 있는 경우 본사 상태 우선 동기화
+    if (item.status === "양산계약확정" || item.status === "단가합의완료" || item.status === "원가검토중" || item.status === "반려/미성사") {
       return item.status;
     }
-    // 2. MPSI 본사 진행상태가 원가검토중인 경우
-    if (item.status === "원가검토중") {
-      return "원가검토중";
-    }
-    // 3. 자사 제출 내역 확인
+    // 2. 자사 제출 내역 확인
     const myQuote = getMyVendorQuote(item);
     if (myQuote) {
       if (myQuote.status === "수주확정") return "단가합의완료";
       if (myQuote.status === "검토협의") return "원가검토중";
-      if (myQuote.status === "반려/미성사") return item.status || "외주견적제출";
+      if (myQuote.status === "반려/미성사") return "반려/미성사";
       return item.status || "외주견적제출";
     }
-    // 4. 자사가 아직 미제출한 경우 -> "견적요청"
+    // 3. 자사가 아직 미제출한 경우 -> "견적요청"
     return item.status || "견적요청";
   };
 
@@ -370,6 +366,13 @@ export default function VendorMassQuotationPage() {
           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-300">
             <CheckCircle2 className="h-3 w-3 text-emerald-600" />
             양산계약확정 (수주)
+          </span>
+        );
+      case "반려/미성사":
+        return (
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border border-rose-300">
+            <XCircle className="h-3 w-3 text-rose-600" />
+            반려·미성사
           </span>
         );
       default:
@@ -441,10 +444,11 @@ export default function VendorMassQuotationPage() {
           >
             <option value="ALL">전체 상태</option>
             <option value="견적요청">견적요청 (작성요망)</option>
-            <option value="외주견적제출">견적제출완료</option>
-            <option value="원가검토중">MPSI 원가협의중</option>
+            <option value="외주견적제출">외주견적제출</option>
+            <option value="원가검토중">원가검토/단가협의중</option>
             <option value="단가합의완료">단가합의완료</option>
             <option value="양산계약확정">양산계약확정</option>
+            <option value="반려/미성사">반려·미성사</option>
           </select>
 
           {/* 일자 기준 셀렉터 */}

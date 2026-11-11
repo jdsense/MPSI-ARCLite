@@ -3,7 +3,7 @@
 import React, { useState, useRef, useEffect } from "react";
 import { 
   Search, RefreshCw, Plus, Eye, 
-  CheckCircle2, AlertCircle, 
+  CheckCircle2, AlertCircle, XCircle,
   Building2, Send, Download, X, Layers, Upload,
   Paperclip, FileSpreadsheet, Trash2,
   Calendar, Package, Sparkles, MessageSquare,
@@ -68,37 +68,47 @@ export default function MassProductionQuotationPage() {
   // 댓글 입력 상태
   const [newComment, setNewComment] = useState("");
 
-  // 신규 등록 폼 상태
-  const [newForm, setNewForm] = useState({
+  // 빈 신규 등록 폼 생성 (프로젝트 미선택 시 모든 값 비움)
+  const getEmptyNewForm = () => ({
     productionType: "OUTSOURCING" as "OUTSOURCING" | "IN_HOUSE",
-    projectNo: "MI26001P0",
-    projectName: "현대 NT5 도어 트림 모듈",
+    projectNo: "",
+    projectName: "",
     productName: "",
-    customerName: "현대자동차 (1차사)",
+    customerName: "",
     vendorName: "(주)뉴몰드",
     assignedVendors: ["전체 업체"] as string[], // 견적 요청 대상 사출처 목록
-    targetMassApprovalDate: "2026-08-30",       // 양산 승인 납기일
-    resinSpec: "PP-TD20",
-    resinPricePerKg: 2800,
-    partWeightGram: 320,
-    runnerWeightGram: 35,
-    cavity: "1*2 Cavity",
-    machineTonnage: "650T",
-    targetCycleTime: 36,
-    sph: 100,
-    monthlyVolume: 25000,
-    materialCost: 994,
-    processingCost: 720,
-    packagingCost: 150,
-    logisticsCost: 136,
+    targetMassApprovalDate: "",                 // 양산 승인 납기일
+    resinSpec: "",
+    resinPricePerKg: 0,
+    partWeightGram: 0,
+    runnerWeightGram: 0,
+    cavity: "",
+    machineTonnage: "",
+    targetCycleTime: 0,
+    sph: 0,
+    monthlyVolume: 0,
+    materialCost: 0,
+    processingCost: 0,
+    packagingCost: 0,
+    logisticsCost: 0,
     finalUnitPrice: 0,
     estimateFileName: "",
     estimateFileSize: "",
     notes: ""
   });
 
+  // 신규 등록 폼 상태 (프로젝트 미선택 시 기본 빈 상태)
+  const [newForm, setNewForm] = useState(getEmptyNewForm());
+
   // 프로젝트 선택 연동 (직접 입력 없이 등록된 프로젝트 선택만 허용)
   const [selectedProjectNo, setSelectedProjectNo] = useState<string>("");
+
+  // 신규 모달 열기 시 폼 초기화
+  const handleOpenNewModal = () => {
+    setSelectedProjectNo("");
+    setNewForm(getEmptyNewForm());
+    setIsNewModalOpen(true);
+  };
 
   // estimates 변경 시 열려 있는 selectedItem 동기화
   useEffect(() => {
@@ -113,33 +123,7 @@ export default function MassProductionQuotationPage() {
   const handleSelectProject = (pNo: string) => {
     setSelectedProjectNo(pNo);
     if (!pNo) {
-      setNewForm({
-        productionType: "OUTSOURCING",
-        projectNo: "",
-        projectName: "",
-        productName: "",
-        customerName: "",
-        vendorName: "(주)뉴몰드",
-        assignedVendors: ["전체 업체"],
-        targetMassApprovalDate: "2026-08-30",
-        resinSpec: "",
-        resinPricePerKg: 0,
-        partWeightGram: 0,
-        runnerWeightGram: 0,
-        cavity: "",
-        machineTonnage: "",
-        targetCycleTime: 0,
-        sph: 0,
-        monthlyVolume: 0,
-        materialCost: 0,
-        processingCost: 0,
-        packagingCost: 0,
-        logisticsCost: 0,
-        finalUnitPrice: 0,
-        estimateFileName: "",
-        estimateFileSize: "",
-        notes: ""
-      });
+      setNewForm(getEmptyNewForm());
       return;
     }
 
@@ -481,8 +465,12 @@ export default function MassProductionQuotationPage() {
       } else if (newQuoteStatus === "검토협의") {
         setDraftStatus("원가검토중");
       } else if (newQuoteStatus === "반려/미성사") {
-        const hasPending = updated.some((vq) => vq.status === "제출완료" || vq.status === "검토협의");
-        setDraftStatus(hasPending ? "원가검토중" : "외주견적제출");
+        const hasPendingOrReview = updated.some((vq) => vq.status === "제출완료" || vq.status === "검토협의");
+        if (!hasPendingOrReview) {
+          setDraftStatus("반려/미성사");
+        } else {
+          setDraftStatus("원가검토중");
+        }
       } else {
         setDraftStatus("외주견적제출");
       }
@@ -526,10 +514,11 @@ export default function MassProductionQuotationPage() {
           targetRole: "VENDOR_MASS",
           targetVendorName: winner.vendorName,
         });
+      } else if (draftStatus === "반려/미성사" || (draftQuotes.length > 0 && draftQuotes.every((vq) => vq.status === "반려/미성사"))) {
+        nextStatus = "반려/미성사";
+        nextUnitPrice = 0;
       } else {
-        if (draftQuotes.length > 0 && draftQuotes.every((vq) => vq.status === "반려/미성사")) {
-          nextUnitPrice = 0;
-        }
+        nextStatus = draftStatus;
       }
 
       const mergedItem: MassProductionEstimateItem = {
@@ -698,6 +687,13 @@ export default function MassProductionQuotationPage() {
             양산계약확정
           </span>
         );
+      case "반려/미성사":
+        return (
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border border-rose-300">
+            <XCircle className="h-3 w-3 text-rose-600" />
+            반려·미성사
+          </span>
+        );
       default:
         return <span className="text-zinc-500">{status}</span>;
     }
@@ -738,7 +734,7 @@ export default function MassProductionQuotationPage() {
           </div>
           <div className="flex items-center gap-1.5">
             <Button 
-              onClick={() => setIsNewModalOpen(true)}
+              onClick={handleOpenNewModal}
               className="h-8 px-3 bg-blue-600 hover:bg-blue-700 text-white text-xs gap-1 font-bold shadow-xs cursor-pointer"
             >
               <Plus className="h-3.5 w-3.5" />
@@ -800,6 +796,7 @@ export default function MassProductionQuotationPage() {
               <option value="원가검토중">원가검토/단가협의중</option>
               <option value="단가합의완료">단가합의완료</option>
               <option value="양산계약확정">양산계약확정</option>
+              <option value="반려/미성사">반려·미성사</option>
             </select>
           </div>
           <div className="flex items-end justify-end gap-1.5">
@@ -844,7 +841,7 @@ export default function MassProductionQuotationPage() {
               엑셀 다운로드
             </Button>
             <Button 
-              onClick={() => setIsNewModalOpen(true)}
+              onClick={handleOpenNewModal}
               className="h-7 px-3 bg-blue-600 hover:bg-blue-700 text-white text-xs gap-1 cursor-pointer font-semibold"
             >
               <Plus className="h-3.5 w-3.5" />
