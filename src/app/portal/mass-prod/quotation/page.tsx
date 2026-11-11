@@ -1409,30 +1409,7 @@ export default function MassProductionQuotationPage() {
                 </div>
               </div>
 
-              {/* 자체생산 시 자동 원가 계산 표시 */}
-              {newForm.productionType === "IN_HOUSE" ? (
-                <div className="p-3 bg-blue-50/60 rounded-md border border-blue-200 flex flex-col gap-2">
-                  <span className="font-bold text-blue-800">MPSI 사내 원가 산출 (EA당)</span>
-                  <div className="grid grid-cols-4 gap-2 text-center">
-                    <div className="bg-white p-1.5 rounded border">
-                      <span className="text-[10px] text-zinc-400 block">재료비</span>
-                      <span className="font-bold font-mono">{newForm.materialCost}원</span>
-                    </div>
-                    <div className="bg-white p-1.5 rounded border">
-                      <span className="text-[10px] text-zinc-400 block">가공비</span>
-                      <span className="font-bold font-mono">{newForm.processingCost}원</span>
-                    </div>
-                    <div className="bg-white p-1.5 rounded border">
-                      <span className="text-[10px] text-zinc-400 block">포장/물류</span>
-                      <span className="font-bold font-mono">{newForm.packagingCost + newForm.logisticsCost}원</span>
-                    </div>
-                    <div className="bg-blue-100 p-1.5 rounded border border-blue-300">
-                      <span className="text-[10px] text-blue-600 block font-bold">최종 단가</span>
-                      <span className="font-bold font-mono text-blue-700">{newForm.finalUnitPrice}원</span>
-                    </div>
-                  </div>
-                </div>
-              ) : null}
+
 
               {/* 자체생산 시 견적서 파일 첨부 */}
               {newForm.productionType === "IN_HOUSE" && (
