@@ -309,7 +309,7 @@ export default function MassValidationPage() {
     setUploadModalItem({ checkId, category, currentFile, currentFileUrl });
     setUploadForm({
       fileName: currentFile || "",
-      fileSize: "2.4 MB",
+      fileSize: currentFile ? "첨부 완료" : "",
       fileUrl: currentFileUrl || "",
       memo: "",
     });

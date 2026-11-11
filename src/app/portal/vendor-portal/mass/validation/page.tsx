@@ -309,10 +309,6 @@ export default function VendorMassValidationPage() {
 
   // 2-6 성적서 업로드 모달 열기
   const handleOpenUploadModal = (checkId: string, category: string, currentFile?: string, currentFileUrl?: string) => {
-    const today = new Date();
-    const dateStr = `${today.getFullYear()}.${String(today.getMonth() + 1).padStart(2, "0")}.${String(today.getDate()).padStart(2, "0")} ${String(today.getHours()).padStart(2, "0")}:${String(today.getMinutes()).padStart(2, "0")}`;
-    const defaultMemo = `${category} 검토 완료 및 성적서 등록`;
-
     setUploadModalItem({
       checkId,
       category,
@@ -320,10 +316,10 @@ export default function VendorMassValidationPage() {
       currentFileUrl,
     });
     setUploadForm({
-      fileName: currentFile || `${selectedProject ? getProjectNoDisplay(selectedProject) : "MI26005P0"}_${activeTab}_${category}.pdf`,
-      fileSize: "2.3 MB",
+      fileName: currentFile || "",
+      fileSize: currentFile ? "첨부 완료" : "",
       fileUrl: currentFileUrl || "",
-      memo: defaultMemo,
+      memo: "",
     });
   };
 
@@ -381,7 +377,7 @@ export default function VendorMassValidationPage() {
         ? {
             ...c,
             attachedReport: uploadForm.fileName,
-            attachedReportSize: uploadForm.fileSize || "2.1 MB",
+            attachedReportSize: uploadForm.fileSize || "첨부 완료",
             attachedReportUrl: uploadForm.fileUrl,
             uploadMemo: uploadForm.memo,
             uploadAuthor: authorName,
@@ -396,7 +392,7 @@ export default function VendorMassValidationPage() {
       id: Date.now().toString(),
       category: uploadModalItem.category,
       fileName: uploadForm.fileName,
-      fileSize: uploadForm.fileSize || "2.1 MB",
+      fileSize: uploadForm.fileSize || "첨부 완료",
       fileUrl: uploadForm.fileUrl,
       memo: uploadForm.memo,
       author: authorName,
@@ -1319,7 +1315,7 @@ export default function VendorMassValidationPage() {
                         <span className="font-bold text-zinc-800 dark:text-zinc-200 text-xs block truncate">
                           {uploadForm.fileName}
                         </span>
-                        <span className="text-[10px] text-zinc-400">{uploadForm.fileSize || "2.1 MB"}</span>
+                        <span className="text-[10px] text-zinc-400">{uploadForm.fileSize || "첨부 완료"}</span>
                       </div>
                     </div>
                   ) : (
