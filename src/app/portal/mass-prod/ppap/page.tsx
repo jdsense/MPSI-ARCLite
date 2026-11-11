@@ -1035,7 +1035,7 @@ export default function MassProdPPAPPage() {
                   className="h-8 px-4 text-xs bg-[#059669] hover:bg-[#047857] text-white gap-1.5 font-bold shadow-xs cursor-pointer"
                 >
                   <CheckCircle2 className="h-4 w-4" />
-                  [Pass] 최종 양산 승인 (PO 생성 연동)
+                  [Pass] 최종 양산 승인
                 </Button>
               </div>
             </div>
