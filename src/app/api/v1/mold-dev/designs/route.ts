@@ -211,7 +211,75 @@ export async function GET(request: NextRequest) {
     sql += ` ORDER BY "DesignSequenceNo" DESC`;
 
     const res = await query(sql, params);
-    const data = res.rows.map(mapRowToDesignItem);
+
+    // ProjectMaster 및 MpsiMoldQuotation 정보 일괄 조회하여 실제 스펙 보강
+    const pids = Array.from(new Set(res.rows.map((r: any) => r.ProjectID || r.DesignID).filter(Boolean)));
+    const pmMap: Record<string, any> = {};
+    const mqMap: Record<string, any> = {};
+
+    if (pids.length > 0) {
+      try {
+        const pmRes = await query(
+          `SELECT "ProjectID", "ProjectName", "Note" FROM "ProjectMaster" WHERE "ProjectID" = ANY($1)`,
+          [pids]
+        );
+        for (const pr of pmRes.rows) {
+          let pNote: any = {};
+          try { pNote = JSON.parse(pr.Note || "{}"); } catch {}
+          pmMap[pr.ProjectID] = {
+            ...pNote,
+            projectNameCol: pr.ProjectName,
+          };
+        }
+      } catch (pmErr) {
+        console.warn("[Designs GET pmMap Warning]", pmErr);
+      }
+
+      try {
+        const mqRes = await query(
+          `SELECT "ProjectID", "FinalNegotiatedAmount", "Note" FROM "MpsiMoldQuotation" WHERE "ProjectID" = ANY($1)`,
+          [pids]
+        );
+        for (const qr of mqRes.rows) {
+          let qNote: any = {};
+          try { qNote = JSON.parse(qr.Note || "{}"); } catch {}
+          mqMap[qr.ProjectID] = {
+            ...qNote,
+            finalAmount: Number(qr.FinalNegotiatedAmount || 0),
+          };
+        }
+      } catch (mqErr) {
+        console.warn("[Designs GET mqMap Warning]", mqErr);
+      }
+    }
+
+    const data = res.rows.map((row: any) => {
+      const item = mapRowToDesignItem(row);
+      const pid = item.projectNo;
+      const pmInfo = pmMap[pid] || {};
+      const mqInfo = mqMap[pid] || {};
+
+      const actualMoldNo = pmInfo.moldNo || (item.moldNo && !item.moldNo.endsWith("P0M") ? item.moldNo : `${pid.replace(/P0$/, "")}M`);
+      const actualDegree = pmInfo.moldDegree || mqInfo.moldDegree || item.moldDegree || "M1";
+      const actualChange = pmInfo.changeType || mqInfo.changeType || item.changeType || "N001";
+      const actualProjectName = pmInfo.projectName || mqInfo.projectName || item.projectName || "";
+      const actualProductName = pmInfo.productName || pmInfo.projectNameCol || mqInfo.productName || item.productName || "";
+      const actualCustomer = pmInfo.customerName || mqInfo.customerName || item.customerName || "";
+      const actualVendor = mqInfo.vendorName || pmInfo.moldVendor || item.moldVendor || "우성정공(주)";
+      const actualAmount = Number(item.moldPoAmount || 0) > 0 ? Number(item.moldPoAmount) : (mqInfo.finalAmount || 0);
+
+      return {
+        ...item,
+        moldNo: actualMoldNo,
+        moldDegree: actualDegree,
+        changeType: actualChange,
+        projectName: actualProjectName,
+        productName: actualProductName,
+        customerName: actualCustomer,
+        moldVendor: actualVendor,
+        moldPoAmount: actualAmount,
+      };
+    });
 
     return NextResponse.json({
       success: true,

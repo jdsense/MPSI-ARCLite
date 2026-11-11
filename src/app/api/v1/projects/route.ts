@@ -668,6 +668,66 @@ export async function PUT(request: NextRequest) {
     ];
 
     const res = await query(updateSql, params);
+
+    // 하위 연계 대장(MpsiMoldQuotation, MpsiMoldDesign, MpsiMoldManufacture, MpsiMoldTrial) 자동 Cascade 동기화
+    try {
+      const pjtId = body.projectNo;
+      const syncFields: Record<string, any> = {};
+      if (body.moldDegree !== undefined) syncFields.moldDegree = body.moldDegree;
+      if (body.moldNo !== undefined) syncFields.moldNo = body.moldNo;
+      if (body.changeType !== undefined) syncFields.changeType = body.changeType;
+      if (body.productName !== undefined) syncFields.productName = body.productName;
+      if (body.projectName !== undefined) syncFields.projectName = body.projectName;
+      if (body.customerName !== undefined) syncFields.customerName = body.customerName;
+      if (body.moldVendor !== undefined) syncFields.moldVendor = body.moldVendor;
+      if (body.massVendor !== undefined) syncFields.massVendor = body.massVendor;
+      if (body.cavity !== undefined) syncFields.cavity = body.cavity;
+      if (body.material !== undefined) syncFields.material = body.material;
+      if (body.moldMaterial !== undefined) syncFields.moldMaterial = body.moldMaterial;
+      if (body.targetT1Date !== undefined) syncFields.targetT1Date = body.targetT1Date;
+      if (body.moldDeliveryDate !== undefined) syncFields.moldDeliveryDate = body.moldDeliveryDate;
+
+      if (Object.keys(syncFields).length > 0) {
+        // 1. MpsiMoldQuotation 동기화
+        const mqRes = await query(`SELECT "QuotationSequenceNo", "Note" FROM "MpsiMoldQuotation" WHERE "ProjectID" = $1`, [pjtId]);
+        for (const mqRow of mqRes.rows) {
+          let n = {};
+          try { n = JSON.parse(mqRow.Note || '{}'); } catch {}
+          Object.assign(n, syncFields);
+          await query(`UPDATE "MpsiMoldQuotation" SET "Note" = $1, "ModificationDateTime" = NOW() WHERE "QuotationSequenceNo" = $2`, [JSON.stringify(n), mqRow.QuotationSequenceNo]);
+        }
+
+        // 2. MpsiMoldDesign 동기화
+        const mdRes = await query(`SELECT "DesignSequenceNo", "Note" FROM "MpsiMoldDesign" WHERE "ProjectID" = $1`, [pjtId]);
+        for (const mdRow of mdRes.rows) {
+          let n = {};
+          try { n = JSON.parse(mdRow.Note || '{}'); } catch {}
+          Object.assign(n, syncFields);
+          await query(`UPDATE "MpsiMoldDesign" SET "Note" = $1 WHERE "DesignSequenceNo" = $2`, [JSON.stringify(n), mdRow.DesignSequenceNo]);
+        }
+
+        // 3. MpsiMoldManufacture 동기화
+        const mfRes = await query(`SELECT "ManufactureSequenceNo", "Note" FROM "MpsiMoldManufacture" WHERE "ProjectID" = $1`, [pjtId]);
+        for (const mfRow of mfRes.rows) {
+          let n = {};
+          try { n = JSON.parse(mfRow.Note || '{}'); } catch {}
+          Object.assign(n, syncFields);
+          await query(`UPDATE "MpsiMoldManufacture" SET "Note" = $1, "ModificationDateTime" = NOW() WHERE "ManufactureSequenceNo" = $2`, [JSON.stringify(n), mfRow.ManufactureSequenceNo]);
+        }
+
+        // 4. MpsiMoldTrial 동기화
+        const mtRes = await query(`SELECT "TrialSequenceNo", "Note" FROM "MpsiMoldTrial" WHERE "ProjectID" = $1`, [pjtId]);
+        for (const mtRow of mtRes.rows) {
+          let n = {};
+          try { n = JSON.parse(mtRow.Note || '{}'); } catch {}
+          Object.assign(n, syncFields);
+          await query(`UPDATE "MpsiMoldTrial" SET "Note" = $1 WHERE "TrialSequenceNo" = $2`, [JSON.stringify(n), mtRow.TrialSequenceNo]);
+        }
+      }
+    } catch (cascadeErr) {
+      console.warn('[PUT /api/v1/projects Cascade Sync Warning]', cascadeErr);
+    }
+
     return NextResponse.json({
       success: true,
       message: '프로젝트가 성공적으로 갱신되었습니다.',
