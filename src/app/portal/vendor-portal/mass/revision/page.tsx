@@ -30,12 +30,20 @@ export default function VendorMassPmRevisionPage() {
     updatePmSpecs, 
     savePmRoundData,
     changeProjectState,
-    addMemo 
+    addMemo,
+    syncFromMasterProjects
   } = usePmRevisionStore();
   const { projects: masterProjects } = useProjectMaster();
   const { addNotification } = useNotificationStore();
   const { vendorName } = useAuthRole();
   const currentVendor = vendorName || "(주)뉴몰드";
+
+  // 프로젝트 마스터(masterProjects)의 설변(E00..) 프로젝트 자동 동기화
+  React.useEffect(() => {
+    if (masterProjects && masterProjects.length > 0 && syncFromMasterProjects) {
+      syncFromMasterProjects(masterProjects);
+    }
+  }, [masterProjects, syncFromMasterProjects]);
 
   // 검색 및 필터 상태
   const [filterKeyword, setFilterKeyword] = useState("");
@@ -86,15 +94,107 @@ export default function VendorMassPmRevisionPage() {
     setTimeout(() => setToastMessage(null), 3500);
   };
 
+  // 외주처 명칭 정규화 매칭 함수
+  const isVendorMatch = (massVendor: string = "", curVendor: string = "") => {
+    if (!curVendor || !massVendor) return true;
+    const normA = massVendor.replace(/[\(\)㈜\s]/g, "").toLowerCase();
+    const normB = curVendor.replace(/[\(\)㈜\s]/g, "").toLowerCase();
+    if (normA.includes(normB) || normB.includes(normA)) return true;
+    if (
+      (normA.includes("뉴몰드") || normA.includes("newmold") || normA.includes("newmod")) &&
+      (normB.includes("뉴몰드") || normB.includes("newmold") || normB.includes("newmod"))
+    ) {
+      return true;
+    }
+    return false;
+  };
+
+  // [핵심] masterProjects의 설변(E00..) 프로젝트들과 items를 안전하게 통합
+  const combinedItems: PmRevisionProjectItem[] = React.useMemo(() => {
+    const list = [...items];
+    if (Array.isArray(masterProjects)) {
+      masterProjects.forEach((p) => {
+        const cType = String(p.changeType || "").toUpperCase();
+        const rCode = String(p.changeType || "E001").toUpperCase();
+        if (cType.startsWith("E")) {
+          const idx = list.findIndex((it) => it.projectNo === p.projectNo);
+          if (idx < 0) {
+            list.push({
+              id: typeof p.id === "number" ? p.id + 10000 : Date.now(),
+              projectNo: p.projectNo,
+              revisionCode: cType || rCode,
+              quotationKind: "(금형견적, 사출견적)",
+              projectName: p.projectName || "설변 프로젝트",
+              productName: p.productName || "제품명",
+              partNo: p.partNo || "-",
+              moldNo: p.moldNo || `${p.projectNo}M`,
+              customerName: p.customerName || "현대자동차",
+              cavity: p.cavity || "1*1",
+              moldVendor: p.moldVendor || "우성정공(주)",
+              massVendor: p.massVendor || "(주)뉴몰드",
+              currentState: "설변 중",
+              moldModStartDate: p.orderDate || p.kickoffDate || p.registeredDate || "공급업체입력",
+              progressProcess: p.currentStep >= 13 ? "양산 납품 중" : p.currentStep >= 11 ? "시양산 진행 중" : "가공 중",
+              moldModEndDate: p.moldDeliveryDate || p.targetT1Date || "공급업체입력",
+              pilotMassDate: p.targetT1Date || "2026-11-11",
+              ppapSubmitDate: p.targetMassDate || "자체검증",
+              mpsiApprovalDate: p.targetMassDate || "자체검증",
+              massStartDate: p.massStartDate || p.targetMassDate || "2026-12-20",
+              revisionMassStartDate: p.massStartDate || p.targetMassDate || "2026-12-20",
+              revisionMemos: [],
+              pmData: {
+                currentRound: 1,
+                currentShots: 40000,
+                pmReason: "1차 정기 PM (점검 및 세척)",
+                lastPmDate: p.registeredDate || "2026. 10.15",
+                lastPmShots: 0,
+                massStartDate: p.massStartDate || "2026. 12.20",
+                warrantyShots: 300000,
+                pmCycleShots: 40000,
+                activeProcess: "금형 분해 점검 중",
+                schedule: {
+                  planStartDate: p.registeredDate || "2026-10-15",
+                  planEndDate: p.registeredDate || "2026-10-16",
+                  planMassStartDate: p.targetMassDate || "2026-12-20",
+                  actualStartDate: p.registeredDate || "2026-10-15",
+                  actualEndDate: p.registeredDate || "2026-10-16",
+                  actualMassStartDate: p.targetMassDate || "2026-12-20",
+                },
+                roundsData: {},
+                memos: []
+              },
+              historyList: [
+                {
+                  revisionCode: cType || rCode,
+                  revisionDate: p.registeredDate || "2026-10-15",
+                  title: `${cType || rCode} 설계변경 - ${p.projectName || p.productName}`,
+                  modelReview: "설계변경 3D CAD 모델 검토 승인 완료",
+                  moldCostQuote: "금형 수정비 및 사출 단가 변동 견적 검토",
+                  moldTrialReport: `${p.moldVendor || "우성정공(주)"} 금형 수정 및 가공 진행`,
+                  massValidationReport: "금형 이관 후 시양산 및 재양산 승인 진행 예정",
+                  author: p.massVendor || "(주)뉴몰드",
+                  memo: `${cType || rCode} 설계변경 수주확정 및 개발 착수`,
+                  createdAt: p.updatedAt || "2026.10.15 09:30"
+                }
+              ],
+              updatedAt: p.updatedAt || "2026-10-15 09:30"
+            });
+          }
+        }
+      });
+    }
+    return list;
+  }, [items, masterProjects]);
+
   // 외주처 배정 프로젝트 필터링
-  const vendorProjects = items.filter(
-    (item) => item.massVendor.includes(currentVendor) || currentVendor.includes(item.massVendor)
+  const vendorProjects = combinedItems.filter(
+    (item) => isVendorMatch(item.massVendor, currentVendor)
   );
 
   // [핵심 요구사항 1] 신작/설변 항목은 MPSI가 설변설계(E채번)로 등록한 것만 불러옴
   const filteredProjects = vendorProjects.filter((item) => {
     // MPSI가 설변설계로 등록한 프로젝트만 필터 (E001, E002 등 E채번 및 설변 중)
-    const isMpsiRevisionOnly = item.revisionCode.startsWith("E") || item.currentState === "설변 중";
+    const isMpsiRevisionOnly = (item.revisionCode && item.revisionCode.startsWith("E")) || item.currentState === "설변 중";
     if (!isMpsiRevisionOnly) return false;
 
     const matchKey = filterKeyword

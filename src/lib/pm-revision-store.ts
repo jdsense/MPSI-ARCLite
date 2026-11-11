@@ -452,7 +452,7 @@ export function usePmRevisionStore() {
       if (stored) {
         const parsed = JSON.parse(stored);
         if (Array.isArray(parsed)) {
-          const cleaned = parsed.filter((it: any) => !it.projectName?.includes("현대 NT7") && it.projectNo !== "MI26003P0" && it.projectNo !== "MI26001P0");
+          const cleaned = parsed.filter((it: any) => !it.projectName?.includes("현대 NT7") && it.projectNo !== "MI26003P0");
           setItems(cleaned);
         } else {
           setItems([]);
@@ -888,6 +888,129 @@ export function usePmRevisionStore() {
     saveItems(nextItems);
   };
 
+  // 프로젝트 마스터(masterProjects)의 E채번(E001, E002 등) 설변 프로젝트들을 PM/설변 스토어에 동기화
+  const syncFromMasterProjects = (masterProjects: any[]) => {
+    if (!Array.isArray(masterProjects) || masterProjects.length === 0) return;
+
+    // 설변(E00..)으로 시작하거나 revisionCode가 E로 시작하는 프로젝트 필터
+    const eProjects = masterProjects.filter((p: any) => {
+      const cType = String(p.changeType || "").toUpperCase();
+      const rCode = String(p.revisionCode || "").toUpperCase();
+      return cType.startsWith("E") || rCode.startsWith("E");
+    });
+
+    if (eProjects.length === 0) return;
+
+    setItems((prevItems) => {
+      let hasChanges = false;
+      const merged = [...prevItems];
+
+      eProjects.forEach((p: any) => {
+        const existingIdx = merged.findIndex((m) => m.projectNo === p.projectNo);
+        const revCode = (p.changeType && String(p.changeType).toUpperCase().startsWith("E"))
+          ? String(p.changeType).toUpperCase()
+          : (p.revisionCode || "E001");
+
+        if (existingIdx >= 0) {
+          const existing = merged[existingIdx];
+          const updated: PmRevisionProjectItem = {
+            ...existing,
+            revisionCode: revCode,
+            projectName: p.projectName || existing.projectName,
+            productName: p.productName || existing.productName,
+            partNo: p.partNo || existing.partNo,
+            moldNo: p.moldNo || existing.moldNo,
+            customerName: p.customerName || existing.customerName,
+            cavity: p.cavity || existing.cavity,
+            moldVendor: p.moldVendor || existing.moldVendor,
+            massVendor: p.massVendor || existing.massVendor,
+            pilotMassDate: existing.pilotMassDate || p.targetT1Date || "2026-11-11",
+            ppapSubmitDate: existing.ppapSubmitDate || p.targetMassDate || "자체검증",
+            mpsiApprovalDate: existing.mpsiApprovalDate || p.targetMassDate || "자체검증",
+            massStartDate: existing.massStartDate || p.massStartDate || p.targetMassDate || "2026-12-20",
+          };
+          if (JSON.stringify(existing) !== JSON.stringify(updated)) {
+            merged[existingIdx] = updated;
+            hasChanges = true;
+          }
+        } else {
+          // 신규 설변 프로젝트 자동 등록
+          const newItem: PmRevisionProjectItem = {
+            id: typeof p.id === "number" ? p.id + 10000 : Date.now() + Math.floor(Math.random() * 1000),
+            projectNo: p.projectNo,
+            revisionCode: revCode,
+            quotationKind: "(금형견적, 사출견적)",
+            projectName: p.projectName || "설변 프로젝트",
+            productName: p.productName || "제품명",
+            partNo: p.partNo || "-",
+            moldNo: p.moldNo || `${p.projectNo}M`,
+            customerName: p.customerName || "현대자동차",
+            cavity: p.cavity || "1*1",
+            moldVendor: p.moldVendor || "우성정공(주)",
+            massVendor: p.massVendor || "(주)뉴몰드",
+            currentState: "설변 중",
+            moldModStartDate: p.orderDate || p.kickoffDate || p.registeredDate || "공급업체입력",
+            progressProcess: p.currentStep >= 13 ? "양산 납품 중" : p.currentStep >= 11 ? "시양산 진행 중" : "가공 중",
+            moldModEndDate: p.moldDeliveryDate || p.targetT1Date || "공급업체입력",
+            pilotMassDate: p.targetT1Date || "2026-11-11",
+            ppapSubmitDate: p.targetMassDate || "자체검증",
+            mpsiApprovalDate: p.targetMassDate || "자체검증",
+            massStartDate: p.massStartDate || p.targetMassDate || "2026-12-20",
+            revisionMassStartDate: p.massStartDate || p.targetMassDate || "2026-12-20",
+            revisionMemos: [],
+            pmData: {
+              currentRound: 1,
+              currentShots: 40000,
+              pmReason: "1차 정기 PM (점검 및 세척)",
+              lastPmDate: p.registeredDate || "2026. 10.15",
+              lastPmShots: 0,
+              massStartDate: p.massStartDate || "2026. 12.20",
+              warrantyShots: 300000,
+              pmCycleShots: 40000,
+              activeProcess: "금형 분해 점검 중",
+              schedule: {
+                planStartDate: p.registeredDate || "2026-10-15",
+                planEndDate: p.registeredDate || "2026-10-16",
+                planMassStartDate: p.targetMassDate || "2026-12-20",
+                actualStartDate: p.registeredDate || "2026-10-15",
+                actualEndDate: p.registeredDate || "2026-10-16",
+                actualMassStartDate: p.targetMassDate || "2026-12-20",
+              },
+              roundsData: {},
+              memos: []
+            },
+            historyList: [
+              {
+                revisionCode: revCode,
+                revisionDate: p.registeredDate || "2026-10-15",
+                title: `${revCode} 설계변경 - ${p.projectName || p.productName}`,
+                modelReview: "설계변경 3D CAD 모델 검토 승인 완료",
+                moldCostQuote: "금형 수정비 및 사출 단가 변동 견적 검토",
+                moldTrialReport: `${p.moldVendor || "우성정공(주)"} 금형 수정 및 가공 진행`,
+                massValidationReport: "금형 이관 후 시양산 및 재양산 승인 진행 예정",
+                author: p.massVendor || "(주)뉴몰드",
+                memo: `${revCode} 설계변경 수주확정 및 개발 착수`,
+                createdAt: p.updatedAt || "2026.10.15 09:30"
+              }
+            ],
+            updatedAt: p.updatedAt || "2026-10-15 09:30"
+          };
+          merged.push(newItem);
+          hasChanges = true;
+        }
+      });
+
+      if (hasChanges) {
+        try {
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(merged));
+        } catch (e) {
+          console.error("Failed to save synced PM revision items:", e);
+        }
+      }
+      return hasChanges ? merged : prevItems;
+    });
+  };
+
   const resetToInitial = () => {
     saveItems(INITIAL_PM_REVISION_DATA);
   };
@@ -902,6 +1025,7 @@ export function usePmRevisionStore() {
     savePmRoundData,
     changeProjectState,
     addMemo,
+    syncFromMasterProjects,
     resetToInitial
   };
 }
