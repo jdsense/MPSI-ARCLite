@@ -67,22 +67,9 @@ export default function VendorMoldTrialPage() {
   const [transferPlanDate, setTransferPlanDate] = useState("");
   const [transferActualDate, setTransferActualDate] = useState("");
 
-  // 신규 점검 항목 추가 폼
-  const [newCheckCategory, setNewCheckCategory] = useState<ChecklistItem["category"]>("치수 만족도");
-  const [newCheckDesc, setNewCheckDesc] = useState("");
-
   // 시사출 계획(일정)표 등록 모달 (2-1)
   const [isPlanModalOpen, setIsPlanModalOpen] = useState(false);
   const [tempPlanDate, setTempPlanDate] = useState("");
-
-  // 신규 차수($T_{n+1}$) 등록 팝업 모달 상태 (스크린샷 3)
-  const [isNewTrialModalOpen, setIsNewTrialModalOpen] = useState(false);
-  const [newInspector, setNewInspector] = useState(currentVendor);
-  const [newDimRes, setNewDimRes] = useState<"OK" | "NG">("OK");
-  const [newAppRes, setNewAppRes] = useState<"OK" | "NG">("OK");
-  const [newSpecRes, setNewSpecRes] = useState<"OK" | "NG">("OK");
-  const [newCycleTime, setNewCycleTime] = useState<number>(34);
-  const [newOpinion, setNewOpinion] = useState("");
 
   // 업무 이력 메모 입력 상태 (2-4, 2-13)
   const [memoTag, setMemoTag] = useState("시사출실적등록");
@@ -166,29 +153,6 @@ export default function VendorMoldTrialPage() {
     });
   };
 
-  // 차수 체크리스트 해결여부 토글
-  const handleToggleCheck = (checkId: string) => {
-    if (!currentRecord) return;
-    const updatedList = currentRecord.checklist.map((c) =>
-      c.id === checkId ? { ...c, isResolved: !c.isResolved } : c
-    );
-    updateCurrentRecord({ checklist: updatedList });
-  };
-
-  // 신규 체크리스트 항목 추가
-  const handleAddCheckItem = () => {
-    if (!newCheckDesc.trim() || !currentRecord) return;
-    const newItem: ChecklistItem = {
-      id: `chk_${Date.now()}`,
-      category: newCheckCategory,
-      description: newCheckDesc.trim(),
-      isResolved: false,
-    };
-    const nextList = [...currentRecord.checklist, newItem];
-    updateCurrentRecord({ checklist: nextList });
-    setNewCheckDesc("");
-    showToast("신규 점검 항목이 추가되었습니다.");
-  };
 
   // 보고서 파일 실제 업로드 트리거
   const handleTriggerUploadReport = (
@@ -358,38 +322,33 @@ export default function VendorMoldTrialPage() {
     showToast(`시사출 계획일자(${tempPlanDate})가 등록되었습니다.`);
   };
 
-  // 신규 차수 ($T_{n+1}$) 생성 핸들러 (스크린샷 3)
-  const handleSaveNewTrial = () => {
+  // 신규 차수 ($T_{n+1}$) 즉시 추가 핸들러 (모달 없이 바로 추가 & 이전 차수 데이터 연계 바인딩)
+  const handleAddNewTrialDirectly = () => {
     if (!selectedProject) return;
     const nextNum = editingTrials.length + 1;
     const nextDegree = `T${nextNum}`;
     const today = new Date().toISOString().split("T")[0];
 
+    // 직전 차수 데이터 (현재 활성 탭 또는 마지막 차수)
+    const prevRec = editingTrials.find((t) => t.trialDegree === activeTab) || editingTrials[editingTrials.length - 1];
+
     const newRec: TrialRecord = {
       trialDegree: nextDegree,
       trialDate: today,
-      inspector: newInspector || currentVendor,
-      dimResult: newDimRes,
-      appResult: newAppRes,
-      specResult: newSpecRes,
-      cycleTime: Number(newCycleTime) || 34,
-      targetCycleTime: editingTrials[0]?.targetCycleTime || 35,
+      inspector: prevRec?.inspector || currentVendor,
+      dimResult: prevRec?.dimResult || "OK",
+      dimReport: prevRec?.dimReport ? { ...prevRec.dimReport, uploadedAt: today } : undefined,
+      appResult: prevRec?.appResult || "OK",
+      appReport: prevRec?.appReport ? { ...prevRec.appReport, uploadedAt: today } : undefined,
+      specResult: prevRec?.specResult || "OK",
+      specReport: prevRec?.specReport ? { ...prevRec.specReport, uploadedAt: today } : undefined,
+      cycleTime: prevRec?.cycleTime ?? 34,
+      targetCycleTime: prevRec?.targetCycleTime ?? (editingTrials[0]?.targetCycleTime || 35),
+      condReport: prevRec?.condReport ? { ...prevRec.condReport, uploadedAt: today } : undefined,
       status: "육성 진행중",
-      checklist: [
-        {
-          id: `chk_${Date.now()}_1`,
-          category: "치수 만족도",
-          description: `${nextDegree} 성형품 CMM 3차원 정밀 계측 및 핵심공차 검증`,
-          isResolved: false,
-        },
-        {
-          id: `chk_${Date.now()}_2`,
-          category: "외관 만족도",
-          description: "외관 웰드라인, 싱크마크, 가스버닝 표면 품질 점검",
-          isResolved: false,
-        },
-      ],
-      opinion: newOpinion || `${nextDegree} 시사출 검사 및 개선 검증 실시`,
+      mpsiDecision: "검토중",
+      checklist: [],
+      opinion: prevRec?.opinion || `${nextDegree} 시사출 검사 및 개선 검증 실시`,
     };
 
     setEditingTrials((prev) => [...prev, newRec]);
@@ -399,12 +358,11 @@ export default function VendorMoldTrialPage() {
       authorId: "vendor-dev",
       authorName: currentVendor,
       company: currentVendor,
-      tag: `${nextDegree}결과등록`,
-      content: `${nextDegree} 시사출 결과 등록 완료 (치수:${newDimRes}, 외관:${newAppRes}, 사양:${newSpecRes}, C/T:${newCycleTime}초)`,
+      tag: `${nextDegree}차수추가`,
+      content: `[차수 추가] ${nextDegree} 시사출 차수가 신규 추가되었습니다. (이전 차수(${prevRec?.trialDegree || "T1"}) 검사 데이터 연계)`,
     });
 
-    setIsNewTrialModalOpen(false);
-    showToast(`신규 ${nextDegree} 시사출 차수가 등록되었습니다.`);
+    showToast(`신규 ${nextDegree} 시사출 차수가 추가되었습니다.`);
   };
 
   // 업무 이력 메모 수동 작성 (2-4, 2-13)
@@ -897,15 +855,7 @@ export default function VendorMoldTrialPage() {
                 {/* 버튼 그룹: 다음 차수 등록 (요청사항: 시사출 계획(일정)표 등록 버튼 삭제) */}
                 <div className="flex items-center gap-2 shrink-0">
                   <Button
-                    onClick={() => {
-                      setNewInspector(currentVendor);
-                      setNewDimRes("OK");
-                      setNewAppRes("OK");
-                      setNewSpecRes("OK");
-                      setNewCycleTime(editingTrials[0]?.targetCycleTime || 34);
-                      setNewOpinion("");
-                      setIsNewTrialModalOpen(true);
-                    }}
+                    onClick={handleAddNewTrialDirectly}
                     size="sm"
                     className="h-7 px-2.5 bg-purple-600 hover:bg-purple-700 text-white gap-1 text-xs font-bold cursor-pointer"
                   >
@@ -955,17 +905,9 @@ export default function VendorMoldTrialPage() {
                 <Button
                   size="sm"
                   variant="outline"
-                  onClick={() => {
-                    setNewInspector(currentVendor);
-                    setNewDimRes("OK");
-                    setNewAppRes("OK");
-                    setNewSpecRes("OK");
-                    setNewCycleTime(editingTrials[0]?.targetCycleTime || 34);
-                    setNewOpinion("");
-                    setIsNewTrialModalOpen(true);
-                  }}
+                  onClick={handleAddNewTrialDirectly}
                   className="h-7 px-2 text-xs bg-white dark:bg-zinc-800 text-purple-700 dark:text-purple-300 border-dashed border-purple-300 hover:bg-purple-50 cursor-pointer"
-                  title="새로운 시사출 차수(T+1)를 추가합니다"
+                  title="새로운 시사출 차수(T+1)를 바로 추가합니다 (이전 차수 데이터 연계)"
                 >
                   <Plus className="h-3.5 w-3.5 mr-1" />
                   차수 추가
@@ -1362,97 +1304,6 @@ export default function VendorMoldTrialPage() {
                     </div>
                   </div>
 
-                  {/* 차수별 체크리스트 & 트러블슈팅 관리 (완성률 삭제 반영) */}
-                  <div className="border border-zinc-200 dark:border-zinc-800 rounded-lg p-3 bg-white dark:bg-zinc-800/60 shadow-xs">
-                    <div className="flex items-center justify-between mb-2">
-                      <div className="flex items-center gap-2">
-                        <CheckSquare className="h-4 w-4 text-purple-600" />
-                        <h4 className="font-bold text-xs text-zinc-900 dark:text-zinc-100">
-                          {currentRecord.trialDegree} 차수 문제점 트러블슈팅 체크리스트
-                        </h4>
-                      </div>
-                      <div className="text-[11px] font-semibold text-purple-700 dark:text-purple-300">
-                        조치 완료: {currentRecord.checklist.filter(c => c.isResolved).length} / {currentRecord.checklist.length}건
-                      </div>
-                    </div>
-
-                    {/* 체크 항목 리스트 */}
-                    <div className="space-y-1.5 max-h-40 overflow-y-auto pr-1">
-                      {currentRecord.checklist.length === 0 ? (
-                        <div className="p-3 text-center text-zinc-400 text-[11px]">
-                          등록된 트러블슈팅 체크 항목이 없습니다. 하단에서 항목을 추가하세요.
-                        </div>
-                      ) : (
-                        currentRecord.checklist.map((item) => (
-                          <div
-                            key={item.id}
-                            className={`p-2 rounded border flex items-center justify-between transition-colors ${
-                              item.isResolved
-                                ? "bg-emerald-50/60 border-emerald-200 dark:bg-emerald-950/20 dark:border-emerald-800"
-                                : "bg-zinc-50 border-zinc-200 dark:bg-zinc-800 dark:border-zinc-700"
-                            }`}
-                          >
-                            <label className="flex items-center gap-2.5 cursor-pointer flex-1 mr-2">
-                              <input
-                                type="checkbox"
-                                checked={item.isResolved}
-                                onChange={() => handleToggleCheck(item.id)}
-                                className="h-4 w-4 text-purple-600 rounded focus:ring-purple-500"
-                              />
-                              <div>
-                                <span className={`inline-block px-1.5 py-0.2 rounded text-[10px] mr-1.5 font-medium ${
-                                  item.category === "치수 만족도" ? "bg-blue-100 text-blue-800" :
-                                  item.category === "외관 만족도" ? "bg-purple-100 text-purple-800" :
-                                  item.category === "금형사양검사" ? "bg-amber-100 text-amber-800" : "bg-emerald-100 text-emerald-800"
-                                }`}>
-                                  {item.category}
-                                </span>
-                                <span className={`text-[11px] ${item.isResolved ? "line-through text-zinc-400" : "text-zinc-800 dark:text-zinc-200 font-medium"}`}>
-                                  {item.description}
-                                </span>
-                              </div>
-                            </label>
-                            <span className={`text-[10px] font-semibold px-2 py-0.5 rounded ${
-                              item.isResolved ? "bg-emerald-200 text-emerald-800" : "bg-zinc-200 text-zinc-600"
-                            }`}>
-                              {item.isResolved ? "조치완료" : "미조치"}
-                            </span>
-                          </div>
-                        ))
-                      )}
-                    </div>
-
-                    {/* 신규 체크리스트 항목 추가 인풋 */}
-                    <div className="mt-3 pt-2.5 border-t border-zinc-200 dark:border-zinc-700 flex items-center gap-2">
-                      <select
-                        value={newCheckCategory}
-                        onChange={(e) => setNewCheckCategory(e.target.value as any)}
-                        className="h-7 text-xs rounded border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 px-2"
-                      >
-                        <option value="치수 만족도">치수 만족도</option>
-                        <option value="외관 만족도">외관 만족도</option>
-                        <option value="금형사양검사">금형사양검사</option>
-                        <option value="양산성(목표CT)">양산성(목표CT)</option>
-                      </select>
-                      <Input
-                        value={newCheckDesc}
-                        onChange={(e) => setNewCheckDesc(e.target.value)}
-                        placeholder="개선/수정할 트러블슈팅 점검 항목을 입력하세요"
-                        className="h-7 text-xs flex-1"
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") handleAddCheckItem();
-                        }}
-                      />
-                      <Button
-                        size="sm"
-                        onClick={handleAddCheckItem}
-                        className="h-7 px-3 text-xs bg-purple-600 hover:bg-purple-700 text-white shrink-0 cursor-pointer"
-                      >
-                        <Plus className="h-3 w-3 mr-1" />
-                        추가
-                      </Button>
-                    </div>
-                  </div>
 
                   {/* 현장 종합 검사원 소견 작성 */}
                   <div>
@@ -1824,109 +1675,6 @@ export default function VendorMoldTrialPage() {
         </div>
       )}
 
-      {/* ========================================================================= */}
-      {/* 3. 신규 차수 ($T_{n+1}$) 등록 모달 (스크린샷 3: 시사출결과 등록)              */}
-      {/* ========================================================================= */}
-      {isNewTrialModalOpen && selectedProject && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 overflow-y-auto">
-          <div className="bg-white dark:bg-zinc-900 w-full max-w-xl rounded-xl shadow-2xl border overflow-hidden flex flex-col my-8">
-            <div className="flex items-center justify-between px-5 py-3 bg-[#1e293b] text-white">
-              <div className="flex items-center gap-2">
-                <Plus className="h-4 w-4 text-purple-400" />
-                <h3 className="font-bold text-xs">
-                  [{selectedProject.projectNo}] 시사출결과 등록 (T{editingTrials.length + 1})
-                </h3>
-              </div>
-              <button onClick={() => setIsNewTrialModalOpen(false)} className="text-zinc-400 hover:text-white cursor-pointer">
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-
-            <div className="p-5 flex flex-col gap-4 text-xs">
-              <div className="grid grid-cols-2 gap-3 bg-zinc-50 dark:bg-zinc-800 p-2.5 rounded border text-[11px]">
-                <div><span className="text-zinc-500">진행 프로젝트:</span> <b>{selectedProject.productName}</b></div>
-                <div><span className="text-zinc-500">금형제작처:</span> <b>{selectedProject.moldVendor}</b></div>
-              </div>
-
-              {/* 4대 검사 판정 및 보고서 등록 */}
-              <div className="border rounded-md p-3 flex flex-col gap-2.5">
-                <span className="font-bold text-zinc-800 dark:text-zinc-200">
-                  4대 검사 판정 및 결과 등록:
-                </span>
-                
-                <div className="grid grid-cols-2 gap-2 text-[11px]">
-                  <div className="flex items-center justify-between p-2 rounded border bg-zinc-50 dark:bg-zinc-800">
-                    <span>1. 치수검토보고서</span>
-                    <button
-                      type="button"
-                      onClick={() => setNewDimRes(newDimRes === "OK" ? "NG" : "OK")}
-                      className={`px-2 py-0.5 rounded font-bold cursor-pointer ${newDimRes === "OK" ? "bg-emerald-600 text-white" : "bg-rose-600 text-white"}`}
-                    >
-                      {newDimRes}
-                    </button>
-                  </div>
-                  <div className="flex items-center justify-between p-2 rounded border bg-zinc-50 dark:bg-zinc-800">
-                    <span>2. 외관검토보고서</span>
-                    <button
-                      type="button"
-                      onClick={() => setNewAppRes(newAppRes === "OK" ? "NG" : "OK")}
-                      className={`px-2 py-0.5 rounded font-bold cursor-pointer ${newAppRes === "OK" ? "bg-emerald-600 text-white" : "bg-rose-600 text-white"}`}
-                    >
-                      {newAppRes}
-                    </button>
-                  </div>
-                  <div className="flex items-center justify-between p-2 rounded border bg-zinc-50 dark:bg-zinc-800">
-                    <span>3. 금형검사보고서</span>
-                    <button
-                      type="button"
-                      onClick={() => setNewSpecRes(newSpecRes === "OK" ? "NG" : "OK")}
-                      className={`px-2 py-0.5 rounded font-bold cursor-pointer ${newSpecRes === "OK" ? "bg-emerald-600 text-white" : "bg-rose-600 text-white"}`}
-                    >
-                      {newSpecRes}
-                    </button>
-                  </div>
-                  <div className="flex items-center justify-between p-2 rounded border bg-zinc-50 dark:bg-zinc-800">
-                    <span>4. 실측 Cycle Time (초)</span>
-                    <Input
-                      type="number"
-                      value={newCycleTime}
-                      onChange={(e) => setNewCycleTime(Number(e.target.value))}
-                      className="h-6 w-16 text-right font-mono text-xs"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex flex-col gap-1">
-                <label className="text-zinc-600 dark:text-zinc-400 font-bold">
-                  현장 종합 소견:
-                </label>
-                <textarea
-                  rows={3}
-                  value={newOpinion}
-                  onChange={(e) => setNewOpinion(e.target.value)}
-                  className="w-full rounded border p-2 text-xs bg-white dark:bg-zinc-800"
-                  placeholder="시사출 결과 특이사항 및 조치 내용을 입력하세요."
-                />
-              </div>
-            </div>
-
-            <div className="flex items-center justify-end gap-2 px-5 py-3 bg-zinc-100 dark:bg-zinc-800 border-t">
-              <Button onClick={() => setIsNewTrialModalOpen(false)} variant="outline" size="sm" className="h-7 px-3">
-                취소
-              </Button>
-              <Button
-                onClick={handleSaveNewTrial}
-                size="sm"
-                className="h-7 px-4 bg-purple-600 hover:bg-purple-700 text-white font-bold cursor-pointer"
-              >
-                <Save className="h-3 w-3 mr-1" />
-                시사출 결과 저장 (금형처)
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
