@@ -48,6 +48,16 @@ export default function VendorMassQuotationPage() {
     refreshFromDb();
   }, []);
 
+  // estimates 변경 시 열려 있는 selectedItem 실시간 동기화
+  useEffect(() => {
+    if (selectedItem) {
+      const found = estimates.find((e) => e.estimateNo === selectedItem.estimateNo || e.id === selectedItem.id);
+      if (found) {
+        setSelectedItem(found);
+      }
+    }
+  }, [estimates]);
+
   // 모달 등에서 실시간 최신 상태를 참조할 수 있도록 동기화된 item 조회
   const currentItem = (selectedItem ? estimates.find((e) => e.estimateNo === selectedItem.estimateNo || e.projectNo === selectedItem.projectNo) : null) || selectedItem;
 
@@ -253,14 +263,36 @@ export default function VendorMassQuotationPage() {
 
   const handleAddComment = () => {
     if (!newComment.trim() || !selectedItem) return;
-    addComment(selectedItem.estimateNo, currentVendor, "VENDOR", newComment.trim());
+    const text = newComment.trim();
+    const now = new Date();
+    const timeStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")} ${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
 
-    // MPSI 본사로 댓글 알림 발송
+    const newCommentObj = {
+      id: `comment-${Date.now()}`,
+      author: currentVendor,
+      authorRole: "VENDOR" as const,
+      content: text,
+      createdAt: timeStr,
+    };
+
+    // 1. 현재 모달의 selectedItem 상태 즉시 업데이트 (화면에 0초 만에 바로 등록되어 표시)
+    setSelectedItem((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        comments: [...(prev.comments || []), newCommentObj],
+      };
+    });
+
+    // 2. 스토어 및 백엔드 DB 영구 저장
+    addComment(selectedItem.estimateNo, currentVendor, "VENDOR", text);
+
+    // 3. MPSI 본사로 댓글 알림 발송
     sendAppNotification({
       menuName: "양산견적관리",
       menuPath: "/portal/mass-prod/quotation",
       senderCompany: currentVendor,
-      content: `[${getQuoteNoDisplay(selectedItem)}] ${currentVendor} 견적 협의 메모: ${newComment.trim()}`,
+      content: `[${getQuoteNoDisplay(selectedItem)}] ${currentVendor} 견적 협의 메모: ${text}`,
       projectNo: selectedItem.projectNo || selectedItem.estimateNo,
       targetRole: "MPSI",
     });
@@ -1295,38 +1327,54 @@ export default function VendorMassQuotationPage() {
               })()}
 
               {/* 협의 이력 */}
-              <div className="border rounded-md p-3 flex flex-col gap-2">
-                <div className="font-bold text-zinc-800 dark:text-zinc-200 flex items-center gap-1 pb-1 border-b">
-                  <MessageSquare className="h-3.5 w-3.5 text-blue-600" />
-                  <span>MPSI ↔ {currentVendor} 단가/일정 협의 이력 ({selectedItem.comments.length})</span>
-                </div>
-                <div className="flex items-start gap-1.5 bg-zinc-50 dark:bg-zinc-800 p-2 rounded-md border">
-                  <textarea 
-                    value={newComment}
-                    onChange={(e) => setNewComment(e.target.value)}
-                    placeholder="MPSI에 전달할 사출 단가 및 일정 협의 내용을 입력하세요..."
-                    className="w-full h-12 p-1.5 text-xs bg-white dark:bg-zinc-900 border rounded resize-none"
-                  />
-                  <Button onClick={handleAddComment} size="xs" className="h-12 px-3 bg-blue-600 hover:bg-blue-700 text-white text-xs cursor-pointer">
-                    등록
-                  </Button>
-                </div>
-                <div className="flex flex-col gap-1.5 max-h-36 overflow-y-auto">
-                  {selectedItem.comments
-                    .filter((c) => c.authorRole === "MPSI" || isMatchingVendor(c.author, currentVendor))
-                    .map((c) => (
-                    <div key={c.id} className="p-2 rounded border bg-zinc-50 dark:bg-zinc-800 text-xs">
-                      <div className="flex items-center justify-between font-bold mb-0.5">
-                        <span className={c.authorRole === "MPSI" ? "text-blue-700 dark:text-blue-300" : "text-emerald-700 dark:text-emerald-300"}>
-                          {c.author}
-                        </span>
-                        <span className="text-[10px] text-zinc-400">{c.createdAt}</span>
+              {(() => {
+                const targetItem = selectedItem || currentItem;
+                const visibleComments = (targetItem?.comments || []).filter(
+                  (c) => c.authorRole === "MPSI" || isMatchingVendor(c.author, currentVendor)
+                );
+
+                return (
+                  <div className="border rounded-md p-3 flex flex-col gap-2">
+                    <div className="font-bold text-zinc-800 dark:text-zinc-200 flex items-center justify-between pb-1 border-b">
+                      <div className="flex items-center gap-1.5">
+                        <MessageSquare className="h-3.5 w-3.5 text-blue-600" />
+                        <span>MPSI ↔ {currentVendor} 단가/일정 협의 이력 ({visibleComments.length}건)</span>
                       </div>
-                      <p className="text-zinc-700 dark:text-zinc-300">{c.content}</p>
+                      <span className="text-[10px] text-blue-600 font-normal">실시간 소통</span>
                     </div>
-                  ))}
-                </div>
-              </div>
+                    <div className="flex items-start gap-1.5 bg-zinc-50 dark:bg-zinc-800 p-2 rounded-md border">
+                      <textarea 
+                        value={newComment}
+                        onChange={(e) => setNewComment(e.target.value)}
+                        placeholder="MPSI에 전달할 사출 단가 및 일정 협의 내용을 입력하세요..."
+                        className="w-full h-12 p-1.5 text-xs bg-white dark:bg-zinc-900 border rounded resize-none"
+                      />
+                      <Button onClick={handleAddComment} size="xs" className="h-12 px-3 bg-blue-600 hover:bg-blue-700 text-white text-xs cursor-pointer font-bold">
+                        등록
+                      </Button>
+                    </div>
+                    <div className="flex flex-col gap-1.5 max-h-48 overflow-y-auto">
+                      {visibleComments.length === 0 ? (
+                        <div className="p-3 text-center text-zinc-400 text-xs">
+                          등록된 협의 메모가 없습니다. 위의 입력창에 작성 후 [등록]을 눌러주세요.
+                        </div>
+                      ) : (
+                        visibleComments.map((c) => (
+                          <div key={c.id} className="p-2 rounded border bg-zinc-50 dark:bg-zinc-800 text-xs shadow-2xs">
+                            <div className="flex items-center justify-between font-bold mb-0.5">
+                              <span className={c.authorRole === "MPSI" ? "text-blue-700 dark:text-blue-300 font-bold" : "text-emerald-700 dark:text-emerald-300 font-bold"}>
+                                {c.author}
+                              </span>
+                              <span className="text-[10px] text-zinc-400 font-mono">{c.createdAt}</span>
+                            </div>
+                            <p className="text-zinc-700 dark:text-zinc-300 whitespace-pre-wrap">{c.content}</p>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
 
             <div className="px-4 py-3 bg-zinc-50 dark:bg-zinc-800 border-t flex justify-end">
