@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { query } from "@/lib/db";
+import { createInitialTrialRecord } from "../trials/route";
 
 // 7대 핵심 공정 기본 템플릿
 const DEFAULT_PROCESSES = [
@@ -433,6 +434,47 @@ export async function PUT(req: Request) {
       `, [projectNo]);
     } catch (e) {
       console.warn("[Manufacture PUT ProjectMaster sync warning]", e);
+    }
+
+    // 5. '금형 육성 중' 상태로 전환 시 시사출 대장(MpsiMoldTrial, Step 7)에 신규 연계 등재
+    if (nextStatus === "금형 육성 중") {
+      try {
+        const existTrial = await query(`SELECT "ProjectID" FROM "MpsiMoldTrial" WHERE "ProjectID" = $1`, [projectNo]);
+        if (existTrial.rows.length === 0) {
+          let pmMeta: any = {};
+          let projectName = "양산 프로젝트";
+          try {
+            const pmRes = await query(`SELECT "ProjectName", "Note" FROM "ProjectMaster" WHERE "ProjectID" = $1`, [projectNo]);
+            if (pmRes.rows.length > 0) {
+              projectName = pmRes.rows[0].ProjectName || projectName;
+              pmMeta = JSON.parse(pmRes.rows[0].Note || "{}");
+            }
+          } catch {}
+
+          const initialTrialProject = createInitialTrialRecord(projectNo, meta, pmMeta, projectName);
+          const targetT1 = meta.targetT1Date || initialTrialProject.targetT1Date;
+
+          await query(`
+            INSERT INTO "MpsiMoldTrial" (
+              "TrialID", "ProjectID", "TrialDegree", "TrialDate", "TrialStatus", 
+              "MpsiDecision", "CreatorID", "CreationDateTime", "Note"
+            ) VALUES (
+              $1, $2, $3, $4, $5, $6, $7, NOW(), $8
+            )
+          `, [
+            `TRIAL-${projectNo}-T1`,
+            projectNo,
+            "T1",
+            targetT1,
+            "육성 진행중",
+            "검토중",
+            "MPSI_HQ",
+            JSON.stringify(initialTrialProject)
+          ]);
+        }
+      } catch (trialSyncErr) {
+        console.warn("[Manufacture PUT Trial Sync Warning]", trialSyncErr);
+      }
     }
 
     return NextResponse.json({ success: true, message: "Updated successfully", data: meta });

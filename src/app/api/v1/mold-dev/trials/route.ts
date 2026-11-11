@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { query } from "@/lib/db";
 
 // 5대 필수 서류 기본 템플릿 (서버용)
-function createServerDefaultFinalDocs() {
+export function createServerDefaultFinalDocs() {
   return [
     {
       key: "approvalCertificate",
@@ -42,6 +42,77 @@ function createServerDefaultFinalDocs() {
   ];
 }
 
+export function createInitialTrialRecord(
+  pid: string, 
+  mfgMeta: any = {}, 
+  pmMeta: any = {}, 
+  projectName: string = "양산 프로젝트"
+) {
+  const targetT1 = mfgMeta.targetT1Date || pmMeta.targetT1Date || "2026-11-20";
+  return {
+    id: 1,
+    projectNo: pid,
+    moldNo: mfgMeta.moldNo || pmMeta.moldNo || `${pid}M`,
+    moldDegree: mfgMeta.moldDegree || pmMeta.moldDegree || "M1",
+    changeType: mfgMeta.changeType || pmMeta.changeType || "N001",
+    projectName: mfgMeta.projectName || pmMeta.projectName || projectName,
+    productName: mfgMeta.productName || pmMeta.productName || projectName || "사출 성형 부품",
+    customerName: mfgMeta.customerName || pmMeta.customerName || "원청 고객사",
+    moldVendor: mfgMeta.moldVendor || pmMeta.moldVendor || "우성정공(주)",
+    massVendor: mfgMeta.massVendor || pmMeta.massVendor || "(주)뉴몰드",
+    cavity: mfgMeta.cavity || pmMeta.cavity || "1*2 Cavity",
+    material: mfgMeta.material || pmMeta.material || pmMeta.resinSpec || "NAK80 / KP4M",
+    targetT1Date: targetT1,
+    currentTrial: "T1",
+    transferPlanDate: "2026-12-20",
+    transferActualDate: "",
+    currentStep: 7,
+    updatedAt: new Date().toLocaleString("ko-KR", { hour12: false }).replace(/\./g, "-").slice(0, 16),
+    trials: [
+      {
+        trialDegree: "T1",
+        planDate: targetT1,
+        trialDate: "",
+        inspector: "우성정공 품질팀",
+        dimResult: "OK",
+        appResult: "OK",
+        specResult: "OK",
+        cycleTime: 34,
+        targetCycleTime: 35,
+        status: "육성 진행중",
+        mpsiDecision: "검토중",
+        checklist: [
+          {
+            id: `chk_init_1`,
+            category: "치수 만족도",
+            description: "T1 성형품 CMM 3차원 정밀 계측 및 핵심공차 검증",
+            isResolved: false,
+          },
+          {
+            id: `chk_init_2`,
+            category: "외관 만족도",
+            description: "외관 웰드라인, 싱크마크, 가스버닝 표면 품질 점검",
+            isResolved: false,
+          }
+        ],
+        opinion: "금형 제작/습합 완료에 따른 T1 시사출 착수 대기",
+      }
+    ],
+    finalDocuments: createServerDefaultFinalDocs(),
+    memoLogs: [
+      {
+        id: `memo-${Date.now()}`,
+        authorId: "MPSI_HQ",
+        authorName: "MPSI",
+        company: "MPSI",
+        tag: "금형육성착수",
+        content: `[시사출/금형육성 자동 연계] 금형제작(Step 6) 단계에서 금형 육성 상태로 전환되어 시사출 관리대장(Step 7)에 신규 등재되었습니다.`,
+        createdAt: new Date().toLocaleString("ko-KR", { hour12: false }).replace(/\./g, "-").slice(0, 16),
+      }
+    ]
+  };
+}
+
 let trialSchemaEnsured = false;
 async function ensureTrialSchema() {
   if (trialSchemaEnsured) return;
@@ -62,137 +133,7 @@ export async function GET(req: Request) {
     const { searchParams } = new URL(req.url);
     const projectId = searchParams.get("projectId");
 
-    // 1. MpsiMoldManufacture 또는 ProjectMaster에서 실제 프로젝트(MI26005P0 등) 자동 동기화 확인
-    try {
-      const pmRows = await query(`
-        SELECT p."ProjectID", p."ProjectName", p."ItemID", p."Note"
-        FROM "ProjectMaster" p
-        WHERE p."ProjectID" IS NOT NULL
-          AND p."ProjectID" NOT LIKE 'Q%'
-      `);
-
-      for (const p of pmRows.rows) {
-        const pid = p.ProjectID;
-        if (!pid) continue;
-
-        let pmMeta: any = {};
-        try {
-          pmMeta = JSON.parse(p.Note || "{}");
-        } catch {}
-
-        // 더미 프로젝트 건너뛰기
-        if (pmMeta.projectName?.includes("NQ5") || pmMeta.projectName?.includes("현대 NT5")) {
-          continue;
-        }
-
-        // MpsiMoldTrial에 이미 있는지 확인
-        const existTrial = await query(
-          `SELECT "ProjectID" FROM "MpsiMoldTrial" WHERE "ProjectID" = $1`,
-          [pid]
-        );
-
-        if (existTrial.rows.length === 0) {
-          // 제조(Step 6) 메타 정보가 있는지 보강 조회
-          let mfgMeta: any = {};
-          try {
-            const mfgRes = await query(
-              `SELECT "Note", "TargetT1Date" FROM "MpsiMoldManufacture" WHERE "ProjectID" = $1 LIMIT 1`,
-              [pid]
-            );
-            if (mfgRes.rows.length > 0) {
-              mfgMeta = JSON.parse(mfgRes.rows[0].Note || "{}");
-            }
-          } catch (e) {}
-
-          const targetT1 = mfgMeta.targetT1Date || pmMeta.targetT1Date || "2026-11-20";
-          
-          const initialTrialProject = {
-            id: 1,
-            projectNo: pid,
-            moldNo: mfgMeta.moldNo || pmMeta.moldNo || `${pid}M`,
-            moldDegree: mfgMeta.moldDegree || pmMeta.moldDegree || "M1",
-            changeType: mfgMeta.changeType || pmMeta.changeType || "N001",
-            projectName: mfgMeta.projectName || pmMeta.projectName || p.ProjectName || "양산 프로젝트",
-            productName: mfgMeta.productName || pmMeta.productName || p.ProjectName || "사출 성형 부품",
-            customerName: mfgMeta.customerName || pmMeta.customerName || "원청 고객사",
-            moldVendor: mfgMeta.moldVendor || pmMeta.moldVendor || "우성정공(주)",
-            massVendor: mfgMeta.massVendor || pmMeta.massVendor || "(주)뉴몰드",
-            cavity: mfgMeta.cavity || pmMeta.cavity || "1*2 Cavity",
-            material: mfgMeta.material || pmMeta.material || pmMeta.resinSpec || "NAK80 / KP4M",
-            targetT1Date: targetT1,
-            currentTrial: "T1",
-            transferPlanDate: "2026-12-20",
-            transferActualDate: "",
-            currentStep: 7,
-            updatedAt: new Date().toLocaleString("ko-KR", { hour12: false }).replace(/\./g, "-").slice(0, 16),
-            trials: [
-              {
-                trialDegree: "T1",
-                planDate: targetT1,
-                trialDate: "",
-                inspector: "우성정공 품질팀",
-                dimResult: "OK",
-                appResult: "OK",
-                specResult: "OK",
-                cycleTime: 34,
-                targetCycleTime: 35,
-                status: "육성 진행중",
-                mpsiDecision: "검토중",
-                checklist: [
-                  {
-                    id: `chk_init_1`,
-                    category: "치수 만족도",
-                    description: "T1 성형품 CMM 3차원 정밀 계측 및 핵심공차 검증",
-                    isResolved: false,
-                  },
-                  {
-                    id: `chk_init_2`,
-                    category: "외관 만족도",
-                    description: "외관 웰드라인, 싱크마크, 가스버닝 표면 품질 점검",
-                    isResolved: false,
-                  }
-                ],
-                opinion: "금형 제작/습합 완료에 따른 T1 시사출 착수 대기",
-              }
-            ],
-            finalDocuments: createServerDefaultFinalDocs(),
-            memoLogs: [
-              {
-                id: `memo-${Date.now()}`,
-                authorId: "MPSI_HQ",
-                authorName: "MPSI 시스템",
-                company: "MPSI 본사",
-                tag: "금형육성착수",
-                content: `[시사출/금형육성 자동 연계] 금형제작(Step 6) 단계에서 금형 육성 상태로 전환되어 시사출 관리대장(Step 7)에 신규 등재되었습니다.`,
-                createdAt: new Date().toLocaleString("ko-KR", { hour12: false }).replace(/\./g, "-").slice(0, 16),
-              }
-            ]
-          };
-
-          await query(`
-            INSERT INTO "MpsiMoldTrial" (
-              "TrialID", "ProjectID", "TrialDegree", "TrialDate", "TrialStatus", 
-              "MpsiDecision", "CreatorID", "CreationDateTime", "Note"
-            ) VALUES (
-              $1, $2, $3, $4, $5, $6, $7, NOW(), $8
-            )
-          `, [
-            `TRIAL-${pid}-T1`,
-            pid,
-            "T1",
-            targetT1,
-            "육성 진행중",
-            "검토중",
-            "MPSI_HQ",
-            JSON.stringify(initialTrialProject)
-          ]);
-        }
-      }
-    } catch (e) {
-      console.warn("[Trial GET AutoSync Warning]", e);
-    }
-
-    // 2. 조회 실행
+    // 조회 실행 (GET 요청에서는 INSERT를 일절 수행하지 않아, 사용자가 DB에서 삭제한 데이터가 새로고침 시 되살아나는 것을 방지)
     let sql = `
       SELECT 
         t."TrialSequenceNo",
@@ -366,6 +307,125 @@ export async function PUT(req: Request) {
     console.error("[API mold-dev/trials PUT Error]", error);
     return NextResponse.json(
       { success: false, error: error.message || "Failed to update mold trial" },
+      { status: 500 }
+    );
+  }
+}
+
+export async function POST(req: Request) {
+  try {
+    await ensureTrialSchema();
+    const body = await req.json().catch(() => ({}));
+    const { action, projectNo } = body;
+
+    // 수동/명시적 동기화 요청:
+    // MpsiMoldManufacture에서 실제로 '금형 육성 중' 상태이거나 currentStep >= 7인 건만 선별하여 MpsiMoldTrial에 등재
+    if (action === "sync" || !action) {
+      let mfgSql = `
+        SELECT "ProjectID", "Note", "ManufactureStatus", "TargetT1Date"
+        FROM "MpsiMoldManufacture"
+        WHERE "ManufactureStatus" = '금형 육성 중'
+      `;
+      let params: any[] = [];
+      if (projectNo) {
+        mfgSql += ` AND "ProjectID" = $1`;
+        params.push(projectNo);
+      }
+
+      const mfgRes = await query(mfgSql, params);
+      let enrolledCount = 0;
+
+      for (const mfg of mfgRes.rows) {
+        const pid = mfg.ProjectID;
+        if (!pid || pid === "DUMMY") continue;
+
+        const existTrial = await query(
+          `SELECT "ProjectID" FROM "MpsiMoldTrial" WHERE "ProjectID" = $1`,
+          [pid]
+        );
+
+        if (existTrial.rows.length === 0) {
+          let mfgMeta: any = {};
+          try { mfgMeta = JSON.parse(mfg.Note || "{}"); } catch {}
+
+          let pmMeta: any = {};
+          let projectName = "양산 프로젝트";
+          try {
+            const pmRes = await query(`SELECT "ProjectName", "Note" FROM "ProjectMaster" WHERE "ProjectID" = $1`, [pid]);
+            if (pmRes.rows.length > 0) {
+              projectName = pmRes.rows[0].ProjectName || projectName;
+              pmMeta = JSON.parse(pmRes.rows[0].Note || "{}");
+            }
+          } catch {}
+
+          const initialTrialProject = createInitialTrialRecord(pid, mfgMeta, pmMeta, projectName);
+          const targetT1 = mfgMeta.targetT1Date || initialTrialProject.targetT1Date;
+
+          await query(`
+            INSERT INTO "MpsiMoldTrial" (
+              "TrialID", "ProjectID", "TrialDegree", "TrialDate", "TrialStatus", 
+              "MpsiDecision", "CreatorID", "CreationDateTime", "Note"
+            ) VALUES (
+              $1, $2, $3, $4, $5, $6, $7, NOW(), $8
+            )
+          `, [
+            `TRIAL-${pid}-T1`,
+            pid,
+            "T1",
+            targetT1,
+            "육성 진행중",
+            "검토중",
+            "MPSI_HQ",
+            JSON.stringify(initialTrialProject)
+          ]);
+          enrolledCount++;
+        }
+      }
+
+      return NextResponse.json({ success: true, message: `동기화 완료: ${enrolledCount}건 등재`, enrolledCount });
+    }
+
+    return NextResponse.json({ success: false, error: "Invalid action" }, { status: 400 });
+  } catch (error: any) {
+    console.error("[API mold-dev/trials POST Error]", error);
+    return NextResponse.json(
+      { success: false, error: error.message || "Failed to process POST" },
+      { status: 500 }
+    );
+  }
+}
+
+export async function DELETE(req: Request) {
+  try {
+    await ensureTrialSchema();
+    const { searchParams } = new URL(req.url);
+    const projectNo = searchParams.get("projectNo") || searchParams.get("projectId");
+    const trialId = searchParams.get("trialId");
+    const seqNo = searchParams.get("seqNo");
+
+    if (!projectNo && !trialId && !seqNo) {
+      return NextResponse.json({ success: false, error: "삭제할 projectNo, trialId 또는 seqNo가 필요합니다." }, { status: 400 });
+    }
+
+    let delSql = `DELETE FROM "MpsiMoldTrial" WHERE `;
+    const params: any[] = [];
+    if (seqNo) {
+      delSql += `"TrialSequenceNo" = $1`;
+      params.push(Number(seqNo));
+    } else if (projectNo) {
+      delSql += `"ProjectID" = $1`;
+      params.push(projectNo);
+    } else if (trialId) {
+      delSql += `"TrialID" = $1`;
+      params.push(trialId);
+    }
+
+    const res = await query(delSql, params);
+    return NextResponse.json({ success: true, message: "Deleted successfully", rowCount: res.rowCount });
+  } catch (error: any) {
+    console.error("[API mold-dev/trials DELETE Error]", error);
+    return NextResponse.json(
+      { success: false, error: error.message || "Failed to delete mold trial" },
       { status: 500 }
     );
   }

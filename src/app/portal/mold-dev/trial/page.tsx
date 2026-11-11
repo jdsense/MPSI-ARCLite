@@ -586,7 +586,7 @@ export default function MoldTrialPage() {
           </div>
 
           <div className="flex items-center gap-1 ml-auto">
-            <Button onClick={() => refreshFromDb()} variant="outline" size="xs" className="h-7 text-xs gap-1 text-sky-700 border-sky-300 dark:text-sky-300 cursor-pointer">
+            <Button onClick={() => refreshFromDb(true)} variant="outline" size="xs" className="h-7 text-xs gap-1 text-sky-700 border-sky-300 dark:text-sky-300 cursor-pointer">
               <RefreshCw className={`h-3 w-3 ${isLoading ? "animate-spin" : ""}`} />
               DB 동기화
             </Button>

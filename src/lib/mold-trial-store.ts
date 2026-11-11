@@ -256,9 +256,20 @@ export function useMoldTrialStore() {
   });
   const [isLoading, setIsLoading] = useState(false);
 
-  const refreshFromDb = async () => {
+  const refreshFromDb = async (forceSync?: boolean) => {
     try {
       setIsLoading(true);
+      if (forceSync) {
+        try {
+          await fetch("/api/v1/mold-dev/trials", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ action: "sync" }),
+          });
+        } catch (e) {
+          console.warn("[refreshFromDb forceSync warning]", e);
+        }
+      }
       const res = await fetch("/api/v1/mold-dev/trials", { cache: "no-store" });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const json = await res.json();
