@@ -158,6 +158,12 @@ export default function MoldTrialPage() {
     return matchProject && matchProd && matchTrial;
   });
 
+  const getDisplayMoldNo = (moldNo?: string, projectNo?: string) => {
+    if (moldNo && !moldNo.endsWith("P0M")) return moldNo;
+    if (projectNo) return `${projectNo.split("-")[0].replace(/P0$/, "")}M`;
+    return moldNo ? moldNo.replace(/P0M$/, "M") : "-";
+  };
+
   const handleReset = () => {
     setFilterProjectNo("");
     setFilterProductName("");
@@ -665,7 +671,7 @@ export default function MoldTrialPage() {
 
                       {/* 금형번호 */}
                       <td className="p-2 border-r text-center font-mono font-bold text-zinc-800 dark:text-zinc-200">
-                        {row.moldNo || (row.projectNo ? `${row.projectNo.split("-")[0].replace(/P0$/, "")}M` : "-")}
+                        {getDisplayMoldNo(row.moldNo, row.projectNo)}
                       </td>
 
                       {/* 차수 (2-14 금형 승인원 제출 및 승인 후 'T3'가 '금형 승인'으로 변동) */}
@@ -760,7 +766,7 @@ export default function MoldTrialPage() {
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b pb-2.5 gap-2">
                   <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 text-[11px]">
                     <div><span className="text-zinc-500">프로젝트 번호:</span> <b className="font-mono text-sky-600 ml-1">{currentProject.projectNo}</b></div>
-                    <div><span className="text-zinc-500">금형번호:</span> <b className="font-mono font-bold text-zinc-800 dark:text-zinc-200 ml-1">{currentProject.moldNo || (currentProject.projectNo ? `${currentProject.projectNo.split("-")[0].replace(/P0$/, "")}M` : "-")}</b></div>
+                    <div><span className="text-zinc-500">금형번호:</span> <b className="font-mono font-bold text-zinc-800 dark:text-zinc-200 ml-1">{getDisplayMoldNo(currentProject.moldNo, currentProject.projectNo)}</b></div>
                     <div><span className="text-zinc-500">원청 고객사:</span> <b className="text-zinc-800 dark:text-zinc-200 ml-1">{currentProject.customerName || "현대자동차"}</b></div>
                     <div><span className="text-zinc-500">금형제작처:</span> <b className="text-blue-600 ml-1">{currentProject.moldVendor}</b></div>
                     <div><span className="text-zinc-500">사출양산처:</span> <b className="text-emerald-700 ml-1">{currentProject.massVendor}</b></div>

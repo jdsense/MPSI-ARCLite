@@ -103,6 +103,12 @@ export default function VendorMoldDesignPage() {
   // 모달 내부 수동 메모 입력
   const [manualNoteContent, setManualNoteContent] = useState("");
 
+  const getDisplayMoldNo = (moldNo?: string, projectNo?: string) => {
+    if (moldNo && !moldNo.endsWith("P0M")) return moldNo;
+    if (projectNo) return `${projectNo.split("-")[0].replace(/P0$/, "")}M`;
+    return moldNo ? moldNo.replace(/P0M$/, "M") : "-";
+  };
+
   // 스토어의 designs 상태 변경 시 열려있는 모달 아이템 실시간 동기화
   React.useEffect(() => {
     if (selectedReviewItem) {
@@ -565,7 +571,7 @@ export default function VendorMoldDesignPage() {
                 </tr>
               ) : (
                 filteredData.map((row, idx) => {
-                  const moldNoDisplay = row.moldNo || (row.projectNo ? `${row.projectNo.split("-")[0].replace(/P0$/, "")}M` : "-");
+                  const moldNoDisplay = getDisplayMoldNo(row.moldNo, row.projectNo);
 
                   return (
                     <tr key={row.id} className="hover:bg-purple-50/50 dark:hover:bg-zinc-800/60 transition-colors odd:bg-white even:bg-zinc-50/50 dark:odd:bg-zinc-900 dark:even:bg-zinc-900/40">
@@ -701,7 +707,7 @@ export default function VendorMoldDesignPage() {
                 <div>
                   <div className="text-[10px] text-zinc-400">금형번호</div>
                   <div className="font-mono font-bold text-purple-800 mt-0.5">
-                    {selectedReviewItem.moldNo || (selectedReviewItem.projectNo ? `${selectedReviewItem.projectNo.split("-")[0].replace(/P0$/, "")}M` : "-")}
+                    {getDisplayMoldNo(selectedReviewItem.moldNo, selectedReviewItem.projectNo)}
                   </div>
                 </div>
                 <div>
@@ -1127,7 +1133,7 @@ export default function VendorMoldDesignPage() {
                 <div>
                   <div className="text-[10px] text-zinc-400">금형번호</div>
                   <div className="font-mono font-bold text-purple-800 mt-0.5">
-                    {selectedDesignItem.moldNo || (selectedDesignItem.projectNo ? `${selectedDesignItem.projectNo.split("-")[0].replace(/P0$/, "")}M` : "-")}
+                    {getDisplayMoldNo(selectedDesignItem.moldNo, selectedDesignItem.projectNo)}
                   </div>
                 </div>
                 <div>
@@ -1645,7 +1651,7 @@ export default function VendorMoldDesignPage() {
                       <td className="p-2 border-r font-medium">금형 관리번호</td>
                       <td className="p-2 border-r">금형 식별번호 / 차수 / 구분</td>
                       <td className="p-2 text-right font-mono font-bold text-purple-700">
-                        {poModalItem.moldNo || (poModalItem.projectNo ? `${poModalItem.projectNo.split("-")[0].replace(/P0$/, "")}M` : "-")} 
+                        {getDisplayMoldNo(poModalItem.moldNo, poModalItem.projectNo)} 
                         <span className="ml-1 text-[10px] px-1 py-0.2 rounded bg-purple-100 text-purple-800 border border-purple-200">{poModalItem.moldDegree || "M1"}</span>
                         <span className="ml-1 text-[10px] px-1 py-0.2 rounded bg-sky-100 text-sky-800 border border-sky-200">{poModalItem.changeType || "N001"}</span>
                       </td>

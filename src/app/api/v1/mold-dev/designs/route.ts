@@ -409,23 +409,58 @@ export async function PUT(request: NextRequest) {
         const stepNum = 6;
 
         if (existMfg.rows.length === 0) {
+          // ProjectMaster 및 MpsiMoldQuotation에서 실제 원천 데이터 조회
+          let pmData: any = {};
+          try {
+            const pmRes = await query(`SELECT "ProjectName", "Note" FROM "ProjectMaster" WHERE "ProjectID" = $1`, [designId]);
+            if (pmRes.rows.length > 0) {
+              pmData = JSON.parse(pmRes.rows[0].Note || "{}");
+              pmData.projectNameCol = pmRes.rows[0].ProjectName;
+            }
+          } catch {}
+
+          let mqData: any = {};
+          try {
+            const mqRes = await query(`SELECT "FinalNegotiatedAmount", "Note" FROM "MpsiMoldQuotation" WHERE "ProjectID" = $1`, [designId]);
+            if (mqRes.rows.length > 0) {
+              mqData = JSON.parse(mqRes.rows[0].Note || "{}");
+              mqData.finalAmount = Number(mqRes.rows[0].FinalNegotiatedAmount || 0);
+            }
+          } catch {}
+
+          let rawCavity = mqData.cavity || pmData.cavity || updatedNote.cavity;
+          if (rawCavity && !rawCavity.includes("Cavity")) rawCavity = `${rawCavity} Cavity`;
+          const actualCavity = rawCavity || "1*2 Cavity";
+
+          const actualMaterial = mqData.moldMaterial || mqData.moldSteel || pmData.material || updatedNote.material || "SKD61";
+          const actualMoldNo = pmData.moldNo || (updatedNote.moldNo && !updatedNote.moldNo.endsWith("P0M") ? updatedNote.moldNo : `${designId.replace(/P0$/, "")}M`);
+          const actualDegree = pmData.moldDegree || mqData.moldDegree || updatedNote.moldDegree || "M1";
+          const actualChange = pmData.changeType || mqData.changeType || updatedNote.changeType || "N001";
+          const actualProjectName = pmData.projectName || mqData.projectName || updatedNote.projectName || "양산 신차 프로젝트";
+          const actualProduct = pmData.productName || pmData.projectNameCol || mqData.productName || updatedNote.productName || "Main Mold Part";
+          const actualCustomer = pmData.customerName || mqData.customerName || updatedNote.customerName || "원청사";
+          const actualVendor = mqData.vendorName || pmData.moldVendor || updatedNote.moldVendor || "우성정공(주)";
+          const actualAmount = Number(updatedNote.moldPoAmount || 0) > 0 ? Number(updatedNote.moldPoAmount) : (mqData.finalAmount || 0);
+          const actualTargetT1 = updatedNote.targetT1Date || mqData.targetT1Date || pmData.targetT1Date || "2026-11-06";
+          const actualDelivery = updatedNote.moldDeliveryDate || mqData.moldDeliveryDate || pmData.moldDeliveryDate || actualTargetT1 || "2026-12-15";
+
           const initNote = {
             id: 1,
             projectNo: designId,
-            moldNo: updatedNote.moldNo || `${designId}M`,
-            moldDegree: updatedNote.moldDegree || "M1",
-            changeType: updatedNote.changeType || "N001",
-            projectName: updatedNote.projectName || "양산 신차 프로젝트",
-            productName: updatedNote.productName || "Main Mold Part",
-            customerName: updatedNote.customerName || "원청사",
-            moldVendor: updatedNote.moldVendor || "우성정공(주)",
-            cavity: updatedNote.cavity || "1*2 Cavity",
-            material: updatedNote.material || "NAK80 / KP4M",
-            targetT1Date: updatedNote.targetT1Date || "2026-11-06",
-            moldDeliveryDate: updatedNote.moldDeliveryDate || updatedNote.targetT1Date || "2026-12-15",
+            moldNo: actualMoldNo,
+            moldDegree: actualDegree,
+            changeType: actualChange,
+            projectName: actualProjectName,
+            productName: actualProduct,
+            customerName: actualCustomer,
+            moldVendor: actualVendor,
+            cavity: actualCavity,
+            material: actualMaterial,
+            targetT1Date: actualTargetT1,
+            moldDeliveryDate: actualDelivery,
             moldPoNo: updatedNote.moldPoNo || `MOLD-PO-${designId}`,
             orderDate: updatedNote.moldPoApprovedDate ? updatedNote.moldPoApprovedDate.split(" ")[0] : new Date().toISOString().split("T")[0],
-            orderAmount: Number(updatedNote.moldPoAmount || 0),
+            orderAmount: actualAmount,
             manufactureStatus: mfgStatus,
             scheduleFile: null,
             memoLogs: [
@@ -473,10 +508,10 @@ export async function PUT(request: NextRequest) {
             `MFG-${designId}`,
             designId,
             updatedNote.moldPoNo || `MOLD-PO-${designId}`,
-            Number(updatedNote.moldPoAmount || 0),
+            actualAmount,
             updatedNote.moldPoApprovedDate ? updatedNote.moldPoApprovedDate.split(" ")[0] : new Date().toISOString().split("T")[0],
-            updatedNote.targetT1Date || "2026-11-06",
-            updatedNote.moldDeliveryDate || updatedNote.targetT1Date || "2026-12-15",
+            actualTargetT1,
+            actualDelivery,
             0,
             mfgStatus,
             "MPSI_HQ",

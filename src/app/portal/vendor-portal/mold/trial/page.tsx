@@ -114,6 +114,12 @@ export default function VendorMoldTrialPage() {
     return matchProject && matchProd && matchDegree && matchDate;
   });
 
+  const getDisplayMoldNo = (moldNo?: string, projectNo?: string) => {
+    if (moldNo && !moldNo.endsWith("P0M")) return moldNo;
+    if (projectNo) return `${projectNo.split("-")[0].replace(/P0$/, "")}M`;
+    return moldNo ? moldNo.replace(/P0M$/, "M") : "-";
+  };
+
   const handleReset = () => {
     setFilterProjectNo("");
     setFilterProductName("");
@@ -689,7 +695,7 @@ export default function VendorMoldTrialPage() {
                   const docStats = calculateFinalCompletionStats(project.finalDocuments);
                   const verifiedDocCount = project.finalDocuments.filter(d => Boolean(d.fileName) && d.isVerified).length;
                   const isApproved = project.currentTrial === "금형 승인" || project.isMoldApproved;
-                  const moldNoDisplay = project.moldNo || (project.projectNo ? `${project.projectNo.split("-")[0].replace(/P0$/, "")}M` : "-");
+                  const moldNoDisplay = getDisplayMoldNo(project.moldNo, project.projectNo);
 
                   return (
                     <tr 
@@ -869,7 +875,7 @@ export default function VendorMoldTrialPage() {
                     </span>
                   </div>
                   <p className="text-zinc-400 text-[11px] mt-0.5">
-                    차종: {selectedProject.projectName} | 제품명: {selectedProject.productName} | 금형번호: <b className="text-zinc-200 font-mono">{selectedProject.moldNo || (selectedProject.projectNo ? `${selectedProject.projectNo.split("-")[0].replace(/P0$/, "")}M` : "-")}</b> (차수: {selectedProject.moldDegree || "M1"}) | 재질: {selectedProject.material || "NAK80"} ({selectedProject.cavity || "1*2 Cavity"})
+                    차종: {selectedProject.projectName} | 제품명: {selectedProject.productName} | 금형번호: <b className="text-zinc-200 font-mono">{getDisplayMoldNo(selectedProject.moldNo, selectedProject.projectNo)}</b> (차수: {selectedProject.moldDegree || "M1"}) | 재질: {selectedProject.material || "SKD61"} ({selectedProject.cavity || "1*3 Cavity"})
                   </p>
                 </div>
               </div>
@@ -886,7 +892,7 @@ export default function VendorMoldTrialPage() {
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                 <div className="grid grid-cols-2 sm:grid-cols-6 gap-3 text-[11px]">
                   <div><span className="text-zinc-500">프로젝트 번호:</span> <b className="font-mono text-purple-700 ml-1">{selectedProject.projectNo}</b></div>
-                  <div><span className="text-zinc-500">금형번호:</span> <b className="font-mono font-bold text-zinc-800 dark:text-zinc-200 ml-1">{selectedProject.moldNo || (selectedProject.projectNo ? `${selectedProject.projectNo.split("-")[0].replace(/P0$/, "")}M` : "-")}</b></div>
+                  <div><span className="text-zinc-500">금형번호:</span> <b className="font-mono font-bold text-zinc-800 dark:text-zinc-200 ml-1">{getDisplayMoldNo(selectedProject.moldNo, selectedProject.projectNo)}</b></div>
                   <div>
                     <span className="text-zinc-500">금형차수 / 구분:</span> 
                     <span className="ml-1 inline-flex items-center gap-1">

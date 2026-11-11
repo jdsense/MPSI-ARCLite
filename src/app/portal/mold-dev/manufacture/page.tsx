@@ -78,6 +78,12 @@ export default function MoldManufacturePage() {
     return matchProject && matchProd && matchVendor && matchStatus && matchDate;
   });
 
+  const getDisplayMoldNo = (moldNo?: string, projectNo?: string) => {
+    if (moldNo && !moldNo.endsWith("P0M")) return moldNo;
+    if (projectNo) return `${projectNo.split("-")[0].replace(/P0$/, "")}M`;
+    return moldNo ? moldNo.replace(/P0M$/, "M") : "-";
+  };
+
   const handleReset = () => {
     setFilterProjectNo("");
     setFilterProductName("");
@@ -399,7 +405,7 @@ export default function MoldManufacturePage() {
 
                     {/* 금형번호 */}
                     <td className="p-2 border-r text-center font-mono font-bold text-zinc-800 dark:text-zinc-200">
-                      {row.moldNo || (row.projectNo ? `${row.projectNo.split("-")[0].replace(/P0$/, "")}M` : "-")}
+                      {getDisplayMoldNo(row.moldNo, row.projectNo)}
                     </td>
 
                     {/* 발주금액 */}
@@ -478,7 +484,7 @@ export default function MoldManufacturePage() {
               {/* 프로젝트 요약 스펙 카드 */}
               <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5 bg-zinc-50 dark:bg-zinc-800/50 p-3 rounded-lg border text-[11px]">
                 <div><span className="text-zinc-500">프로젝트 번호:</span> <b className="font-mono text-sky-600">{selectedItem.projectNo}</b></div>
-                <div><span className="text-zinc-500">금형번호:</span> <b className="font-mono font-bold text-zinc-800 dark:text-zinc-200">{selectedItem.moldNo || (selectedItem.projectNo ? `${selectedItem.projectNo.split("-")[0].replace(/P0$/, "")}M` : "-")}</b></div>
+                <div><span className="text-zinc-500">금형번호:</span> <b className="font-mono font-bold text-zinc-800 dark:text-zinc-200">{getDisplayMoldNo(selectedItem.moldNo, selectedItem.projectNo)}</b></div>
                 <div><span className="text-zinc-500">제품명:</span> <b className="text-zinc-900 dark:text-zinc-100">{selectedItem.productName}</b></div>
                 <div><span className="text-zinc-500">금형제작사:</span> <b className="text-blue-600">{selectedItem.moldVendor}</b></div>
                 <div><span className="text-zinc-500">MPSI 발주번호:</span> <b className="font-mono text-sky-700 dark:text-sky-300">{selectedItem.moldPoNo}</b></div>

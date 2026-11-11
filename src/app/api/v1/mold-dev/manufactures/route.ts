@@ -68,23 +68,57 @@ export async function GET(req: Request) {
           const currentMfgStatus = "미입력";
           const currentStep = 5;
 
+          // ProjectMaster 및 MpsiMoldQuotation에서 실제 데이터 조회
+          let pmData: any = {};
+          try {
+            const pmRes = await query(`SELECT "ProjectName", "Note" FROM "ProjectMaster" WHERE "ProjectID" = $1`, [pid]);
+            if (pmRes.rows.length > 0) {
+              pmData = JSON.parse(pmRes.rows[0].Note || "{}");
+              pmData.projectNameCol = pmRes.rows[0].ProjectName;
+            }
+          } catch {}
+
+          let mqData: any = {};
+          try {
+            const mqRes = await query(`SELECT "FinalNegotiatedAmount", "Note" FROM "MpsiMoldQuotation" WHERE "ProjectID" = $1`, [pid]);
+            if (mqRes.rows.length > 0) {
+              mqData = JSON.parse(mqRes.rows[0].Note || "{}");
+              mqData.finalAmount = Number(mqRes.rows[0].FinalNegotiatedAmount || 0);
+            }
+          } catch {}
+
+          let rawCavity = mqData.cavity || pmData.cavity || meta.cavity;
+          if (rawCavity && !rawCavity.includes("Cavity")) rawCavity = `${rawCavity} Cavity`;
+          const actualCavity = rawCavity || "1*2 Cavity";
+
+          const actualMaterial = mqData.moldMaterial || mqData.moldSteel || pmData.material || meta.material || "NAK80 / KP4M";
+          const actualMoldNo = pmData.moldNo || meta.moldNo || `${pid.replace(/P0$/, "")}M`;
+          const actualDegree = pmData.moldDegree || mqData.moldDegree || meta.moldDegree || "M1";
+          const actualChange = pmData.changeType || mqData.changeType || meta.changeType || "N001";
+          const actualCustomer = pmData.customerName || mqData.customerName || meta.customerName || "원청사";
+          const actualProduct = pmData.productName || pmData.projectNameCol || mqData.productName || meta.productName || "Main Mold Part";
+          const actualVendor = mqData.vendorName || pmData.moldVendor || meta.moldVendor || "우성정공(주)";
+          const actualAmount = Number(meta.moldPoAmount || 0) > 0 ? Number(meta.moldPoAmount) : (mqData.finalAmount || 0);
+          const actualTargetT1 = meta.targetT1Date || mqData.targetT1Date || pmData.targetT1Date || "2026-11-06";
+          const actualDelivery = meta.moldDeliveryDate || mqData.moldDeliveryDate || pmData.moldDeliveryDate || actualTargetT1 || "2026-12-15";
+
           const initNote = {
             id: 1,
             projectNo: pid,
-            moldNo: meta.moldNo || `${pid}M`,
-            moldDegree: meta.moldDegree || "M1",
-            changeType: meta.changeType || "N001",
-            projectName: meta.projectName || "양산 신차 프로젝트",
-            productName: meta.productName || "Main Mold Part",
-            customerName: meta.customerName || "원청사",
-            moldVendor: meta.moldVendor || "우성정공(주)",
-            cavity: meta.cavity || "1*2 Cavity",
-            material: meta.material || "NAK80 / KP4M",
-            targetT1Date: meta.targetT1Date || "2026-11-06",
-            moldDeliveryDate: meta.moldDeliveryDate || meta.targetT1Date || "2026-12-15",
+            moldNo: actualMoldNo,
+            moldDegree: actualDegree,
+            changeType: actualChange,
+            projectName: pmData.projectName || mqData.projectName || meta.projectName || "양산 신차 프로젝트",
+            productName: actualProduct,
+            customerName: actualCustomer,
+            moldVendor: actualVendor,
+            cavity: actualCavity,
+            material: actualMaterial,
+            targetT1Date: actualTargetT1,
+            moldDeliveryDate: actualDelivery,
             moldPoNo: meta.moldPoNo || `MOLD-PO-${pid}`,
             orderDate: meta.moldPoApprovedDate ? meta.moldPoApprovedDate.split(" ")[0] : new Date().toISOString().split("T")[0],
-            orderAmount: Number(meta.moldPoAmount || 0),
+            orderAmount: actualAmount,
             manufactureStatus: currentMfgStatus,
             scheduleFile: null,
             memoLogs: [
@@ -124,10 +158,10 @@ export async function GET(req: Request) {
             `MFG-${pid}`,
             pid,
             meta.moldPoNo || `MOLD-PO-${pid}`,
-            Number(meta.moldPoAmount || 0),
+            actualAmount,
             meta.moldPoApprovedDate ? meta.moldPoApprovedDate.split(" ")[0] : new Date().toISOString().split("T")[0],
-            meta.targetT1Date || "2026-11-06",
-            meta.moldDeliveryDate || meta.targetT1Date || "2026-12-15",
+            actualTargetT1,
+            actualDelivery,
             0,
             currentMfgStatus,
             "MPSI_HQ",
@@ -241,6 +275,47 @@ export async function GET(req: Request) {
       }
     }
 
+    // DTO 변환 시 원천 데이터(ProjectMaster, MpsiMoldQuotation) 조회하여 실제 데이터 보강
+    const pids = Array.from(new Set(rows.map((r: any) => r.ProjectID).filter(Boolean)));
+    const pmMap: Record<string, any> = {};
+    const mqMap: Record<string, any> = {};
+
+    if (pids.length > 0) {
+      try {
+        const pmRes = await query(
+          `SELECT "ProjectID", "ProjectName", "Note" FROM "ProjectMaster" WHERE "ProjectID" = ANY($1)`,
+          [pids]
+        );
+        for (const pr of pmRes.rows) {
+          let pNote: any = {};
+          try { pNote = JSON.parse(pr.Note || "{}"); } catch {}
+          pmMap[pr.ProjectID] = {
+            ...pNote,
+            projectNameCol: pr.ProjectName,
+          };
+        }
+      } catch (pmErr) {
+        console.warn("[Manufacture GET pmMap Warning]", pmErr);
+      }
+
+      try {
+        const mqRes = await query(
+          `SELECT "ProjectID", "FinalNegotiatedAmount", "Note" FROM "MpsiMoldQuotation" WHERE "ProjectID" = ANY($1)`,
+          [pids]
+        );
+        for (const qr of mqRes.rows) {
+          let qNote: any = {};
+          try { qNote = JSON.parse(qr.Note || "{}"); } catch {}
+          mqMap[qr.ProjectID] = {
+            ...qNote,
+            finalAmount: Number(qr.FinalNegotiatedAmount || 0),
+          };
+        }
+      } catch (mqErr) {
+        console.warn("[Manufacture GET mqMap Warning]", mqErr);
+      }
+    }
+
     // DTO 변환
     const items = rows
       .map((r: any) => {
@@ -258,6 +333,9 @@ export async function GET(req: Request) {
           return null;
         }
 
+        const pmInfo = pmMap[projectNo] || {};
+        const mqInfo = mqMap[projectNo] || {};
+
         const overallProgress = Number(r.OverallProgressRate ?? meta.overallProgress ?? 0);
         let manufactureStatus = r.ManufactureStatus || meta.manufactureStatus || "미입력";
         const hasSchedule = Boolean(meta.scheduleFile && (meta.scheduleFile.fileName || meta.scheduleFile.fileUrl));
@@ -266,23 +344,37 @@ export async function GET(req: Request) {
           manufactureStatus = "미입력";
         }
 
+        let rawCavity = mqInfo.cavity || pmInfo.cavity || (meta.cavity && meta.cavity !== "1*2 Cavity" ? meta.cavity : null);
+        if (rawCavity && !rawCavity.includes("Cavity")) rawCavity = `${rawCavity} Cavity`;
+        const actualCavity = rawCavity || meta.cavity || "1*2 Cavity";
+
+        const actualMaterial = mqInfo.moldMaterial || mqInfo.moldSteel || pmInfo.material || (meta.material && meta.material !== "NAK80 / KP4M" ? meta.material : "SKD61");
+        const actualMoldNo = pmInfo.moldNo || (meta.moldNo && !meta.moldNo.endsWith("P0M") ? meta.moldNo : `${projectNo.replace(/P0$/, "")}M`);
+        const actualDegree = pmInfo.moldDegree || mqInfo.moldDegree || meta.moldDegree || "M1";
+        const actualChange = pmInfo.changeType || mqInfo.changeType || meta.changeType || "N001";
+        const actualProjectName = pmInfo.projectName || mqInfo.projectName || meta.projectName || "프로젝트";
+        const actualProductName = pmInfo.productName || pmInfo.projectNameCol || mqInfo.productName || meta.productName || "제품";
+        const actualCustomer = pmInfo.customerName || mqInfo.customerName || meta.customerName || "고객사";
+        const actualVendor = mqInfo.vendorName || pmInfo.moldVendor || meta.moldVendor || "우성정공(주)";
+        const actualOrderAmount = Number(r.OrderAmount || 0) > 0 ? Number(r.OrderAmount) : (mqInfo.finalAmount || Number(meta.orderAmount || 0));
+
         return {
           id: Number(r.ManufactureSequenceNo),
           projectNo: projectNo,
-          moldNo: meta.moldNo || (projectNo ? `${projectNo}M` : "-"),
-          moldDegree: meta.moldDegree || "M1",
-          changeType: meta.changeType || "N001",
-          projectName: meta.projectName || "프로젝트",
-          productName: meta.productName || "제품",
-          customerName: meta.customerName || "고객사",
-          moldVendor: meta.moldVendor || "우성정공(주)",
-          cavity: meta.cavity || "1*2 Cavity",
-          material: meta.material || "NAK80 / KP4M",
+          moldNo: actualMoldNo,
+          moldDegree: actualDegree,
+          changeType: actualChange,
+          projectName: actualProjectName,
+          productName: actualProductName,
+          customerName: actualCustomer,
+          moldVendor: actualVendor,
+          cavity: actualCavity,
+          material: actualMaterial,
           targetT1Date: r.TargetT1Date ? String(r.TargetT1Date).slice(0, 10) : (meta.targetT1Date || ""),
           moldDeliveryDate: r.MoldDeliveryDate ? String(r.MoldDeliveryDate).slice(0, 10) : (meta.moldDeliveryDate || ""),
           moldPoNo: r.MoldPoNo || meta.moldPoNo || "-",
           orderDate: r.OrderDate ? String(r.OrderDate).slice(0, 10) : (meta.orderDate || ""),
-          orderAmount: Number(r.OrderAmount ?? meta.orderAmount ?? 0),
+          orderAmount: actualOrderAmount,
           manufactureStatus: manufactureStatus,
           scheduleFile: meta.scheduleFile || undefined,
           memoLogs: Array.isArray(meta.memoLogs) ? meta.memoLogs : [],

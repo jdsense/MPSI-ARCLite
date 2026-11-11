@@ -46,22 +46,30 @@ export function createInitialTrialRecord(
   pid: string, 
   mfgMeta: any = {}, 
   pmMeta: any = {}, 
-  projectName: string = "양산 프로젝트"
+  projectName: string = "양산 프로젝트",
+  mqMeta: any = {}
 ) {
-  const targetT1 = mfgMeta.targetT1Date || pmMeta.targetT1Date || "2026-11-20";
+  const targetT1 = mfgMeta.targetT1Date || mqMeta.targetT1Date || pmMeta.targetT1Date || "2026-11-20";
+  let rawCavity = mqMeta.cavity || mfgMeta.cavity || pmMeta.cavity;
+  if (rawCavity && !rawCavity.includes("Cavity")) rawCavity = `${rawCavity} Cavity`;
+  const actualCavity = rawCavity || "1*2 Cavity";
+
+  const actualMaterial = mqMeta.moldMaterial || mqMeta.moldSteel || mfgMeta.material || pmMeta.material || pmMeta.resinSpec || "SKD61";
+  const actualMoldNo = pmMeta.moldNo || mfgMeta.moldNo || (pid ? `${pid.replace(/P0$/, "")}M` : "-");
+
   return {
     id: 1,
     projectNo: pid,
-    moldNo: mfgMeta.moldNo || pmMeta.moldNo || `${pid}M`,
-    moldDegree: mfgMeta.moldDegree || pmMeta.moldDegree || "M1",
-    changeType: mfgMeta.changeType || pmMeta.changeType || "N001",
-    projectName: mfgMeta.projectName || pmMeta.projectName || projectName,
-    productName: mfgMeta.productName || pmMeta.productName || projectName || "사출 성형 부품",
-    customerName: mfgMeta.customerName || pmMeta.customerName || "원청 고객사",
-    moldVendor: mfgMeta.moldVendor || pmMeta.moldVendor || "우성정공(주)",
+    moldNo: actualMoldNo,
+    moldDegree: mfgMeta.moldDegree || mqMeta.moldDegree || pmMeta.moldDegree || "M1",
+    changeType: mfgMeta.changeType || mqMeta.changeType || pmMeta.changeType || "N001",
+    projectName: mfgMeta.projectName || mqMeta.projectName || pmMeta.projectName || projectName,
+    productName: mfgMeta.productName || pmMeta.productName || mqMeta.productName || projectName || "사출 성형 부품",
+    customerName: mfgMeta.customerName || pmMeta.customerName || mqMeta.customerName || "원청 고객사",
+    moldVendor: mfgMeta.moldVendor || mqMeta.vendorName || pmMeta.moldVendor || "우성정공(주)",
     massVendor: mfgMeta.massVendor || pmMeta.massVendor || "(주)뉴몰드",
-    cavity: mfgMeta.cavity || pmMeta.cavity || "1*2 Cavity",
-    material: mfgMeta.material || pmMeta.material || pmMeta.resinSpec || "NAK80 / KP4M",
+    cavity: actualCavity,
+    material: actualMaterial,
     targetT1Date: targetT1,
     currentTrial: "T1",
     transferPlanDate: "2026-12-20",
@@ -185,6 +193,61 @@ export async function GET(req: Request) {
       }
     }
 
+    const pids = Array.from(new Set(rows.map((r: any) => r.ProjectID).filter(Boolean)));
+    const pmMap: Record<string, any> = {};
+    const mqMap: Record<string, any> = {};
+    const mfgMap: Record<string, any> = {};
+
+    if (pids.length > 0) {
+      try {
+        const pmRes = await query(
+          `SELECT "ProjectID", "ProjectName", "Note" FROM "ProjectMaster" WHERE "ProjectID" = ANY($1)`,
+          [pids]
+        );
+        for (const pr of pmRes.rows) {
+          let pNote: any = {};
+          try { pNote = JSON.parse(pr.Note || "{}"); } catch {}
+          pmMap[pr.ProjectID] = {
+            ...pNote,
+            projectNameCol: pr.ProjectName,
+          };
+        }
+      } catch (pmErr) {
+        console.warn("[Trial GET pmMap Warning]", pmErr);
+      }
+
+      try {
+        const mqRes = await query(
+          `SELECT "ProjectID", "FinalNegotiatedAmount", "Note" FROM "MpsiMoldQuotation" WHERE "ProjectID" = ANY($1)`,
+          [pids]
+        );
+        for (const qr of mqRes.rows) {
+          let qNote: any = {};
+          try { qNote = JSON.parse(qr.Note || "{}"); } catch {}
+          mqMap[qr.ProjectID] = {
+            ...qNote,
+            finalAmount: Number(qr.FinalNegotiatedAmount || 0),
+          };
+        }
+      } catch (mqErr) {
+        console.warn("[Trial GET mqMap Warning]", mqErr);
+      }
+
+      try {
+        const mfgRes = await query(
+          `SELECT "ProjectID", "Note" FROM "MpsiMoldManufacture" WHERE "ProjectID" = ANY($1)`,
+          [pids]
+        );
+        for (const mr of mfgRes.rows) {
+          let mNote: any = {};
+          try { mNote = JSON.parse(mr.Note || "{}"); } catch {}
+          mfgMap[mr.ProjectID] = mNote;
+        }
+      } catch (mfgErr) {
+        console.warn("[Trial GET mfgMap Warning]", mfgErr);
+      }
+    }
+
     const items = rows
       .map((r: any) => {
         let meta: any = {};
@@ -201,20 +264,38 @@ export async function GET(req: Request) {
           return null;
         }
 
+        const pmInfo = pmMap[projectNo] || {};
+        const mqInfo = mqMap[projectNo] || {};
+        const mfgInfo = mfgMap[projectNo] || {};
+
+        let rawCavity = mqInfo.cavity || mfgInfo.cavity || pmInfo.cavity || (meta.cavity && meta.cavity !== "1*2 Cavity" ? meta.cavity : null);
+        if (rawCavity && !rawCavity.includes("Cavity")) rawCavity = `${rawCavity} Cavity`;
+        const actualCavity = rawCavity || meta.cavity || "1*2 Cavity";
+
+        const actualMaterial = mqInfo.moldMaterial || mqInfo.moldSteel || mfgInfo.material || pmInfo.material || (meta.material && meta.material !== "NAK80 / KP4M" ? meta.material : "SKD61");
+        const actualMoldNo = pmInfo.moldNo || mfgInfo.moldNo || (meta.moldNo && !meta.moldNo.endsWith("P0M") ? meta.moldNo : `${projectNo.replace(/P0$/, "")}M`);
+        const actualDegree = pmInfo.moldDegree || mqInfo.moldDegree || mfgInfo.moldDegree || meta.moldDegree || "M1";
+        const actualChange = pmInfo.changeType || mqInfo.changeType || mfgInfo.changeType || meta.changeType || "N001";
+        const actualProjectName = pmInfo.projectName || mqInfo.projectName || mfgInfo.projectName || meta.projectName || "프로젝트";
+        const actualProductName = pmInfo.productName || pmInfo.projectNameCol || mqInfo.productName || mfgInfo.productName || meta.productName || "제품";
+        const actualCustomer = pmInfo.customerName || mqInfo.customerName || mfgInfo.customerName || meta.customerName || "고객사";
+        const actualVendor = mqInfo.vendorName || mfgInfo.moldVendor || pmInfo.moldVendor || meta.moldVendor || "우성정공(주)";
+        const actualMassVendor = mfgInfo.massVendor || pmInfo.massVendor || meta.massVendor || "(주)뉴몰드";
+
         return {
           id: Number(r.TrialSequenceNo),
           projectNo: projectNo,
-          moldNo: meta.moldNo || (projectNo ? `${projectNo}M` : "-"),
-          moldDegree: meta.moldDegree || "M1",
-          changeType: meta.changeType || "N001",
-          projectName: meta.projectName || "프로젝트",
-          productName: meta.productName || "제품",
-          customerName: meta.customerName || "고객사",
-          moldVendor: meta.moldVendor || "우성정공(주)",
-          massVendor: meta.massVendor || "(주)뉴몰드",
-          cavity: meta.cavity || "1*2 Cavity",
-          material: meta.material || "NAK80 / KP4M",
-          targetT1Date: meta.targetT1Date || (r.TrialDate ? String(r.TrialDate).slice(0, 10) : ""),
+          moldNo: actualMoldNo,
+          moldDegree: actualDegree,
+          changeType: actualChange,
+          projectName: actualProjectName,
+          productName: actualProductName,
+          customerName: actualCustomer,
+          moldVendor: actualVendor,
+          massVendor: actualMassVendor,
+          cavity: actualCavity,
+          material: actualMaterial,
+          targetT1Date: meta.targetT1Date || (r.TrialDate ? String(r.TrialDate).slice(0, 10) : (mfgInfo.targetT1Date || "")),
           currentTrial: meta.currentTrial || r.TrialDegree || "T1",
           isMoldApproved: Boolean(meta.isMoldApproved),
           transferPlanDate: meta.transferPlanDate || "",

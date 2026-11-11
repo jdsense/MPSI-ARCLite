@@ -75,6 +75,12 @@ export default function VendorMoldManufacturePage() {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const memoFileInputRef = useRef<HTMLInputElement | null>(null);
 
+  const getDisplayMoldNo = (moldNo?: string, projectNo?: string) => {
+    if (moldNo && !moldNo.endsWith("P0M")) return moldNo;
+    if (projectNo) return `${projectNo.split("-")[0].replace(/P0$/, "")}M`;
+    return moldNo ? moldNo.replace(/P0M$/, "M") : "-";
+  };
+
   // 외주사 전용 프로젝트 필터링 (Q 가견적 제외, 해당 외주사 배정 프로젝트만 노출)
   const vendorManufactures = manufactures.filter((item) => {
     if (item.projectNo.startsWith("Q")) return false;
@@ -449,7 +455,7 @@ export default function VendorMoldManufacturePage() {
                 </tr>
               ) : (
                 filteredData.map((row, idx) => {
-                  const moldNoDisplay = row.moldNo || (row.projectNo ? `${row.projectNo.split("-")[0].replace(/P0$/, "")}M` : "-");
+                  const moldNoDisplay = getDisplayMoldNo(row.moldNo, row.projectNo);
 
                   return (
                     <tr key={row.id} className="hover:bg-purple-50/50 dark:hover:bg-zinc-800/60 transition-colors odd:bg-white even:bg-zinc-50/40 dark:odd:bg-zinc-900 dark:even:bg-zinc-900/50">
@@ -546,7 +552,7 @@ export default function VendorMoldManufacturePage() {
               <div className="flex items-center gap-2.5 flex-wrap">
                 <Hammer className="h-4 w-4 text-purple-400" />
                 <h3 className="font-bold text-sm">
-                  [{currentVendor}] 금형 제작 진행 현황 [{selectedItem.projectNo}] [{selectedItem.moldNo || (selectedItem.projectNo ? `${selectedItem.projectNo.split("-")[0].replace(/P0$/, "")}M` : "-")}]
+                  [{currentVendor}] 금형 제작 진행 현황 [{selectedItem.projectNo}] [{getDisplayMoldNo(selectedItem.moldNo, selectedItem.projectNo)}]
                 </h3>
                 <span className="text-[10px] px-2 py-0.5 rounded bg-purple-900/80 border border-purple-400 text-purple-200 font-bold">
                   차수: {selectedItem.moldDegree || "M1"}
@@ -568,7 +574,7 @@ export default function VendorMoldManufacturePage() {
               {/* 프로젝트 요약 카드 */}
               <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5 bg-zinc-50 dark:bg-zinc-800/50 p-3 rounded-lg border text-[11px]">
                 <div><span className="text-zinc-500">프로젝트 번호:</span> <b className="font-mono text-purple-700 dark:text-purple-400">{selectedItem.projectNo}</b></div>
-                <div><span className="text-zinc-500">금형번호:</span> <b className="font-mono font-bold text-purple-800 dark:text-purple-300">{selectedItem.moldNo || (selectedItem.projectNo ? `${selectedItem.projectNo.split("-")[0].replace(/P0$/, "")}M` : "-")}</b></div>
+                <div><span className="text-zinc-500">금형번호:</span> <b className="font-mono font-bold text-purple-800 dark:text-purple-300">{getDisplayMoldNo(selectedItem.moldNo, selectedItem.projectNo)}</b></div>
                 <div>
                   <span className="text-zinc-500">금형차수 / 구분:</span> 
                   <span className="ml-1 inline-flex items-center gap-1">
