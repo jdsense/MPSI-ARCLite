@@ -425,39 +425,68 @@ export default function VendorMassValidationPage() {
     showToast(`[${uploadModalItem.category}] 성적서 및 업무 이력 메모가 성공적으로 등록되었습니다. 기존 파일은 대체되었으며 메모는 관리 이력으로 보존됩니다.`);
   };
 
-  // 신규 차수($T_{n+1}$) 추가
+  // 신규 차수($T_{n+1}$) 추가 (이전 차수 실적 데이터 자동 계승 및 바인딩)
   const handleAddNewDegree = () => {
-    const nextNum = editingTrials.length + 1;
+    let maxDegreeNum = 0;
+    editingTrials.forEach((t) => {
+      const match = t.trialDegree.match(/T(\d+)/i);
+      if (match) {
+        const num = parseInt(match[1], 10);
+        if (num > maxDegreeNum) maxDegreeNum = num;
+      }
+    });
+    const nextNum = maxDegreeNum > 0 ? maxDegreeNum + 1 : editingTrials.length + 1;
     const nextDegree = `T${nextNum}`;
     const today = new Date().toISOString().split("T")[0];
-    const prev = currentRecord || editingTrials[editingTrials.length - 1];
+    const prev = editingTrials.find((t) => t.trialDegree === activeTab) || currentRecord || editingTrials[editingTrials.length - 1];
 
     const newRec: MassValidationRecord = {
       trialDegree: nextDegree,
-      testDate: today,
+      testDate: prev?.testDate || today,
       machineNo: prev ? prev.machineNo : "사출 3호기 (450T)",
-      continuousHours: 12,
-      totalShotCount: 1300,
-      totalProduced: 2600,
-      defectCount: 15,
-      defectRate: 0.58,
-      targetDefectRate: 1.0,
-      measuredCpk: 1.45,
-      targetCpk: 1.33,
-      measuredCycleTime: prev ? prev.targetCycleTime : 35.0,
-      targetCycleTime: prev ? prev.targetCycleTime : 35.0,
-      dailyCapa: prev ? prev.targetDailyCapa : 4500,
-      targetDailyCapa: prev ? prev.targetDailyCapa : 4500,
-      completionRate: 83,
-      status: "시양산 진행중",
-      checklist: prev ? prev.checklist.map(c => ({ ...c, id: `${c.id}_${nextDegree}` })) : [],
-      opinion: `${nextDegree} 12시간 연속 사출 가동 및 Cpk 안정화 검증 진행`,
-      uploadHistory: []
+      continuousHours: prev ? prev.continuousHours : 12,
+      totalShotCount: prev ? prev.totalShotCount : 0,
+      totalProduced: prev ? prev.totalProduced : 0,
+      defectCount: prev ? prev.defectCount : 0,
+      defectRate: prev ? prev.defectRate : 0,
+      targetDefectRate: prev?.targetDefectRate ?? 1.0,
+      measuredCpk: prev ? prev.measuredCpk : 1.33,
+      targetCpk: prev?.targetCpk ?? 1.33,
+      measuredCycleTime: prev ? (prev.measuredCycleTime ?? prev.targetCycleTime ?? 35.0) : 35.0,
+      targetCycleTime: prev?.targetCycleTime ?? 35.0,
+      dailyCapa: prev ? prev.dailyCapa : 0,
+      targetDailyCapa: prev?.targetDailyCapa ?? 4500,
+      completionRate: prev ? prev.completionRate : 0,
+      status: prev ? prev.status : "시양산 진행중",
+      checklist: (prev && prev.checklist && prev.checklist.length > 0)
+        ? prev.checklist.map((c) => ({
+            ...c,
+            id: `${c.id.split("_")[0]}_${nextDegree}`,
+          }))
+        : [
+            { id: `v1_${nextDegree}`, category: "치수검토보고서", description: "CTQ 주요 치수 5개 포인트 전수 측정", targetSpec: "±0.05mm", actualValue: "", isResolved: false },
+            { id: `v2_${nextDegree}`, category: "외관검토보고서", description: "웰드라인, 수축, 가스자국 등 외관 품질", targetSpec: "외관 한도견본 기준 합격", actualValue: "", isResolved: false },
+            { id: `v3_${nextDegree}`, category: "금형검사보고서", description: "파팅라인 일치도, 슬라이드 코어 작동 상태", targetSpec: "유격 0.02mm 이내 작동 원활", actualValue: "", isResolved: false },
+            { id: `v4_${nextDegree}`, category: "시사출 보고서(사출조건표 포함)", description: "수지온도, 사출압력, 보압 4단 최적 튜닝 조건", targetSpec: "최적 레시피 조건 도출", actualValue: "", isResolved: false },
+            { id: `v5_${nextDegree}`, category: "공정능력 검사 보고서", description: "연속 300Shot 연속 추출 Cpk 산출 보고서", targetSpec: "Cpk >= 1.33 충족", actualValue: "", isResolved: false },
+            { id: `v6_${nextDegree}`, category: "CAPA 검토 보고서", description: "일일 3교대 가동 기준 납품 캐파 충족 여부", targetSpec: "일 4,500EA 생산 가능", actualValue: "", isResolved: false },
+          ],
+      opinion: prev?.opinion || `${nextDegree} 12시간 연속 사출 가동 및 Cpk 안정화 검증 진행`,
+      uploadHistory: prev?.uploadHistory ? [...prev.uploadHistory] : [],
     };
+
+    if (newRec.totalProduced > 0 && newRec.defectCount !== undefined) {
+      newRec.defectRate = Number(((newRec.defectCount / newRec.totalProduced) * 100).toFixed(2));
+    }
+
+    if (newRec.checklist && newRec.checklist.length > 0) {
+      const resolved = newRec.checklist.filter((c) => c.isResolved).length;
+      newRec.completionRate = Math.round((resolved / newRec.checklist.length) * 100);
+    }
 
     setEditingTrials((prevList) => [...prevList, newRec]);
     setActiveTab(nextDegree);
-    showToast(`신규 ${nextDegree} 시양산 검증 차수가 생성되었습니다.`);
+    showToast(`신규 ${nextDegree} 시양산 검증 차수가 생성되었습니다. 이전 차수(${prev?.trialDegree || "T1"}) 실적 및 성적서 데이터가 연동되었습니다.`);
   };
 
   // 2-7) 양산 검증 자료 제출 처리
