@@ -62,10 +62,18 @@ function mapRowToProject(row: any): any {
 
     isPromotedFromQuote,
     isRegistrationCompleted,
-    isContractConfirmed: noteObj.isContractConfirmed !== undefined ? noteObj.isContractConfirmed : true,
-    isQuotePending: noteObj.isQuotePending !== undefined ? noteObj.isQuotePending : false,
-    quotationStatus: noteObj.quotationStatus || undefined,
-    stepNameCustom: noteObj.stepNameCustom || '',
+    isContractConfirmed: ((row.DivisionID && String(row.DivisionID).startsWith('E')) || (noteObj.changeType && String(noteObj.changeType).startsWith('E')))
+      ? true 
+      : (noteObj.isContractConfirmed !== undefined ? noteObj.isContractConfirmed : true),
+    isQuotePending: ((row.DivisionID && String(row.DivisionID).startsWith('E')) || (noteObj.changeType && String(noteObj.changeType).startsWith('E')))
+      ? false 
+      : (noteObj.isQuotePending !== undefined ? noteObj.isQuotePending : false),
+    quotationStatus: ((row.DivisionID && String(row.DivisionID).startsWith('E')) || (noteObj.changeType && String(noteObj.changeType).startsWith('E')))
+      ? (noteObj.quotationStatus || '수주확정')
+      : (noteObj.quotationStatus || undefined),
+    stepNameCustom: ((row.DivisionID && String(row.DivisionID).startsWith('E')) || (noteObj.changeType && String(noteObj.changeType).startsWith('E')))
+      ? (noteObj.stepNameCustom || '수주확정')
+      : (noteObj.stepNameCustom || ''),
 
     moldProductionType: noteObj.moldProductionType || row.ResponsibleDepartmentID || 'OUTSOURCING',
     moldVendor: noteObj.moldVendor !== undefined ? noteObj.moldVendor : '',

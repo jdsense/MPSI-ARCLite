@@ -448,7 +448,7 @@ export function isQuoteItem(item: ProjectItem): boolean {
   if (!item) return false;
 
   // 1. 이미 수주가 확정된 프로젝트(개발/양산, 설계변경 E차수 포함)는 무조건 개발/양산 관리 항목
-  if (item.isContractConfirmed === true || item.quotationStatus === "수주확정") {
+  if (item.isContractConfirmed === true || item.quotationStatus === "수주확정" || item.estimateNo === "수주확정" || item.changeType?.startsWith("E")) {
     return false;
   }
 

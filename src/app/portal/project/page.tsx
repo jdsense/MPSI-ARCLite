@@ -402,6 +402,9 @@ export default function ProjectStatus13StepsPage() {
     // 4. 진행 상태 필터
     if (filterStepStatus !== "ALL") {
       if (filterStepStatus === "고객 답변 대기") {
+        if (item.changeType?.startsWith("E") || item.estimateNo === "수주확정" || item.quotationStatus === "수주확정" || item.stepNameCustom === "수주확정") {
+          return false;
+        }
         const isWaiting = item.quotationStatus === "고객 답변 대기" || item.stepNameCustom === "고객 답변 대기" || (item.isQuotePending && item.quotationStatus !== "수주 미성사");
         if (!isWaiting) return false;
       } else if (filterStepStatus === "수주 미성사") {
@@ -772,7 +775,7 @@ export default function ProjectStatus13StepsPage() {
       isContractConfirmed: isEChange ? true : !isQuote,
       isQuotePending: isEChange ? false : isQuote,
       quotationStatus: isEChange ? "수주확정" : (isQuote ? "고객 답변 대기" : undefined),
-      stepNameCustom: isEChange ? undefined : (isQuote ? "고객 답변 대기" : undefined),
+      stepNameCustom: isEChange ? "수주확정" : (isQuote ? "고객 답변 대기" : undefined),
       moldProductionType: formState.moldProductionType || "OUTSOURCING",
       moldVendor: formState.moldVendor || "우성정공(주)",
       massProductionType: formState.massProductionType || "OUTSOURCING",
@@ -2098,8 +2101,10 @@ export default function ProjectStatus13StepsPage() {
                   
                   // 스텝 표시 명칭 결정 (수주 확정되어 currentStep > 0 진행 중인 프로젝트는 실제 공정 스텝 표시)
                   const isProjectInProcess = row.currentStep > 0 && !row.projectNo.startsWith("Q");
-                  const isWaitCustomer = !isProjectInProcess && (row.quotationStatus === "고객 답변 대기" || row.stepNameCustom === "고객 답변 대기" || (row.isQuotePending && row.projectNo.startsWith("Q") && row.quotationStatus !== "수주 미성사" && row.stepNameCustom !== "수주 미성사") || row.currentStep === 0);
+                  const isEChange = Boolean(row.changeType?.startsWith("E"));
+                  const isConfirmed = row.isContractConfirmed || row.quotationStatus === "수주확정" || row.estimateNo === "수주확정" || row.stepNameCustom === "수주확정";
                   const isFailedQuote = (row.quotationStatus === "수주 미성사" || row.stepNameCustom === "수주 미성사") && !isProjectInProcess;
+                  const isWaitCustomer = !isProjectInProcess && !isEChange && !isConfirmed && (row.quotationStatus === "고객 답변 대기" || row.stepNameCustom === "고객 답변 대기" || (row.isQuotePending && row.projectNo.startsWith("Q") && row.quotationStatus !== "수주 미성사" && row.stepNameCustom !== "수주 미성사") || row.currentStep === 0);
 
                   let stepDisplayName = "";
                   if (row.isPromotedFromQuote && !row.isRegistrationCompleted) {
@@ -2111,6 +2116,8 @@ export default function ProjectStatus13StepsPage() {
                       : (currentStepObj?.name || `Step ${row.currentStep}`);
                   } else if (isFailedQuote) {
                     stepDisplayName = "수주 미성사";
+                  } else if (isEChange || isConfirmed) {
+                    stepDisplayName = "수주확정";
                   } else if (isWaitCustomer) {
                     stepDisplayName = "고객 답변 대기";
                   } else {
@@ -2119,6 +2126,9 @@ export default function ProjectStatus13StepsPage() {
 
                   // 상태 뱃지 스타일 (스크린샷 알약 형태)
                   const getStepPillClass = () => {
+                    if (stepDisplayName === "수주확정") {
+                      return "bg-emerald-50 text-emerald-800 border-emerald-400 font-extrabold shadow-2xs dark:bg-emerald-950/40 dark:text-emerald-300";
+                    }
                     if (stepDisplayName === "고객 답변 대기") {
                       return "bg-sky-50 text-sky-800 border-sky-400 font-extrabold shadow-2xs dark:bg-sky-950/40 dark:text-sky-300";
                     }
@@ -2681,9 +2691,15 @@ export default function ProjectStatus13StepsPage() {
                             <span className={`h-7 px-3 rounded-full text-xs font-bold border flex items-center shadow-2xs ${
                               selectedItem.quotationStatus === "수주 미성사" || selectedItem.stepNameCustom === "수주 미성사"
                                 ? "bg-rose-50 text-rose-700 border-rose-300 dark:bg-rose-950/40 dark:text-rose-300"
-                                : "bg-sky-50 text-sky-800 border-sky-400 dark:bg-sky-950/40 dark:text-sky-300"
+                                : (selectedItem.changeType?.startsWith("E") || selectedItem.quotationStatus === "수주확정" || selectedItem.estimateNo === "수주확정" || selectedItem.stepNameCustom === "수주확정")
+                                  ? "bg-emerald-50 text-emerald-800 border-emerald-400 dark:bg-emerald-950/40 dark:text-emerald-300"
+                                  : "bg-sky-50 text-sky-800 border-sky-400 dark:bg-sky-950/40 dark:text-sky-300"
                             }`}>
-                              {selectedItem.quotationStatus === "수주 미성사" || selectedItem.stepNameCustom === "수주 미성사" ? "❌ 수주 미성사" : "⏳ 고객 답변 대기"}
+                              {selectedItem.quotationStatus === "수주 미성사" || selectedItem.stepNameCustom === "수주 미성사" 
+                                ? "❌ 수주 미성사" 
+                                : (selectedItem.changeType?.startsWith("E") || selectedItem.quotationStatus === "수주확정" || selectedItem.estimateNo === "수주확정" || selectedItem.stepNameCustom === "수주확정")
+                                  ? "✅ 수주확정"
+                                  : "⏳ 고객 답변 대기"}
                             </span>
                           </div>
                         ) : (
