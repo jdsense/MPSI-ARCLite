@@ -440,60 +440,67 @@ export default function MassProductionQuotationPage() {
   };
 
   // 협력사 견적 상태 변경 (검토시작, 수주확정, 반려/미성사)
-  const handleVendorQuoteStatusChange = (
+  const handleVendorQuoteStatusChange = async (
     quote: MassVendorQuoteSubmission,
     newStatus: "검토협의" | "수주확정" | "반려/미성사"
   ) => {
     if (!selectedItem) return;
-    updateVendorQuoteStatus(selectedItem.estimateNo, quote.id, newStatus);
+    await updateVendorQuoteStatus(selectedItem.estimateNo, quote.id, newStatus);
+
+    const updatedQuotes = (selectedItem.vendorQuotes || []).map((vq) => {
+      if (newStatus === "수주확정") {
+        return {
+          ...vq,
+          status: (vq.id === quote.id ? "수주확정" : "반려/미성사") as any,
+        };
+      }
+      if (vq.id === quote.id) {
+        return { ...vq, status: newStatus };
+      }
+      return vq;
+    });
+
+    const confirmed = updatedQuotes.find((vq) => vq.status === "수주확정");
+    let nextEstimateStatus: MassQuotationStatus = selectedItem.status;
+    let nextVendorName = selectedItem.vendorName;
+    let nextSelectedVendorName = selectedItem.selectedVendorName;
+    let nextUnitPrice = selectedItem.finalUnitPrice;
+    let nextMatCost = selectedItem.materialCost;
+    let nextProcCost = selectedItem.processingCost;
+    let nextPackCost = selectedItem.packagingCost;
+    let nextLogCost = selectedItem.logisticsCost;
+
+    if (newStatus === "수주확정" && confirmed) {
+      nextEstimateStatus = "단가합의완료";
+      nextVendorName = confirmed.vendorName;
+      nextSelectedVendorName = confirmed.vendorName;
+      nextUnitPrice = confirmed.unitPrice;
+      nextMatCost = confirmed.materialCost;
+      nextProcCost = confirmed.processingCost;
+      nextPackCost = confirmed.packagingCost;
+      nextLogCost = confirmed.logisticsCost;
+
+      sendAppNotification({
+        menuName: "양산외주 - 양산견적관리",
+        menuPath: "/portal/vendor-portal/mass/quotation",
+        senderCompany: "MPSI",
+        content: `[${selectedItem.projectNo || selectedItem.estimateNo}] 양산 견적 수주 확정 완료! (양산성 검증 단계로 연계됩니다)`,
+        projectNo: selectedItem.projectNo || selectedItem.estimateNo,
+        targetRole: "VENDOR_MASS",
+        targetVendorName: quote.vendorName,
+      });
+    } else if (newStatus === "검토협의") {
+      nextEstimateStatus = "원가검토중";
+    } else if (newStatus === "반려/미성사") {
+      if (!confirmed) {
+        const hasPending = updatedQuotes.some((vq) => vq.status === "제출완료" || vq.status === "검토협의");
+        nextEstimateStatus = hasPending ? "원가검토중" : "외주견적제출";
+        nextUnitPrice = 0;
+      }
+    }
 
     setSelectedItem((prev) => {
       if (!prev) return null;
-      const updatedQuotes = (prev.vendorQuotes || []).map((vq) => {
-        if (newStatus === "수주확정") {
-          return {
-            ...vq,
-            status: vq.id === quote.id ? ("수주확정" as const) : ("반려/미성사" as const),
-          };
-        }
-        if (vq.id === quote.id) {
-          return { ...vq, status: newStatus };
-        }
-        return vq;
-      });
-
-      let nextEstimateStatus = prev.status;
-      let nextVendorName = prev.vendorName;
-      let nextSelectedVendorName = prev.selectedVendorName;
-      let nextUnitPrice = prev.finalUnitPrice;
-      let nextMatCost = prev.materialCost;
-      let nextProcCost = prev.processingCost;
-      let nextPackCost = prev.packagingCost;
-      let nextLogCost = prev.logisticsCost;
-
-      if (newStatus === "수주확정") {
-        nextEstimateStatus = "단가합의완료";
-        nextVendorName = quote.vendorName;
-        nextSelectedVendorName = quote.vendorName;
-        nextUnitPrice = quote.unitPrice;
-        nextMatCost = quote.materialCost;
-        nextProcCost = quote.processingCost;
-        nextPackCost = quote.packagingCost;
-        nextLogCost = quote.logisticsCost;
-
-        sendAppNotification({
-          menuName: "양산외주 - 양산견적관리",
-          menuPath: "/portal/vendor-portal/mass/quotation",
-          senderCompany: "MPSI",
-          content: `[${prev.projectNo || prev.estimateNo}] 양산 견적 수주 확정 완료! (양산성 검증 단계로 연계됩니다)`,
-          projectNo: prev.projectNo || prev.estimateNo,
-          targetRole: "VENDOR_MASS",
-          targetVendorName: quote.vendorName,
-        });
-      } else if (newStatus === "검토협의") {
-        nextEstimateStatus = "원가검토중";
-      }
-
       return {
         ...prev,
         status: nextEstimateStatus,
@@ -582,10 +589,10 @@ export default function MassProductionQuotationPage() {
     });
   };
 
-  // 상태 변경
-  const handleStatusChange = (newStatus: MassQuotationStatus) => {
+  // 상태 변경 (MPSI 본사 직접 상태 전환)
+  const handleStatusChange = async (newStatus: MassQuotationStatus) => {
     if (!selectedItem) return;
-    updateStatus(selectedItem.estimateNo, newStatus);
+    await updateStatus(selectedItem.estimateNo, newStatus);
     setSelectedItem((prev) => prev ? { ...prev, status: newStatus } : null);
   };
 
@@ -1335,15 +1342,31 @@ export default function MassProductionQuotationPage() {
           <div className="bg-white dark:bg-zinc-900 border rounded-lg shadow-xl w-full max-w-4xl overflow-hidden flex flex-col max-h-[90vh]">
             {/* 모달 제목: [{견적관리번호}] {제품명} 양산 견적 상세 */}
             <div className="flex items-center justify-between px-4 py-3 bg-zinc-50 dark:bg-zinc-800 border-b">
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 <span className="font-bold text-sm text-zinc-900 dark:text-zinc-100">
                   [{selectedItem.estimateNo}] {selectedItem.productName} 양산 견적 상세
                 </span>
                 {renderStatusBadge(selectedItem.status)}
               </div>
-              <button onClick={() => setIsDetailModalOpen(false)} className="text-zinc-400 hover:text-zinc-600 cursor-pointer">
-                <X className="h-4 w-4" />
-              </button>
+              <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1.5 bg-white dark:bg-zinc-900 px-2 py-1 rounded border shadow-2xs">
+                  <span className="text-[11px] font-bold text-zinc-600 dark:text-zinc-300">진행 상태 변경:</span>
+                  <select
+                    value={selectedItem.status}
+                    onChange={(e) => handleStatusChange(e.target.value as MassQuotationStatus)}
+                    className="h-6 text-xs font-bold rounded border px-1.5 bg-transparent cursor-pointer text-blue-700 dark:text-blue-300 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  >
+                    <option value="견적요청">견적요청 (외주대기)</option>
+                    <option value="외주견적제출">외주견적제출</option>
+                    <option value="원가검토중">원가검토/단가협의중</option>
+                    <option value="단가합의완료">단가합의완료 (수주확정)</option>
+                    <option value="양산계약확정">양산계약확정</option>
+                  </select>
+                </div>
+                <button onClick={() => setIsDetailModalOpen(false)} className="text-zinc-400 hover:text-zinc-600 cursor-pointer">
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
             </div>
 
             <div className="p-4 overflow-y-auto flex flex-col gap-3.5 text-xs">
@@ -1512,37 +1535,38 @@ export default function MassProductionQuotationPage() {
                                       size="xs"
                                       variant={vq.status === "검토협의" ? "default" : "outline"}
                                       onClick={() => handleVendorQuoteStatusChange(vq, "검토협의")}
-                                      className={`h-6 text-[10px] px-2 cursor-pointer ${
+                                      className={`h-6 text-[10px] px-2 cursor-pointer transition-all ${
                                         vq.status === "검토협의" 
-                                          ? "bg-yellow-500 hover:bg-yellow-600 text-white font-bold" 
-                                          : "border-yellow-400 text-yellow-800 hover:bg-yellow-50"
+                                          ? "bg-amber-500 hover:bg-amber-600 text-white font-bold ring-2 ring-amber-300 shadow-2xs" 
+                                          : "border-amber-300 text-amber-700 hover:bg-amber-50 bg-white dark:bg-zinc-800"
                                       }`}
                                     >
-                                      검토시작
+                                      {vq.status === "검토협의" ? "검토 진행중" : "검토시작"}
                                     </Button>
                                     <Button
                                       size="xs"
+                                      variant={isWinner ? "default" : "outline"}
                                       onClick={() => handleVendorQuoteStatusChange(vq, "수주확정")}
-                                      className={`h-6 text-[10px] px-2 font-bold cursor-pointer ${
+                                      className={`h-6 text-[10px] px-2 font-bold cursor-pointer transition-all ${
                                         isWinner 
-                                          ? "bg-emerald-600 text-white hover:bg-emerald-700 shadow-xs" 
-                                          : "bg-emerald-600 hover:bg-emerald-700 text-white"
+                                          ? "bg-emerald-600 hover:bg-emerald-700 text-white ring-2 ring-emerald-400 shadow-xs" 
+                                          : "border-emerald-600 text-emerald-700 hover:bg-emerald-50 bg-white dark:bg-zinc-800"
                                       }`}
                                     >
                                       <Check className="h-3 w-3 mr-0.5" />
-                                      수주 확정
+                                      {isWinner ? "수주 확정됨" : "수주 확정"}
                                     </Button>
                                     <Button
                                       size="xs"
-                                      variant="outline"
+                                      variant={vq.status === "반려/미성사" ? "default" : "outline"}
                                       onClick={() => handleVendorQuoteStatusChange(vq, "반려/미성사")}
-                                      className={`h-6 text-[10px] px-1.5 cursor-pointer ${
+                                      className={`h-6 text-[10px] px-1.5 cursor-pointer transition-all ${
                                         vq.status === "반려/미성사"
-                                          ? "bg-rose-100 text-rose-800 border-rose-300"
-                                          : "text-zinc-400 hover:text-rose-600 border-zinc-200"
+                                          ? "bg-rose-600 hover:bg-rose-700 text-white font-bold ring-2 ring-rose-300 shadow-2xs"
+                                          : "border-zinc-200 text-zinc-400 hover:text-rose-600 hover:border-rose-300 bg-white dark:bg-zinc-800"
                                       }`}
                                     >
-                                      반려·미성사
+                                      {vq.status === "반려/미성사" ? "반려됨" : "반려·미성사"}
                                     </Button>
                                   </div>
                                 </td>

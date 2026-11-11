@@ -532,12 +532,14 @@ export function useMassQuotationStore() {
   };
 
   // 3. 상태 변경 (단가합의완료, 양산계약확정 등)
-  const updateStatus = (estimateNo: string, newStatus: MassQuotationStatus) => {
+  const updateStatus = async (estimateNo: string, newStatus: MassQuotationStatus) => {
     const current = getStoredMassEstimates();
     let updatedTarget: MassProductionEstimateItem | undefined;
 
     const nextList = current.map((item) => {
-      if (item.estimateNo !== estimateNo) return item;
+      if (item.estimateNo !== estimateNo && item.projectNo !== estimateNo && item.officialProjectNo !== estimateNo) {
+        return item;
+      }
       const merged = { ...item, status: newStatus };
       updatedTarget = merged;
       return merged;
@@ -546,7 +548,7 @@ export function useMassQuotationStore() {
     saveMassEstimatesToStorage(nextList);
     setEstimatesState(nextList);
     if (updatedTarget) {
-      syncMassEstimateToBackend(updatedTarget);
+      await syncMassEstimateToBackend(updatedTarget);
       if (newStatus === "단가합의완료" || newStatus === "양산계약확정") {
         autoEnrollMassValidationFromQuotation(updatedTarget);
       }
@@ -554,7 +556,7 @@ export function useMassQuotationStore() {
   };
 
   // 4. 개별 협력사 견적 상태 변경 (검토시작/검토협의, 수주확정, 반려/미성사)
-  const updateVendorQuoteStatus = (
+  const updateVendorQuoteStatus = async (
     estimateNo: string,
     submissionId: string,
     newQuoteStatus: "제출완료" | "검토협의" | "수주확정" | "반려/미성사"
@@ -563,10 +565,12 @@ export function useMassQuotationStore() {
     let updatedTarget: MassProductionEstimateItem | undefined;
 
     const nextList = current.map((item) => {
-      if (item.estimateNo !== estimateNo && item.projectNo !== estimateNo) return item;
+      if (item.estimateNo !== estimateNo && item.projectNo !== estimateNo && item.officialProjectNo !== estimateNo) {
+        return item;
+      }
 
       let updatedQuotes = (item.vendorQuotes || []).map((vq) => {
-        if (vq.id === submissionId) {
+        if (vq.id === submissionId || vq.vendorName === submissionId) {
           return { ...vq, status: newQuoteStatus };
         }
         if (newQuoteStatus === "수주확정") {
@@ -586,6 +590,13 @@ export function useMassQuotationStore() {
         finalPrice = confirmedVendor.unitPrice;
       } else if (newQuoteStatus === "검토협의") {
         itemStatus = "원가검토중";
+      } else if (newQuoteStatus === "반려/미성사") {
+        // 수주 확정된 견적이 없으면 견적요청/원가검토 상태로 정리
+        if (!confirmedVendor) {
+          const hasPending = updatedQuotes.some((vq) => vq.status === "제출완료" || vq.status === "검토협의");
+          itemStatus = hasPending ? "원가검토중" : "견적요청";
+          finalPrice = 0;
+        }
       }
 
       const merged: MassProductionEstimateItem = {
@@ -604,7 +615,7 @@ export function useMassQuotationStore() {
     saveMassEstimatesToStorage(nextList);
     setEstimatesState(nextList);
     if (updatedTarget) {
-      syncMassEstimateToBackend(updatedTarget);
+      await syncMassEstimateToBackend(updatedTarget);
       if (newQuoteStatus === "수주확정" || updatedTarget.status === "단가합의완료") {
         autoEnrollMassValidationFromQuotation(updatedTarget);
       }
