@@ -30,7 +30,8 @@ import {
   isQuoteItem,
   isDevItem,
   generateNextProjectNo,
-  generateNextQuoteNo
+  generateNextQuoteNo,
+  deriveQuoteNoFromProjectNo
 } from "@/lib/project-store";
 import { MOLD_VENDOR_LIST, MASS_VENDOR_LIST } from "@/lib/role-store";
 
@@ -58,6 +59,16 @@ interface RegisteredItemOption {
   drawingNo?: string;
 }
 
+// 실제 DB 연동 협력업체(외주업체) 인터페이스
+interface DbVendorOption {
+  id: number | string;
+  vendorCode: string;
+  companyName: string;
+  managerName?: string;
+  bizItem?: string;
+  category?: string;
+}
+
 const DEFAULT_ITEM_OPTIONS: RegisteredItemOption[] = [];
 
 export { type StepDefinition, PROCESS_13_STEPS, type ProjectItem, getStepUrl, getStepActor, generateNextProjectNo };
@@ -81,7 +92,12 @@ export default function ProjectStatus13StepsPage() {
   const [registeredItems, setRegisteredItems] = useState<RegisteredItemOption[]>(DEFAULT_ITEM_OPTIONS);
   const [selectedItemCode, setSelectedItemCode] = useState<string>("");
 
+  // 실제 DB 연동 협력업체(금형제작처 / 사출양산처) 목록 상태
+  const [dbMoldVendors, setDbMoldVendors] = useState<DbVendorOption[]>([]);
+  const [dbMassVendors, setDbMassVendors] = useState<DbVendorOption[]>([]);
+
   useEffect(() => {
+    // 1. 기초정보 등록 품목 DB 연동
     fetch("/api/v1/basic-info/items")
       .then((res) => res.json())
       .then((json) => {
@@ -99,7 +115,77 @@ export default function ProjectStatus13StepsPage() {
         }
       })
       .catch((err) => console.error("Failed to load basic-info items:", err));
+
+    // 2. 실제 협력업체(외주업체) DB 연동
+    fetch("/api/v1/basic-info/vendors")
+      .then((res) => res.json())
+      .then((json) => {
+        if (json.success && Array.isArray(json.data) && json.data.length > 0) {
+          const vendors: DbVendorOption[] = json.data
+            .filter((v: any) => v.category === "공급업체" || !String(v.vendorCode).startsWith("C-"))
+            .map((v: any) => ({
+              id: v.id,
+              vendorCode: v.vendorCode,
+              companyName: v.companyName,
+              managerName: v.managerName,
+              bizItem: v.bizItem,
+              category: v.category,
+            }));
+
+          // 금형 제작 협력사: 이름이나 종목에 '금형', '정공', 'MOLD' 등 포함
+          const mList = vendors.filter((v) => 
+            v.companyName.includes("금형") || 
+            v.companyName.includes("정공") || 
+            v.bizItem?.includes("금형")
+          );
+          setDbMoldVendors(mList.length > 0 ? mList : vendors);
+
+          // 사출 양산 협력사: 이름이나 종목에 '사출', '몰드', '양산', '프라' 등 포함
+          const sList = vendors.filter((v) => 
+            v.companyName.includes("사출") || 
+            v.companyName.includes("몰드") || 
+            v.companyName.includes("양산") ||
+            v.companyName.includes("프라") ||
+            v.bizItem?.includes("사출") ||
+            v.bizItem?.includes("양산")
+          );
+          setDbMassVendors(sList.length > 0 ? sList : vendors);
+        }
+      })
+      .catch((err) => console.error("Failed to load basic-info vendors:", err));
   }, []);
+
+  // 실제 DB 연동 금형제작 외주업체 옵션 목록 (fallback: MOLD_VENDOR_LIST)
+  const moldVendorOptions = React.useMemo(() => {
+    if (dbMoldVendors.length > 0) {
+      return dbMoldVendors.map((v) => ({
+        id: String(v.vendorCode || v.id),
+        name: v.companyName,
+        manager: v.managerName || "",
+      }));
+    }
+    return MOLD_VENDOR_LIST.filter((v) => !v.isSelf).map((v) => ({
+      id: v.id,
+      name: v.name,
+      manager: v.manager || "",
+    }));
+  }, [dbMoldVendors]);
+
+  // 실제 DB 연동 사출양산 외주업체 옵션 목록 (fallback: MASS_VENDOR_LIST)
+  const massVendorOptions = React.useMemo(() => {
+    if (dbMassVendors.length > 0) {
+      return dbMassVendors.map((v) => ({
+        id: String(v.vendorCode || v.id),
+        name: v.companyName,
+        manager: v.managerName || "",
+      }));
+    }
+    return MASS_VENDOR_LIST.filter((v) => !v.isSelf).map((v) => ({
+      id: v.id,
+      name: v.name,
+      manager: v.manager || "",
+    }));
+  }, [dbMassVendors]);
 
   const handleSelectRegisteredItem = (itemCode: string) => {
     setSelectedItemCode(itemCode);
@@ -509,6 +595,9 @@ export default function ProjectStatus13StepsPage() {
     const nextQNo = generateNextQuoteNo(projects);
     setProjectCreationMode("NEW");
     setSelectedExistingProjectNo("");
+    const defaultMold = moldVendorOptions[0]?.name || "우성정공(주)";
+    const defaultMass = massVendorOptions[0]?.name || "(주)뉴몰드";
+
     setFormState({
       projectNo: nextPjtNo,
       estimateNo: nextQNo,
@@ -520,9 +609,9 @@ export default function ProjectStatus13StepsPage() {
       moldDegree: "M1",
       changeType: "N001",
       moldProductionType: "OUTSOURCING",
-      moldVendor: "우성정공(주)",
+      moldVendor: defaultMold,
       massProductionType: "OUTSOURCING",
-      massVendor: "(주)뉴몰드",
+      massVendor: defaultMass,
       cavity: "",
       material: "",
       partWeight: "",
@@ -558,21 +647,31 @@ export default function ProjectStatus13StepsPage() {
     const today = new Date();
     const dateStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
 
+    // [요구사항 1] 견적 단계 번호 (Q): 실제 MI가 아니라 견적단계에서 생성된 Q로 시작되는 데이터값 바인딩
+    let targetQuoteNo = row.estimateNo || "";
+    if (!targetQuoteNo || targetQuoteNo.toUpperCase().startsWith("MI")) {
+      targetQuoteNo = deriveQuoteNoFromProjectNo(row.projectNo || row.estimateNo);
+    }
+
+    // [요구사항 2] 실제 DB 연동 협력업체(외주업체) 바인딩
+    const defaultMold = row.moldVendor || moldVendorOptions[0]?.name || "우성정공(주)";
+    const defaultMass = row.massVendor || massVendorOptions[0]?.name || "(주)뉴몰드";
+
     setFormState({
       projectNo: row.projectNo, // 견적에서 승격된 프로젝트 번호 바인딩 (모달에서 수정 가능)
-      estimateNo: row.estimateNo || "",
+      estimateNo: targetQuoteNo, // 견적단계에서 생성된 Q 번호 바인딩
       projectName: row.projectName || "",
       productName: row.productName || "",
       customerName: row.customerName || CUSTOMER_OPTIONS[0],
-      partNo: row.partNo || "", // 기본 입력 제외 (기초정보 품목 선택 또는 수기 입력)
-      moldNo: row.moldNo || "", // 기본 입력 제외
+      partNo: row.partNo || "",
+      moldNo: row.moldNo || "",
       moldDegree: row.moldDegree || "M1",
       changeType: (row.changeType as any) || "N001",
       moldProductionType: row.moldProductionType || "OUTSOURCING",
-      moldVendor: row.moldVendor || "", // 기본 입력 제외 (모달에서 외주처 선택)
+      moldVendor: defaultMold,
       massProductionType: row.massProductionType || "OUTSOURCING",
-      massVendor: row.massVendor || "", // 기본 입력 제외 (모달에서 외주처 선택)
-      cavity: row.cavity || "", // 기본 입력 제외
+      massVendor: defaultMass,
+      cavity: row.cavity || "",
       material: row.material || "",
       partWeight: row.partWeight || "",
       annualVolume: row.annualVolume || "",
@@ -586,9 +685,9 @@ export default function ProjectStatus13StepsPage() {
       orderDate: row.orderDate || dateStr,
       kickoffDate: row.kickoffDate || "",
       targetMoldDays: row.targetMoldDays || 45,
-      targetT1Date: row.targetT1Date || "", // 기본 입력 제외
+      targetT1Date: row.targetT1Date || "",
       moldDeliveryDate: row.moldDeliveryDate || "",
-      targetMassDate: row.targetMassDate || "", // 기본 입력 제외
+      targetMassDate: row.targetMassDate || "",
       massStartDate: row.massStartDate || "",
       currentStep: 1, // 등록 완료 시 1단계(제품 data 접수)로 전환
       stepStatus: "진행중",
@@ -682,9 +781,15 @@ export default function ProjectStatus13StepsPage() {
         }
       }
 
+      const finalPromotedEstimateNo = isEChange
+        ? "수주확정"
+        : (formState.estimateNo?.trim().toUpperCase().startsWith("Q")
+            ? formState.estimateNo.trim()
+            : deriveQuoteNoFromProjectNo(trimmedNo));
+
       updateStep(originalNo, {
         projectNo: trimmedNo,
-        estimateNo: formState.estimateNo || "",
+        estimateNo: finalPromotedEstimateNo,
         projectName: formState.projectName || "",
         productName: formState.productName.trim(),
         customerName: formState.customerName || "고객사",
@@ -1960,9 +2065,10 @@ export default function ProjectStatus13StepsPage() {
                 className="h-7 flex-1 rounded border bg-white dark:bg-zinc-900 px-2 text-xs font-medium text-purple-700"
               >
                 <option value="ALL">전체 금형처 (외주/자체)</option>
-                {MOLD_VENDOR_LIST.map((v) => (
+                <option value="MPSI 자체제작팀">[자체] MPSI 자체제작팀</option>
+                {moldVendorOptions.map((v) => (
                   <option key={v.id} value={v.name}>
-                    {v.isSelf ? `[자체] ${v.name}` : `[외주] ${v.name}`}
+                    [외주] {v.name}
                   </option>
                 ))}
               </select>
@@ -1977,9 +2083,10 @@ export default function ProjectStatus13StepsPage() {
                 className="h-7 flex-1 rounded border bg-white dark:bg-zinc-900 px-2 text-xs font-medium text-emerald-700"
               >
                 <option value="ALL">전체 양산처 (외주/자체)</option>
-                {MASS_VENDOR_LIST.map((v) => (
+                <option value="MPSI 자체사출라인">[자체] MPSI 자체사출라인</option>
+                {massVendorOptions.map((v) => (
                   <option key={v.id} value={v.name}>
-                    {v.isSelf ? `[자체] ${v.name}` : `[외주] ${v.name}`}
+                    [외주] {v.name}
                   </option>
                 ))}
               </select>
@@ -3429,14 +3536,14 @@ export default function ProjectStatus13StepsPage() {
 
                     {formState.moldProductionType === "OUTSOURCING" ? (
                       <div>
-                        <label className="block text-[10px] text-zinc-500 mb-0.5">금형제작 외주업체 선택</label>
+                        <label className="block text-[10px] text-zinc-500 mb-0.5">금형제작 외주업체 선택 (DB 연동)</label>
                         <select
-                          value={formState.moldVendor || "우성정공(주)"}
+                          value={formState.moldVendor || (moldVendorOptions[0]?.name || "우성정공(주)")}
                           onChange={(e) => setFormState({ ...formState, moldVendor: e.target.value })}
                           className="h-7 w-full rounded border bg-white dark:bg-zinc-900 px-2 text-xs font-bold text-purple-700"
                         >
-                          {MOLD_VENDOR_LIST.filter(v => !v.isSelf).map(v => (
-                            <option key={v.id} value={v.name}>{v.name} ({v.manager})</option>
+                          {moldVendorOptions.map(v => (
+                            <option key={v.id} value={v.name}>{v.name} {v.manager ? `(${v.manager})` : ""}</option>
                           ))}
                         </select>
                       </div>
@@ -3477,7 +3584,7 @@ export default function ProjectStatus13StepsPage() {
                           onChange={() => setFormState({
                             ...formState,
                             massProductionType: "OUTSOURCING",
-                            massVendor: "(주)뉴몰드"
+                            massVendor: massVendorOptions[0]?.name || "(주)뉴몰드"
                           })}
                         />
                         <span className="font-medium">외주 양산 (협력사)</span>
@@ -3500,14 +3607,14 @@ export default function ProjectStatus13StepsPage() {
 
                     {formState.massProductionType === "OUTSOURCING" ? (
                       <div>
-                        <label className="block text-[10px] text-zinc-500 mb-0.5">사출양산 외주업체 선택</label>
+                        <label className="block text-[10px] text-zinc-500 mb-0.5">사출양산 외주업체 선택 (DB 연동)</label>
                         <select
-                          value={formState.massVendor || "(주)뉴몰드"}
+                          value={formState.massVendor || (massVendorOptions[0]?.name || "(주)뉴몰드")}
                           onChange={(e) => setFormState({ ...formState, massVendor: e.target.value })}
                           className="h-7 w-full rounded border bg-white dark:bg-zinc-900 px-2 text-xs font-bold text-emerald-700"
                         >
-                          {MASS_VENDOR_LIST.filter(v => !v.isSelf).map(v => (
-                            <option key={v.id} value={v.name}>{v.name} ({v.manager})</option>
+                          {massVendorOptions.map(v => (
+                            <option key={v.id} value={v.name}>{v.name} {v.manager ? `(${v.manager})` : ""}</option>
                           ))}
                         </select>
                       </div>
@@ -4024,15 +4131,15 @@ export default function ProjectStatus13StepsPage() {
 
                     {editFormState.moldProductionType === "OUTSOURCING" && (
                       <div className="pt-1">
-                        <label className="block text-[10px] text-zinc-500 mb-0.5">금형제작 외주업체 선택</label>
+                        <label className="block text-[10px] text-zinc-500 mb-0.5">금형제작 외주업체 선택 (DB 연동)</label>
                         <select 
                           value={editFormState.moldVendor || ""}
                           onChange={(e) => setEditFormState({ ...editFormState, moldVendor: e.target.value })}
                           className="h-7 w-full rounded border bg-white dark:bg-zinc-900 px-2 text-xs font-bold text-purple-800"
                         >
                           <option value="">미지정 (외주업체 선택)</option>
-                          {MOLD_VENDOR_LIST.map((v) => (
-                            <option key={v.id} value={v.name}>{v.name} ({v.manager})</option>
+                          {moldVendorOptions.map((v) => (
+                            <option key={v.id} value={v.name}>{v.name} {v.manager ? `(${v.manager})` : ""}</option>
                           ))}
                         </select>
                       </div>
@@ -4068,15 +4175,15 @@ export default function ProjectStatus13StepsPage() {
 
                     {editFormState.massProductionType === "OUTSOURCING" && (
                       <div className="pt-1">
-                        <label className="block text-[10px] text-zinc-500 mb-0.5">사출양산 외주업체 선택</label>
+                        <label className="block text-[10px] text-zinc-500 mb-0.5">사출양산 외주업체 선택 (DB 연동)</label>
                         <select 
                           value={editFormState.massVendor || ""}
                           onChange={(e) => setEditFormState({ ...editFormState, massVendor: e.target.value })}
                           className="h-7 w-full rounded border bg-white dark:bg-zinc-900 px-2 text-xs font-bold text-emerald-800"
                         >
                           <option value="">미지정 (외주업체 선택)</option>
-                          {MASS_VENDOR_LIST.map((v) => (
-                            <option key={v.id} value={v.name}>{v.name} ({v.manager})</option>
+                          {massVendorOptions.map((v) => (
+                            <option key={v.id} value={v.name}>{v.name} {v.manager ? `(${v.manager})` : ""}</option>
                           ))}
                         </select>
                       </div>

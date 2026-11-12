@@ -269,6 +269,35 @@ export function generateNextQuoteNo(existingProjects: { projectNo: string }[]): 
   return `${prefix}${String(nextSeq).padStart(3, "0")}-01`;
 }
 
+/**
+ * 프로젝트 관리번호(MI...)로부터 견적단계 번호(Q...)를 도출하는 함수
+ * 규칙: MI26001P0 -> Q26001-01, MI26002P0 -> Q26002-01
+ */
+export function deriveQuoteNoFromProjectNo(projectNo?: string): string {
+  if (!projectNo) {
+    const currentYear = String(new Date().getFullYear()).slice(-2);
+    return `Q${currentYear}001-01`;
+  }
+  const clean = projectNo.trim();
+  if (clean.toUpperCase().startsWith("Q")) {
+    return clean;
+  }
+  // MI26001P0 / M26001P0 / MI26001
+  const match = clean.match(/^MI?(\d{2})(\d{3})(?:P(\d+))?$/i);
+  if (match) {
+    const year = match[1];
+    const seq = match[2];
+    const pDegree = match[3] ? parseInt(match[3], 10) + 1 : 1;
+    return `Q${year}${seq}-${String(pDegree).padStart(2, "0")}`;
+  }
+  const matchAnyNum = clean.match(/(\d{5})/);
+  if (matchAnyNum) {
+    return `Q${matchAnyNum[1]}-01`;
+  }
+  const currentYear = String(new Date().getFullYear()).slice(-2);
+  return `Q${currentYear}001-01`;
+}
+
 // 단계별 동적 담당자(외주업체명 or MPSI 자체생산팀) 추출 함수 (하드코딩 제거 & 동적 외주업체명 바인딩)
 export function getStepActor(step: number, project?: ProjectItem): string {
   const moldV = project?.moldVendor || "우성정공(주)";
@@ -610,6 +639,29 @@ export function getStoredProjects(): ProjectItem[] {
       }
     } catch (e) {}
 
+    // [핵심] 견적 단계 번호(Q) 데이터 자동 보정: 신작(N001 등) 프로젝트의 견적번호가 MI...이거나 누락된 경우 실제 Q 채번값으로 보정
+    try {
+      let hasEstimateNoChange = false;
+      parsed = parsed.map((p) => {
+        if (!p.changeType?.startsWith("E")) {
+          // 신작 건인데 estimateNo가 비어있거나 MI로 시작하는 경우 Q로 변환
+          if (!p.estimateNo || p.estimateNo.trim().toUpperCase().startsWith("MI")) {
+            const correctedQ = deriveQuoteNoFromProjectNo(p.projectNo);
+            hasEstimateNoChange = true;
+            return {
+              ...p,
+              estimateNo: correctedQ,
+            };
+          }
+        }
+        return p;
+      });
+
+      if (hasEstimateNoChange) {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(parsed));
+      }
+    } catch (e) {}
+
     return parsed;
   } catch (e) {
     console.error("Failed to read projects from storage", e);
@@ -944,6 +996,11 @@ export function useProjectMaster() {
     const current = getStoredProjects();
     const updated = current.map(p => {
       if (p.estimateNo === estimateNo || p.projectNo === estimateNo) {
+        const origEstimateNo = (p.estimateNo && p.estimateNo.toUpperCase().startsWith("Q"))
+          ? p.estimateNo
+          : (estimateNo && estimateNo.toUpperCase().startsWith("Q")
+              ? estimateNo
+              : deriveQuoteNoFromProjectNo(officialProjectNo));
         return {
           ...p,
           projectNo: officialProjectNo,
@@ -954,7 +1011,7 @@ export function useProjectMaster() {
           stepStatus: "진행중" as const,
           quotationStatus: "수주확정",
           stepNameCustom: undefined,
-          estimateNo: p.estimateNo || p.projectNo, // 최초 견적 번호(Q) 영구 보존
+          estimateNo: origEstimateNo, // 최초 견적 번호(Q) 영구 보존
           updatedAt: new Date().toISOString().replace('T', ' ').substring(0, 16),
         };
       }

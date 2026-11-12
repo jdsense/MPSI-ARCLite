@@ -16,7 +16,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { CurrencyInput } from "@/components/ui/currency-input";
 import { DateRangeFilter, isWithinDateRange, DatePresetType } from "@/components/common/date-range-filter";
-import { useProjectMaster } from "@/lib/project-store";
+import { useProjectMaster, deriveQuoteNoFromProjectNo } from "@/lib/project-store";
 
 // 1. 원청사 견적 진행 상태
 export type PrimeQuotationStatus = 
@@ -855,10 +855,14 @@ export default function QuotationPage() {
     updateQuotationInDB(updatedItem, item.quotationNo);
 
     // 2. 프로젝트 관리대장에 자동 추가 (생산/외주업체 등록 대기 상태)
+    const preservedQuoteNo = (item.quotationNo && item.quotationNo.toUpperCase().startsWith("Q"))
+      ? item.quotationNo
+      : deriveQuoteNoFromProjectNo(officialPjtNo);
+
     // [요청 2] 스크린샷 표시 정보(품번, 금형번호, 금형차수, 캐비티사양, 금형제작처, 사출양산처, 현재스텝, 킥오프, 목표T1, 금형출고납기, 목표양산승인 등)는 기본 입력 제외
     addProject({
       projectNo: officialPjtNo,
-      estimateNo: item.quotationNo, // 이전 Q 견적번호 보존
+      estimateNo: preservedQuoteNo, // 이전 Q 견적번호 보존
       projectName: item.projectName || "",
       productName: item.productName || "",
       customerName: item.customerName || "고객사",
