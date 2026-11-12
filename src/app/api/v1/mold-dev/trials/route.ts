@@ -68,7 +68,7 @@ export function createInitialTrialRecord(
     productName: mfgMeta.productName || pmMeta.productName || mqMeta.productName || projectName || "사출 성형 부품",
     customerName: mfgMeta.customerName || pmMeta.customerName || mqMeta.customerName || "원청 고객사",
     moldVendor: mfgMeta.moldVendor || mqMeta.vendorName || pmMeta.moldVendor || "우성정공(주)",
-    massVendor: mfgMeta.massVendor || pmMeta.massVendor || "(주)뉴몰드",
+    massVendor: mfgMeta.massVendor || pmMeta.massVendor || "",
     cavity: actualCavity,
     material: actualMaterial,
     targetT1Date: targetT1,
@@ -281,7 +281,7 @@ export async function GET(req: Request) {
         const actualProductName = pmInfo.productName || pmInfo.projectNameCol || mqInfo.productName || mfgInfo.productName || meta.productName || "제품";
         const actualCustomer = pmInfo.customerName || mqInfo.customerName || mfgInfo.customerName || meta.customerName || "고객사";
         const actualVendor = mqInfo.vendorName || mfgInfo.moldVendor || pmInfo.moldVendor || meta.moldVendor || "우성정공(주)";
-        const actualMassVendor = mfgInfo.massVendor || pmInfo.massVendor || meta.massVendor || "(주)뉴몰드";
+        const actualMassVendor = mfgInfo.massVendor || pmInfo.massVendor || meta.massVendor || "";
 
         return {
           id: Number(r.TrialSequenceNo),

@@ -91,8 +91,8 @@ export async function syncDownstreamToProjectMaster(
       if (payload.moldNo) noteObj.moldNo = payload.moldNo;
       if (payload.moldDegree) noteObj.moldDegree = payload.moldDegree;
       if (payload.partNo) noteObj.partNo = payload.partNo;
-      if (payload.moldVendor) noteObj.moldVendor = payload.moldVendor;
-      if (payload.massVendor) noteObj.massVendor = payload.massVendor;
+      if (payload.moldVendor !== undefined) noteObj.moldVendor = payload.moldVendor;
+      if (payload.massVendor !== undefined) noteObj.massVendor = payload.massVendor;
       if (payload.trialDegree) noteObj.trialDegree = payload.trialDegree;
       if (payload.stepStatus) noteObj.stepStatus = payload.stepStatus;
 

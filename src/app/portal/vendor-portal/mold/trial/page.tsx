@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { 
   Gauge, Wrench, CheckCircle2, Clock, 
   AlertTriangle, Search, RefreshCw, Save, 
@@ -20,7 +20,7 @@ import {
   getStepBullets, 
   ProjectItem 
 } from "@/lib/project-store";
-import { useAuthRole } from "@/lib/role-store";
+import { useAuthRole, MASS_VENDOR_LIST } from "@/lib/role-store";
 import { 
   useMoldTrialStore, 
   MoldTrialProject, 
@@ -30,7 +30,8 @@ import {
   ChecklistItem,
   MoldTrialMemoLog,
   calculateFinalCompletionStats,
-  createDefaultFinalDocs
+  createDefaultFinalDocs,
+  syncTrialToBackend
 } from "@/lib/mold-trial-store";
 import { sendAppNotification, cleanCompanyAuthor } from "@/lib/notification-store";
 
@@ -66,6 +67,75 @@ export default function VendorMoldTrialPage() {
   const [editingFinalDocs, setEditingFinalDocs] = useState<FinalDeliveryFile[]>([]);
   const [transferPlanDate, setTransferPlanDate] = useState("");
   const [transferActualDate, setTransferActualDate] = useState("");
+
+  // 사출양산 외주업체 목록 (기본 + DB 연동)
+  const [dbMassVendors, setDbMassVendors] = useState<{ id: string; name: string }[]>(
+    MASS_VENDOR_LIST.filter((v) => !v.isSelf).map((v) => ({ id: v.id, name: v.name }))
+  );
+
+  useEffect(() => {
+    async function loadMassVendors() {
+      try {
+        const res = await fetch("/api/v1/basic-info/vendors");
+        if (res.ok) {
+          const json = await res.json();
+          if (json.success && Array.isArray(json.data) && json.data.length > 0) {
+            const list = json.data
+              .filter((v: any) => v.category === "공급업체" || (v.bizItem && (v.bizItem.includes("사출") || v.bizItem.includes("양산"))))
+              .map((v: any) => ({
+                id: v.vendorCode || v.companyName,
+                name: v.companyName,
+              }));
+            if (list.length > 0) {
+              setDbMassVendors((prev) => {
+                const map = new Map<string, { id: string; name: string }>();
+                prev.forEach(item => map.set(item.name, item));
+                list.forEach((item: any) => map.set(item.name, item));
+                map.set("MPSI 자체사출라인", { id: "MPSI_SELF", name: "MPSI 자체사출라인" });
+                return Array.from(map.values());
+              });
+            }
+          }
+        }
+      } catch (e) {
+        console.warn("Failed to load mass vendors:", e);
+      }
+    }
+    loadMassVendors();
+  }, []);
+
+  // 사출양산처 선택 / 변경 핸들러 (MpsiMoldTrial + ProjectMaster 실시간 상호 DB 동기화)
+  const handleMassVendorChange = async (newVendor: string) => {
+    if (!selectedProject) return;
+
+    // 1. 프론트엔드 모달 상태 및 moldTrialStore 갱신
+    setSelectedProject((prev) => prev ? { ...prev, massVendor: newVendor } : null);
+    updateTrialProject(selectedProject.id, { massVendor: newVendor });
+
+    // 2. 백엔드 MpsiMoldTrial DB 갱신
+    syncTrialToBackend({ ...selectedProject, massVendor: newVendor });
+
+    // 3. ProjectMaster 전역 훅 및 DB 동기화
+    updateStep(selectedProject.projectNo, {
+      massVendor: newVendor,
+      massProductionType: newVendor.includes("자체") ? "IN_HOUSE" : "OUTSOURCING"
+    });
+
+    // 4. 백엔드 ProjectMaster DB 직접 PUT (영구 저장 보장)
+    try {
+      await fetch("/api/v1/projects", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          projectNo: selectedProject.projectNo,
+          massVendor: newVendor,
+          massProductionType: newVendor.includes("자체") ? "IN_HOUSE" : "OUTSOURCING"
+        })
+      });
+    } catch (err) {
+      console.error("Failed to sync massVendor to projects API:", err);
+    }
+  };
 
   // 시사출 계획(일정)표 등록 모달 (2-1)
   const [isPlanModalOpen, setIsPlanModalOpen] = useState(false);
@@ -736,7 +806,7 @@ export default function VendorMoldTrialPage() {
 
                       {/* 사출양산처 */}
                       <td className="py-2.5 px-3 text-center font-medium text-emerald-700 border-r border-zinc-100 dark:border-zinc-800">
-                        {project.massVendor || "(주)뉴몰드"}
+                        {project.massVendor || "선택안함"}
                       </td>
 
                       <td className="py-2.5 px-3 font-medium text-zinc-800 dark:text-zinc-200 border-r border-zinc-100 dark:border-zinc-800 truncate max-w-[150px]" title={project.projectName}>
@@ -902,7 +972,20 @@ export default function VendorMoldTrialPage() {
                   </div>
                   <div><span className="text-zinc-500">원청 고객사:</span> <b className="text-zinc-800 dark:text-zinc-200 ml-1">{selectedProject.customerName || "현대자동차"}</b></div>
                   <div><span className="text-zinc-500">금형제작처:</span> <b className="text-blue-600 ml-1">{selectedProject.moldVendor}</b></div>
-                  <div><span className="text-zinc-500">사출양산처:</span> <b className="text-emerald-700 ml-1">{selectedProject.massVendor || "(주)뉴몰드"}</b></div>
+                  <div className="flex items-center gap-1">
+                    <span className="text-zinc-500 shrink-0">사출양산처:</span>
+                    <select
+                      value={selectedProject.massVendor || ""}
+                      onChange={(e) => handleMassVendorChange(e.target.value)}
+                      className="h-6 px-1.5 text-[11px] font-bold text-emerald-800 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-300 dark:border-emerald-700 rounded cursor-pointer"
+                      title="사출양산처 선택 / 변경 (DB 자동 동기화)"
+                    >
+                      <option value="">선택안함</option>
+                      {dbMassVendors.map((v) => (
+                        <option key={v.id} value={v.name}>{v.name}</option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
 
                 {/* 버튼 그룹: 다음 차수 등록 (요청사항: 시사출 계획(일정)표 등록 버튼 삭제) */}
@@ -1447,9 +1530,20 @@ export default function VendorMoldTrialPage() {
                         <Award className="h-4 w-4 text-amber-600" />
                         공정 9~10 금형 육성 완료 & 금형 이관 (5대 필수 서류 등록)
                       </h4>
-                      <p className="text-[11px] text-zinc-600 dark:text-zinc-400 mt-0.5">
-                        금형제작처: <b className="text-zinc-800 dark:text-zinc-200">{selectedProject.moldVendor}</b> ➔ 사출양산처: <b className="text-emerald-700">{selectedProject.massVendor || "(주)뉴몰드"}</b>
-                      </p>
+                      <div className="text-[11px] text-zinc-600 dark:text-zinc-400 mt-0.5 flex items-center gap-1.5 flex-wrap">
+                        <span>금형제작처: <b className="text-zinc-800 dark:text-zinc-200">{selectedProject.moldVendor}</b> ➔ 사출양산처:</span>
+                        <select
+                          value={selectedProject.massVendor || ""}
+                          onChange={(e) => handleMassVendorChange(e.target.value)}
+                          className="h-6 px-2 text-xs font-bold text-emerald-800 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-300 dark:border-emerald-700 rounded-md cursor-pointer"
+                          title="사출양산처 선택 / 변경 (DB 자동 동기화)"
+                        >
+                          <option value="">선택안함</option>
+                          {dbMassVendors.map((v) => (
+                            <option key={v.id} value={v.name}>{v.name}</option>
+                          ))}
+                        </select>
+                      </div>
                       <p className="text-[10px] text-zinc-500 mt-0.5">
                         시사출 완료 및 금형 양산처로의 금형 이관 시 필수 요구되는 5개 서류를 첨부합니다. MPSI 본사가 검증 후 공식 승인합니다.
                       </p>
