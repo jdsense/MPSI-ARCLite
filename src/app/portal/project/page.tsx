@@ -587,51 +587,55 @@ export default function ProjectStatus13StepsPage() {
     }
   };
 
-  // 신규 등록 모달 열기 핸들러
+  // 신규 등록 모달 열기 핸들러 (원청사 견적을 거치지 않고 프로젝트 관리대장에서 직접 등록하는 경우: 무조건 기존 프로젝트 번호 연동으로 처리)
   const handleOpenNewProjectModal = () => {
-    const nextPjtNo = generateNextProjectNo(projects);
-    const nextQNo = generateNextQuoteNo(projects);
-    setProjectCreationMode("NEW");
-    setSelectedExistingProjectNo("");
+    setProjectCreationMode("EXISTING");
+    const existingNo = projects[0]?.projectNo || "";
+    setSelectedExistingProjectNo(existingNo);
     const defaultMold = moldVendorOptions[0]?.name || "우성정공(주)";
     const defaultMass = massVendorOptions[0]?.name || "(주)뉴몰드";
 
-    setFormState({
-      projectNo: nextPjtNo,
-      estimateNo: nextQNo,
-      projectName: "",
-      productName: "",
-      customerName: CUSTOMER_OPTIONS[0],
-      partNo: "",
-      moldNo: `${nextPjtNo}M`,
-      moldDegree: "M1",
-      changeType: "N001",
-      moldProductionType: "OUTSOURCING",
-      moldVendor: defaultMold,
-      massProductionType: "OUTSOURCING",
-      massVendor: defaultMass,
-      cavity: "",
-      material: "",
-      partWeight: "",
-      annualVolume: "",
-      machineTon: "",
-      hrsSpec: "",
-      moldMaterial: "",
-      resinSpec: "",
-      warrantyShots: "",
-      registeredDate: "",
-      quoteSubmitDate: "",
-      orderDate: "",
-      kickoffDate: "",
-      targetMoldDays: "",
-      targetT1Date: "",
-      moldDeliveryDate: "",
-      targetMassDate: "",
-      massStartDate: "",
-      currentStep: 0,
-      stepStatus: "진행중",
-      trialDegree: "T1 대기",
-    });
+    if (existingNo) {
+      handleSelectExistingProject(existingNo);
+    } else {
+      const nextPjtNo = generateNextProjectNo(projects);
+      setFormState({
+        projectNo: nextPjtNo,
+        estimateNo: "수주확정",
+        projectName: "",
+        productName: "",
+        customerName: CUSTOMER_OPTIONS[0],
+        partNo: "",
+        moldNo: `${nextPjtNo}M`,
+        moldDegree: "M1",
+        changeType: "E001",
+        moldProductionType: "OUTSOURCING",
+        moldVendor: defaultMold,
+        massProductionType: "OUTSOURCING",
+        massVendor: defaultMass,
+        cavity: "",
+        material: "",
+        partWeight: "",
+        annualVolume: "",
+        machineTon: "",
+        hrsSpec: "",
+        moldMaterial: "",
+        resinSpec: "",
+        warrantyShots: "",
+        registeredDate: "",
+        quoteSubmitDate: "",
+        orderDate: "",
+        kickoffDate: "",
+        targetMoldDays: "",
+        targetT1Date: "",
+        moldDeliveryDate: "",
+        targetMassDate: "",
+        massStartDate: "",
+        currentStep: 0,
+        stepStatus: "진행중",
+        trialDegree: "T1 대기",
+      });
+    }
     setSelectedItemCode("");
     setIsNewProjectModalOpen(true);
   };
@@ -3156,44 +3160,14 @@ export default function ProjectStatus13StepsPage() {
                   </div>
 
                   <div className="flex items-center gap-4 text-xs flex-wrap">
-                    <label className="flex items-center gap-1.5 cursor-pointer">
-                      <input
-                        type="radio"
-                        name="projectCreationMode"
-                        value="NEW"
-                        checked={projectCreationMode === "NEW"}
-                        onChange={() => {
-                          setProjectCreationMode("NEW");
-                          const nextPjt = generateNextProjectNo(projects);
-                          const nextQ = generateNextQuoteNo(projects);
-                          setFormState((prev) => ({
-                            ...prev,
-                            projectNo: nextPjt,
-                            estimateNo: nextQ,
-                            changeType: "N001",
-                            moldDegree: "M1",
-                            moldNo: `${nextPjt}M`,
-                          }));
-                        }}
-                      />
-                      <span className="font-bold text-zinc-800 dark:text-zinc-200">
-                        신규 프로젝트 발번 (초도 신작 N001)
-                      </span>
-                    </label>
-
+                    {/* 사용자 요청: 원청사 견적 외 직접 등록 시 '신규 프로젝트 발번' 항목 숨김처리 (무조건 기존 프로젝트 번호 연동만 표시) */}
                     <label className="flex items-center gap-1.5 cursor-pointer">
                       <input
                         type="radio"
                         name="projectCreationMode"
                         value="EXISTING"
-                        checked={projectCreationMode === "EXISTING"}
-                        onChange={() => {
-                          setProjectCreationMode("EXISTING");
-                          const existingNo = selectedExistingProjectNo || projects[0]?.projectNo || "";
-                          if (existingNo) {
-                            handleSelectExistingProject(existingNo);
-                          }
-                        }}
+                        checked={true}
+                        readOnly
                       />
                       <span className="font-bold text-purple-700 dark:text-purple-300">
                         기존 프로젝트 번호 연동 (설계변경 E차수 / 복수·증설 금형 M차수 등록)
