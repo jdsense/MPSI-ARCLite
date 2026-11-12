@@ -253,11 +253,11 @@ export function ArcWizardFloating() {
   const [hiddenColumns, setHiddenColumns] = useState<string[]>([]);
   const [llmEnabled, setLlmEnabled] = useState(true);
   const [aiModel, setAiModel] = useState("gemini-3.8-flash");
-  const [aiProvider, setAiProvider] = useState<"auto" | "gemini" | "vertex" | "openai-compatible">("gemini");
+  const [aiProvider, setAiProvider] = useState<"auto" | "gemini" | "vertex" | "openai-compatible" | "anthropic">("gemini");
   const [maskedKey, setMaskedKey] = useState("");
   const [aiBaseUrl, setAiBaseUrl] = useState("");
   const [isAiModalOpen, setIsAiModalOpen] = useState(false);
-  const [formProvider, setFormProvider] = useState<"auto" | "gemini" | "vertex" | "openai-compatible">("gemini");
+  const [formProvider, setFormProvider] = useState<"auto" | "gemini" | "vertex" | "openai-compatible" | "anthropic">("gemini");
   const [formModel, setFormModel] = useState("gemini-3.8-flash");
   const [formApiKey, setFormApiKey] = useState("");
   const [formBaseUrl, setFormBaseUrl] = useState("");
@@ -1003,9 +1003,10 @@ export function ArcWizardFloating() {
                   <label className="block text-[11px] font-semibold text-zinc-300 mb-1">AI 공급자 (Provider)</label>
                   <select
                     value={formProvider}
-                    onChange={(e) => setFormProvider(e.target.value as "auto" | "gemini" | "vertex" | "openai-compatible")}
+                    onChange={(e) => setFormProvider(e.target.value as "auto" | "gemini" | "vertex" | "openai-compatible" | "anthropic")}
                     className="w-full px-2.5 py-1.5 rounded-lg bg-[#050b17] border border-blue-800 text-xs text-white focus:outline-none focus:border-sky-400"
                   >
+                    <option value="anthropic">Anthropic Claude API (api.anthropic.com)</option>
                     <option value="auto">Auto (Gemini API / Vertex AI 자동 감지)</option>
                     <option value="gemini">Google Gemini API (generativelanguage)</option>
                     <option value="vertex">Google Vertex AI Express (aiplatform)</option>
@@ -1016,11 +1017,14 @@ export function ArcWizardFloating() {
                 <div>
                   <label className="block text-[11px] font-semibold text-zinc-300 mb-1">AI 모델 (Model ID)</label>
                   <div className="flex gap-1.5 mb-1.5 flex-wrap">
-                    {["gemini-3.8-flash", "gemini-3.5-flash-lite", "gemini-3.1-pro-preview", "gpt-4o"].map((preset) => (
+                    {["claude-opus-5-5", "claude-3-5-sonnet-latest", "gemini-3.8-flash", "gemini-3.5-flash-lite", "gpt-4o"].map((preset) => (
                       <button
                         key={preset}
                         type="button"
-                        onClick={() => setFormModel(preset)}
+                        onClick={() => {
+                          setFormModel(preset);
+                          if (preset.startsWith("claude")) setFormProvider("anthropic");
+                        }}
                         className={`px-2 py-0.5 rounded text-[10px] font-mono border cursor-pointer ${
                           formModel === preset ? "bg-sky-600 text-white border-sky-400" : "bg-[#102246] text-blue-200 border-blue-800 hover:bg-blue-800"
                         }`}
@@ -1032,7 +1036,7 @@ export function ArcWizardFloating() {
                   <input
                     value={formModel}
                     onChange={(e) => setFormModel(e.target.value)}
-                    placeholder="예: gemini-3.8-flash, gemini-3.5-flash-lite, gpt-4o..."
+                    placeholder="예: claude-opus-5-5, gemini-3.8-flash, gpt-4o..."
                     className="w-full px-2.5 py-1.5 rounded-lg bg-[#050b17] border border-blue-800 text-xs text-white font-mono focus:outline-none focus:border-sky-400"
                   />
                 </div>
@@ -1047,7 +1051,16 @@ export function ArcWizardFloating() {
                   <input
                     type="password"
                     value={formApiKey}
-                    onChange={(e) => setFormApiKey(e.target.value)}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setFormApiKey(val);
+                      if (val.trim().startsWith("sk-ant-")) {
+                        setFormProvider("anthropic");
+                        if (!formModel || formModel.includes("gemini")) {
+                          setFormModel("claude-opus-5-5");
+                        }
+                      }
+                    }}
                     placeholder="변경할 때만 새 API 키 입력 (비워두면 현재 키 유지)"
                     className="w-full px-2.5 py-1.5 rounded-lg bg-[#050b17] border border-blue-800 text-xs text-white font-mono focus:outline-none focus:border-sky-400"
                   />

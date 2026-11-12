@@ -609,8 +609,8 @@ export function setColumnHidden(pathname: string, column: string, hidden: boolea
   return { changed: true, historyId: id, hiddenColumns: data.hiddenColumns[pathname] || [] };
 }
 
-// ───────── AI 엔진 설정 및 멀티 공급자(Gemini / Vertex / OpenAI 호환) 호출 ─────────
-export type AiProvider = "auto" | "gemini" | "vertex" | "openai-compatible";
+// ───────── AI 엔진 설정 및 멀티 공급자(Gemini / Vertex / OpenAI 호환 / Anthropic Claude) 호출 ─────────
+export type AiProvider = "auto" | "gemini" | "vertex" | "openai-compatible" | "anthropic";
 
 export interface AiConfig {
   provider: AiProvider;
@@ -729,6 +729,7 @@ export function recordAiUsage(promptTok: number, completionTok: number, modelNam
 export function normalizeModelName(raw: string): string {
   const m = (raw || "").trim();
   if (!m) return DEFAULT_MODEL;
+  if (m.toLowerCase().startsWith("claude")) return m;
   const lower = m.toLowerCase().replace(/\s+/g, "-");
   // Google API 신규 프로젝트에서 gemini-2.5 계열이 지원 종료되어 gemini-3.8-flash / gemini-3.5-flash-lite로 자동 매핑
   if (lower === "gemini-2.5" || lower === "gemini2.5" || lower === "gemini-2.5-flash") return "gemini-3.8-flash";
@@ -752,9 +753,13 @@ export function getAiConfig(): AiConfig {
   } catch {
     // ignore corrupt config
   }
-  const provider = (saved.provider || process.env.ARC_WIZARD_PROVIDER || "auto") as AiProvider;
-  const model = normalizeModelName(saved.model || process.env.ARC_WIZARD_MODEL || DEFAULT_MODEL);
-  const apiKey = (saved.apiKey || process.env.ARC_WIZARD_API_KEY || process.env.GEMINI_API_KEY || DEFAULT_API_KEY).trim();
+  const apiKey = (saved.apiKey || process.env.ARC_WIZARD_API_KEY || process.env.ANTHROPIC_API_KEY || process.env.GEMINI_API_KEY || DEFAULT_API_KEY).trim();
+  const isAnthropic = apiKey.startsWith("sk-ant-") || (saved.model && saved.model.toLowerCase().startsWith("claude"));
+  const defaultProvider = isAnthropic ? "anthropic" : "auto";
+  const defaultModel = isAnthropic ? "claude-opus-5-5" : DEFAULT_MODEL;
+
+  const provider = (saved.provider || process.env.ARC_WIZARD_PROVIDER || defaultProvider) as AiProvider;
+  const model = normalizeModelName(saved.model || process.env.ARC_WIZARD_MODEL || defaultModel);
   const baseUrl = (saved.baseUrl ?? process.env.ARC_WIZARD_BASE_URL ?? "").trim();
   return { provider, model, apiKey, baseUrl };
 }
@@ -877,6 +882,69 @@ async function callOpenAiCompatible(
   return replyText;
 }
 
+async function callAnthropicEndpoint(
+  apiKey: string,
+  model: string,
+  prompt: string,
+  imageDataUrl?: string
+): Promise<string> {
+  const image = parseDataUrl(imageDataUrl);
+  const content: unknown[] = [];
+  if (image) {
+    content.push({
+      type: "image",
+      source: {
+        type: "base64",
+        media_type: image.mimeType,
+        data: image.data,
+      },
+    });
+  }
+  content.push({ type: "text", text: prompt });
+
+  const res = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-api-key": apiKey,
+      "anthropic-version": "2026-10-21",
+    },
+    body: JSON.stringify({
+      model: model || "claude-opus-5-5",
+      max_tokens: 4096,
+      messages: [{ role: "user", content }],
+      temperature: 0.1,
+    }),
+  });
+
+  if (!res.ok) {
+    const errText = await res.text().catch(() => "");
+    let cleanMsg = errText.replace(/\s+/g, " ").slice(0, 240);
+    try {
+      const parsedErr = JSON.parse(errText);
+      if (parsedErr?.error?.message) cleanMsg = String(parsedErr.error.message);
+    } catch {
+      // keep cleanMsg
+    }
+    throw new Error(`Anthropic HTTP ${res.status}: ${cleanMsg}`);
+  }
+
+  const json = await res.json();
+  const replyText =
+    json.content
+      ?.filter((part: any) => part.type === "text")
+      ?.map((part: any) => part.text)
+      ?.join("\n") || "";
+
+  const usage = json.usage || {};
+  recordAiUsage(
+    Number(usage.input_tokens || Math.ceil(prompt.length / 3)),
+    Number(usage.output_tokens || Math.ceil(replyText.length / 3)),
+    model
+  );
+  return replyText;
+}
+
 export interface ScreenSnapshot {
   headings?: string[];
   labels?: string[];
@@ -892,14 +960,21 @@ export async function callAiModel(prompt: string, imageDataUrl?: string, jsonMod
   const primaryModel = normalizeModelName(cfg.model);
   const image = parseDataUrl(imageDataUrl);
 
-  // 1) OpenAI 호환 커스텀 엔드포인트
+  // 1) Anthropic Claude (provider가 anthropic이거나 키가 sk-ant-로 시작하거나 모델이 claude인 경우 직결)
+  if (cfg.provider === "anthropic" || cfg.apiKey.startsWith("sk-ant-") || primaryModel.toLowerCase().startsWith("claude")) {
+    const targetModel = primaryModel.toLowerCase().startsWith("claude") ? primaryModel : "claude-opus-5-5";
+    const text = await callAnthropicEndpoint(cfg.apiKey, targetModel, prompt, imageDataUrl);
+    return { text, usedEndpoint: `Anthropic Claude (${targetModel})` };
+  }
+
+  // 2) OpenAI 호환 커스텀 엔드포인트
   if (cfg.provider === "openai-compatible" || (cfg.baseUrl && cfg.provider === "auto" && !cfg.baseUrl.includes("googleapis.com"))) {
     const base = cfg.baseUrl || "https://api.openai.com/v1";
     const text = await callOpenAiCompatible(base, cfg.apiKey, primaryModel, prompt, imageDataUrl);
     return { text, usedEndpoint: `${base} (${primaryModel})` };
   }
 
-  // 2) Google Gemini API / Vertex AI (무료 티어에서 할당량이 있는 Flash 모델 우선 폴백)
+  // 3) Google Gemini API / Vertex AI (무료 티어에서 할당량이 있는 Flash 모델 우선 폴백)
   const fallbackModels = Array.from(
     new Set([primaryModel, "gemini-3.8-flash", "gemini-3.5-flash-lite", "gemini-3-flash-preview", "gemini-3.1-pro-preview"])
   );
