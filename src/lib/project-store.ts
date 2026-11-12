@@ -688,6 +688,33 @@ export function getStoredProjects(): ProjectItem[] {
           }
         }
 
+        // [요구사항] 금형번호 자동 보정: 프로젝트 관리번호(예: MI26001P0)에서 'P' 이전까지만 추출 -> MI26001
+        let newMoldNo = p.moldNo;
+        if (p.projectNo) {
+          const pIdx = p.projectNo.toUpperCase().indexOf("P");
+          if (pIdx > 0) {
+            const expectedMoldNo = p.projectNo.substring(0, pIdx);
+            if (!newMoldNo || newMoldNo.includes("P") || newMoldNo.endsWith("M") || newMoldNo !== expectedMoldNo) {
+              newMoldNo = expectedMoldNo;
+              modified = true;
+            }
+          }
+        }
+
+        // [요구사항] 품번 자동 보정: 비어있거나 누락된 경우 제품명에 따라 기초정보 품번 자동 매칭
+        let newPartNo = p.partNo;
+        if (!newPartNo && p.productName) {
+          if (p.productName.includes("Front Door")) newPartNo = "84710-NT500-LH";
+          else if (p.productName.includes("Rear Pillar")) newPartNo = "85840-NQ500";
+          else if (p.productName.includes("BMS") || p.productName.includes("Battery Case")) newPartNo = "37510-SPX00-BM";
+          else if (p.productName.includes("Battery Pack")) newPartNo = "37500-EV04-L";
+          else if (p.productName.includes("Armrest")) newPartNo = "82710-AA000";
+          else if (p.productName.includes("Console")) newPartNo = "84740-A2XT0-MB";
+          else if (p.productName.includes("Grille")) newPartNo = "86510-K7000";
+          else if (p.productName.includes("Crash Pad")) newPartNo = "84611-L0000";
+          if (newPartNo) modified = true;
+        }
+
         if (modified) {
           hasEstimateNoChange = true;
           return {
@@ -695,6 +722,8 @@ export function getStoredProjects(): ProjectItem[] {
             estimateNo: newEstimateNo,
             moldVendor: newMoldVendor,
             massVendor: newMassVendor,
+            moldNo: newMoldNo,
+            partNo: newPartNo,
           };
         }
         return p;

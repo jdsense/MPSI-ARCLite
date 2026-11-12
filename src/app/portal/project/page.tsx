@@ -70,7 +70,16 @@ interface DbVendorOption {
   category?: string;
 }
 
-const DEFAULT_ITEM_OPTIONS: RegisteredItemOption[] = [];
+const DEFAULT_ITEM_OPTIONS: RegisteredItemOption[] = [
+  { itemCode: "84710-NT500-LH", itemName: "Front Door Upper Cover LH/RH", category: "판매반제품", spec: "PP-EPDM", unit: "EA" },
+  { itemCode: "85840-NQ500", itemName: "Rear Pillar Trim Inner LH/RH", category: "판매반제품", spec: "PP-EPDM", unit: "EA" },
+  { itemCode: "37500-EV04-L", itemName: "Battery Pack Under Tray LH/RH", category: "판매반제품", spec: "PP-GF30", unit: "EA" },
+  { itemCode: "37510-SPX00-BM", itemName: "BMS Battery Case Module", category: "판매반제품", spec: "PA66-GF30", unit: "EA" },
+  { itemCode: "82710-AA000", itemName: "Door Armrest Base", category: "판매반제품", spec: "ABS", unit: "EA" },
+  { itemCode: "84740-A2XT0-MB", itemName: "Center Console Main Bracket", category: "판매반제품", spec: "PC/ABS", unit: "EA" },
+  { itemCode: "86510-K7000", itemName: "Radiator Lower Grille", category: "판매반제품", spec: "ASA", unit: "EA" },
+  { itemCode: "84611-L0000", itemName: "Crash Pad Lower Panel", category: "판매반제품", spec: "PP-TD20", unit: "EA" },
+];
 
 export { type StepDefinition, PROCESS_13_STEPS, type ProjectItem, getStepUrl, getStepActor, generateNextProjectNo };
 
@@ -639,7 +648,6 @@ export default function ProjectStatus13StepsPage() {
     setProjectCreationMode("PROMOTED");
     setSelectedExistingProjectNo("");
     setPromotedOriginalProjectNo(row.projectNo);
-    setSelectedItemCode(row.partNo || "");
     const today = new Date();
     const dateStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
 
@@ -649,7 +657,63 @@ export default function ProjectStatus13StepsPage() {
       targetQuoteNo = deriveQuoteNoFromProjectNo(row.projectNo || row.estimateNo);
     }
 
-    // [요구사항 2] 실제 DB 연동 협력업체(외주업체) 바인딩 (순수 회사명만 적용)
+    // [요구사항 2] 품목(품번) 자동 바인딩
+    let targetPartNo = row.partNo || "";
+    let targetProductName = row.productName || "";
+    let matchedSpec = "";
+
+    if (!targetPartNo) {
+      // 1) 견적 저장소(mpsi_prime_quotations_v1)에서 해당 견적/승격 건의 품번 탐색
+      try {
+        const rawQuotes = localStorage.getItem("mpsi_prime_quotations_v1");
+        if (rawQuotes) {
+          const quotes = JSON.parse(rawQuotes);
+          const matchedQ = quotes.find(
+            (q: any) =>
+              q.officialProjectNo === row.projectNo ||
+              q.projectNo === row.projectNo ||
+              q.quotationNo === targetQuoteNo ||
+              (q.productName && q.productName === row.productName)
+          );
+          if (matchedQ?.partPriceItems?.length) {
+            targetPartNo = matchedQ.partPriceItems.find((p: any) => p.partNo)?.partNo || "";
+          }
+        }
+      } catch (e) {}
+    }
+
+    // 2) 기초정보 등록 품목(registeredItems)에서 제품명 매칭으로 품번 도출
+    if (!targetPartNo && targetProductName) {
+      const matchedItem = registeredItems.find(
+        (it) =>
+          it.itemName === targetProductName ||
+          targetProductName.toLowerCase().includes(it.itemName.toLowerCase()) ||
+          it.itemName.toLowerCase().includes(targetProductName.toLowerCase())
+      );
+      if (matchedItem) {
+        targetPartNo = matchedItem.itemCode;
+        matchedSpec = matchedItem.spec || "";
+      }
+    }
+
+    if (targetPartNo && !matchedSpec) {
+      const foundItem = registeredItems.find((it) => it.itemCode === targetPartNo);
+      if (foundItem?.spec) matchedSpec = foundItem.spec;
+    }
+
+    setSelectedItemCode(targetPartNo);
+
+    // [요구사항 3] 금형번호 자동 입력: 프로젝트 번호(예: MI26001P0)에서 'P' 문자 이전까지만 추출 -> MI26001
+    let targetMoldNo = "";
+    const pjtNo = row.projectNo || "";
+    const pIndex = pjtNo.toUpperCase().indexOf("P");
+    if (pIndex > 0) {
+      targetMoldNo = pjtNo.substring(0, pIndex);
+    } else if (pjtNo) {
+      targetMoldNo = pjtNo.replace(/M$/i, "");
+    }
+
+    // [요구사항 4] 실제 DB 연동 협력업체(외주업체) 바인딩 (순수 회사명만 적용)
     const defaultMold = cleanVendorName(row.moldVendor) || moldVendorOptions[0]?.name || "우성정공(주)";
     const defaultMass = cleanVendorName(row.massVendor) || massVendorOptions[0]?.name || "(주)뉴몰드";
 
@@ -657,10 +721,10 @@ export default function ProjectStatus13StepsPage() {
       projectNo: row.projectNo, // 견적에서 승격된 프로젝트 번호 바인딩 (모달에서 수정 가능)
       estimateNo: targetQuoteNo, // 견적단계에서 생성된 Q 번호 바인딩
       projectName: row.projectName || "",
-      productName: row.productName || "",
+      productName: targetProductName,
       customerName: row.customerName || CUSTOMER_OPTIONS[0],
-      partNo: row.partNo || "",
-      moldNo: row.moldNo || "",
+      partNo: targetPartNo,
+      moldNo: targetMoldNo,
       moldDegree: row.moldDegree || "M1",
       changeType: (row.changeType as any) || "N001",
       moldProductionType: row.moldProductionType || "OUTSOURCING",
@@ -668,13 +732,13 @@ export default function ProjectStatus13StepsPage() {
       massProductionType: row.massProductionType || "OUTSOURCING",
       massVendor: defaultMass,
       cavity: row.cavity || "",
-      material: row.material || "",
+      material: row.material || matchedSpec || "",
       partWeight: row.partWeight || "",
       annualVolume: row.annualVolume || "",
       machineTon: row.machineTon || "",
       hrsSpec: row.hrsSpec || "",
       moldMaterial: row.moldMaterial || "",
-      resinSpec: row.resinSpec || "",
+      resinSpec: row.resinSpec || matchedSpec || "",
       warrantyShots: row.warrantyShots || "",
       registeredDate: row.registeredDate || dateStr,
       quoteSubmitDate: row.quoteSubmitDate || "",
@@ -715,6 +779,17 @@ export default function ProjectStatus13StepsPage() {
         : "E001";
       const isEChange = nextChangeType.startsWith("E");
 
+      // 금형번호 자동 입력: 프로젝트 번호에서 "P" 이전까지만 추출
+      let autoMoldNo = "";
+      const pjtNo = existing.projectNo || "";
+      const pIndex = pjtNo.toUpperCase().indexOf("P");
+      if (pIndex > 0) {
+        autoMoldNo = pjtNo.substring(0, pIndex);
+      } else {
+        autoMoldNo = existing.moldNo || pjtNo;
+      }
+      setSelectedItemCode(existing.partNo || "");
+
       setFormState((prev) => ({
         ...prev,
         projectNo: existing.projectNo,
@@ -723,7 +798,7 @@ export default function ProjectStatus13StepsPage() {
         customerName: existing.customerName,
         productName: existing.productName,
         partNo: existing.partNo || "",
-        moldNo: existing.moldNo || `${existing.projectNo}M`,
+        moldNo: autoMoldNo,
         moldDegree: existing.moldDegree || "M1",
         changeType: nextChangeType,
         moldProductionType: existing.moldProductionType,

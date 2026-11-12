@@ -854,24 +854,43 @@ export default function QuotationPage() {
     }
     updateQuotationInDB(updatedItem, item.quotationNo);
 
-    // 2. 프로젝트 관리대장에 자동 추가 (생산/외주업체 등록 대기 상태)
+    // 2. 프로젝트 관리대장에 자동 추가 (품목 및 금형번호 자동 바인딩)
     const preservedQuoteNo = (item.quotationNo && item.quotationNo.toUpperCase().startsWith("Q"))
       ? item.quotationNo
       : deriveQuoteNoFromProjectNo(officialPjtNo);
 
-    // [요청 2] 스크린샷 표시 정보(품번, 금형번호, 금형차수, 캐비티사양, 금형제작처, 사출양산처, 현재스텝, 킥오프, 목표T1, 금형출고납기, 목표양산승인 등)는 기본 입력 제외
+    // [요구사항 1] 품목(품번) 자동 추출: 견적 품목단가표의 품번 또는 기초정보 품목 매칭
+    let derivedPartNo = item.partPriceItems?.find((p) => p.partNo)?.partNo || "";
+    if (!derivedPartNo && item.productName) {
+      const matchedProduct = registeredProducts.find(
+        (rp) => rp.itemName === item.productName || item.productName.includes(rp.itemName) || rp.itemName.includes(item.productName)
+      );
+      if (matchedProduct?.itemCode) {
+        derivedPartNo = matchedProduct.itemCode;
+      }
+    }
+
+    // [요구사항 2] 금형번호 자동 생성: 프로젝트 번호(officialPjtNo, 예: MI26001P0)에서 'P' 이전까지만 추출 -> MI26001
+    let derivedMoldNo = "";
+    const pIdx = officialPjtNo.toUpperCase().indexOf("P");
+    if (pIdx > 0) {
+      derivedMoldNo = officialPjtNo.substring(0, pIdx);
+    } else {
+      derivedMoldNo = officialPjtNo;
+    }
+
     addProject({
       projectNo: officialPjtNo,
       estimateNo: preservedQuoteNo, // 이전 Q 견적번호 보존
       projectName: item.projectName || "",
       productName: item.productName || "",
       customerName: item.customerName || "고객사",
-      partNo: "", // 기본 입력 제외
-      moldNo: "", // 기본 입력 제외
-      moldDegree: "", // 기본 입력 제외
+      partNo: derivedPartNo, // 품목 자동 바인딩
+      moldNo: derivedMoldNo, // 금형번호 자동 바인딩 (예: MI26001)
+      moldDegree: "M1",
       changeType: "N001",
       moldProductionType: "OUTSOURCING",
-      moldVendor: "", // 기본 입력 제외
+      moldVendor: "", // 외주업체 선택 대기
       massProductionType: "OUTSOURCING",
       massVendor: "", // 기본 입력 제외
       cavity: "", // 기본 입력 제외
