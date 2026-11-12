@@ -298,6 +298,22 @@ export function deriveQuoteNoFromProjectNo(projectNo?: string): string {
   return `Q${currentYear}001-01`;
 }
 
+/**
+ * 외주업체명에서 공정/담당자 등 부가 설명을 제거하고 순수 회사명만 정제하는 함수
+ * 예: "우성정공 (금형제작) (배희섭 수석)" -> "우성정공(주)"
+ */
+export function cleanVendorName(rawName?: string): string {
+  if (!rawName) return "";
+  let name = rawName.trim();
+  name = name.replace(/\s*\((?:금형제작|사출양산|금형|사출|양산)[^\)]*\)/g, "").trim();
+  name = name.replace(/\s*\([^\)]*(?:이사|부장|팀장|수석|과장|차장|대표|담당자)[^\)]*\)/g, "").trim();
+  if (name === "우성정공") name = "우성정공(주)";
+  if (name === "뉴몰드") name = "(주)뉴몰드";
+  if (name === "대한금형") name = "대한금형(주)";
+  if (name === "한국정밀사출") name = "(주)한국정밀사출";
+  return name;
+}
+
 // 단계별 동적 담당자(외주업체명 or MPSI 자체생산팀) 추출 함수 (하드코딩 제거 & 동적 외주업체명 바인딩)
 export function getStepActor(step: number, project?: ProjectItem): string {
   const moldV = project?.moldVendor || "우성정공(주)";
@@ -643,16 +659,43 @@ export function getStoredProjects(): ProjectItem[] {
     try {
       let hasEstimateNoChange = false;
       parsed = parsed.map((p) => {
+        let modified = false;
+        let newEstimateNo = p.estimateNo;
+        let newMoldVendor = p.moldVendor;
+        let newMassVendor = p.massVendor;
+
         if (!p.changeType?.startsWith("E")) {
           // 신작 건인데 estimateNo가 비어있거나 MI로 시작하는 경우 Q로 변환
           if (!p.estimateNo || p.estimateNo.trim().toUpperCase().startsWith("MI")) {
-            const correctedQ = deriveQuoteNoFromProjectNo(p.projectNo);
-            hasEstimateNoChange = true;
-            return {
-              ...p,
-              estimateNo: correctedQ,
-            };
+            newEstimateNo = deriveQuoteNoFromProjectNo(p.projectNo);
+            modified = true;
           }
+        }
+
+        // 회사명만 깔끔하게 나오도록 외주업체명 정제
+        if (p.moldVendor && (p.moldVendor.includes("(") || p.moldVendor === "우성정공" || p.moldVendor === "대한금형")) {
+          const cleanedM = cleanVendorName(p.moldVendor);
+          if (cleanedM !== p.moldVendor) {
+            newMoldVendor = cleanedM;
+            modified = true;
+          }
+        }
+        if (p.massVendor && (p.massVendor.includes("(") || p.massVendor === "뉴몰드" || p.massVendor === "한국정밀사출")) {
+          const cleanedS = cleanVendorName(p.massVendor);
+          if (cleanedS !== p.massVendor) {
+            newMassVendor = cleanedS;
+            modified = true;
+          }
+        }
+
+        if (modified) {
+          hasEstimateNoChange = true;
+          return {
+            ...p,
+            estimateNo: newEstimateNo,
+            moldVendor: newMoldVendor,
+            massVendor: newMassVendor,
+          };
         }
         return p;
       });

@@ -31,7 +31,8 @@ import {
   isDevItem,
   generateNextProjectNo,
   generateNextQuoteNo,
-  deriveQuoteNoFromProjectNo
+  deriveQuoteNoFromProjectNo,
+  cleanVendorName
 } from "@/lib/project-store";
 import { MOLD_VENDOR_LIST, MASS_VENDOR_LIST } from "@/lib/role-store";
 
@@ -132,58 +133,55 @@ export default function ProjectStatus13StepsPage() {
               category: v.category,
             }));
 
-          // 금형 제작 협력사: 이름이나 종목에 '금형', '정공', 'MOLD' 등 포함
-          const mList = vendors.filter((v) => 
-            v.companyName.includes("금형") || 
-            v.companyName.includes("정공") || 
-            v.bizItem?.includes("금형")
-          );
+          // 금형 제작 협력사: 이름이나 종목에 '금형', '정공' 포함 (사출양산 전용 업체 제외)
+          const mList = vendors.filter((v) => {
+            const cName = v.companyName || "";
+            const bItem = v.bizItem || "";
+            return (cName.includes("금형") || cName.includes("정공") || bItem.includes("금형제작")) &&
+                   !cName.includes("사출양산");
+          });
           setDbMoldVendors(mList.length > 0 ? mList : vendors);
 
-          // 사출 양산 협력사: 이름이나 종목에 '사출', '몰드', '양산', '프라' 등 포함
-          const sList = vendors.filter((v) => 
-            v.companyName.includes("사출") || 
-            v.companyName.includes("몰드") || 
-            v.companyName.includes("양산") ||
-            v.companyName.includes("프라") ||
-            v.bizItem?.includes("사출") ||
-            v.bizItem?.includes("양산")
-          );
+          // 사출 양산 협력사: 이름이나 종목에 '사출', '몰드', '양산' 포함 (금형제작 전용 업체 제외)
+          const sList = vendors.filter((v) => {
+            const cName = v.companyName || "";
+            const bItem = v.bizItem || "";
+            if (cName.includes("금형제작") || (cName.includes("금형") && !cName.includes("사출"))) {
+              return false;
+            }
+            return cName.includes("사출") || cName.includes("뉴몰드") || cName.includes("몰드") || cName.includes("양산") || bItem.includes("사출성형") || bItem.includes("양산");
+          });
           setDbMassVendors(sList.length > 0 ? sList : vendors);
         }
       })
       .catch((err) => console.error("Failed to load basic-info vendors:", err));
   }, []);
 
-  // 실제 DB 연동 금형제작 외주업체 옵션 목록 (fallback: MOLD_VENDOR_LIST)
+  // 실제 DB 연동 금형제작 외주업체 옵션 목록 (순수 회사명만 추출, fallback: MOLD_VENDOR_LIST)
   const moldVendorOptions = React.useMemo(() => {
     if (dbMoldVendors.length > 0) {
       return dbMoldVendors.map((v) => ({
         id: String(v.vendorCode || v.id),
-        name: v.companyName,
-        manager: v.managerName || "",
+        name: cleanVendorName(v.companyName),
       }));
     }
     return MOLD_VENDOR_LIST.filter((v) => !v.isSelf).map((v) => ({
       id: v.id,
-      name: v.name,
-      manager: v.manager || "",
+      name: cleanVendorName(v.name),
     }));
   }, [dbMoldVendors]);
 
-  // 실제 DB 연동 사출양산 외주업체 옵션 목록 (fallback: MASS_VENDOR_LIST)
+  // 실제 DB 연동 사출양산 외주업체 옵션 목록 (순수 회사명만 추출, fallback: MASS_VENDOR_LIST)
   const massVendorOptions = React.useMemo(() => {
     if (dbMassVendors.length > 0) {
       return dbMassVendors.map((v) => ({
         id: String(v.vendorCode || v.id),
-        name: v.companyName,
-        manager: v.managerName || "",
+        name: cleanVendorName(v.companyName),
       }));
     }
     return MASS_VENDOR_LIST.filter((v) => !v.isSelf).map((v) => ({
       id: v.id,
-      name: v.name,
-      manager: v.manager || "",
+      name: cleanVendorName(v.name),
     }));
   }, [dbMassVendors]);
 
@@ -653,9 +651,9 @@ export default function ProjectStatus13StepsPage() {
       targetQuoteNo = deriveQuoteNoFromProjectNo(row.projectNo || row.estimateNo);
     }
 
-    // [요구사항 2] 실제 DB 연동 협력업체(외주업체) 바인딩
-    const defaultMold = row.moldVendor || moldVendorOptions[0]?.name || "우성정공(주)";
-    const defaultMass = row.massVendor || massVendorOptions[0]?.name || "(주)뉴몰드";
+    // [요구사항 2] 실제 DB 연동 협력업체(외주업체) 바인딩 (순수 회사명만 적용)
+    const defaultMold = cleanVendorName(row.moldVendor) || moldVendorOptions[0]?.name || "우성정공(주)";
+    const defaultMass = cleanVendorName(row.massVendor) || massVendorOptions[0]?.name || "(주)뉴몰드";
 
     setFormState({
       projectNo: row.projectNo, // 견적에서 승격된 프로젝트 번호 바인딩 (모달에서 수정 가능)
@@ -3543,7 +3541,7 @@ export default function ProjectStatus13StepsPage() {
                           className="h-7 w-full rounded border bg-white dark:bg-zinc-900 px-2 text-xs font-bold text-purple-700"
                         >
                           {moldVendorOptions.map(v => (
-                            <option key={v.id} value={v.name}>{v.name} {v.manager ? `(${v.manager})` : ""}</option>
+                            <option key={v.id} value={v.name}>{v.name}</option>
                           ))}
                         </select>
                       </div>
@@ -3614,7 +3612,7 @@ export default function ProjectStatus13StepsPage() {
                           className="h-7 w-full rounded border bg-white dark:bg-zinc-900 px-2 text-xs font-bold text-emerald-700"
                         >
                           {massVendorOptions.map(v => (
-                            <option key={v.id} value={v.name}>{v.name} {v.manager ? `(${v.manager})` : ""}</option>
+                            <option key={v.id} value={v.name}>{v.name}</option>
                           ))}
                         </select>
                       </div>
@@ -4139,7 +4137,7 @@ export default function ProjectStatus13StepsPage() {
                         >
                           <option value="">미지정 (외주업체 선택)</option>
                           {moldVendorOptions.map((v) => (
-                            <option key={v.id} value={v.name}>{v.name} {v.manager ? `(${v.manager})` : ""}</option>
+                            <option key={v.id} value={v.name}>{v.name}</option>
                           ))}
                         </select>
                       </div>
@@ -4183,7 +4181,7 @@ export default function ProjectStatus13StepsPage() {
                         >
                           <option value="">미지정 (외주업체 선택)</option>
                           {massVendorOptions.map((v) => (
-                            <option key={v.id} value={v.name}>{v.name} {v.manager ? `(${v.manager})` : ""}</option>
+                            <option key={v.id} value={v.name}>{v.name}</option>
                           ))}
                         </select>
                       </div>
