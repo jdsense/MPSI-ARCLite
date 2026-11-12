@@ -590,52 +590,46 @@ export default function ProjectStatus13StepsPage() {
   // 신규 등록 모달 열기 핸들러 (원청사 견적을 거치지 않고 프로젝트 관리대장에서 직접 등록하는 경우: 무조건 기존 프로젝트 번호 연동으로 처리)
   const handleOpenNewProjectModal = () => {
     setProjectCreationMode("EXISTING");
-    const existingNo = projects[0]?.projectNo || "";
-    setSelectedExistingProjectNo(existingNo);
+    setSelectedExistingProjectNo("");
     const defaultMold = moldVendorOptions[0]?.name || "우성정공(주)";
     const defaultMass = massVendorOptions[0]?.name || "(주)뉴몰드";
 
-    if (existingNo) {
-      handleSelectExistingProject(existingNo);
-    } else {
-      const nextPjtNo = generateNextProjectNo(projects);
-      setFormState({
-        projectNo: nextPjtNo,
-        estimateNo: "수주확정",
-        projectName: "",
-        productName: "",
-        customerName: CUSTOMER_OPTIONS[0],
-        partNo: "",
-        moldNo: `${nextPjtNo}M`,
-        moldDegree: "M1",
-        changeType: "E001",
-        moldProductionType: "OUTSOURCING",
-        moldVendor: defaultMold,
-        massProductionType: "OUTSOURCING",
-        massVendor: defaultMass,
-        cavity: "",
-        material: "",
-        partWeight: "",
-        annualVolume: "",
-        machineTon: "",
-        hrsSpec: "",
-        moldMaterial: "",
-        resinSpec: "",
-        warrantyShots: "",
-        registeredDate: "",
-        quoteSubmitDate: "",
-        orderDate: "",
-        kickoffDate: "",
-        targetMoldDays: "",
-        targetT1Date: "",
-        moldDeliveryDate: "",
-        targetMassDate: "",
-        massStartDate: "",
-        currentStep: 0,
-        stepStatus: "진행중",
-        trialDegree: "T1 대기",
-      });
-    }
+    setFormState({
+      projectNo: "",
+      estimateNo: "수주확정",
+      projectName: "",
+      productName: "",
+      customerName: CUSTOMER_OPTIONS[0],
+      partNo: "",
+      moldNo: "",
+      moldDegree: "M1",
+      changeType: "E001",
+      moldProductionType: "OUTSOURCING",
+      moldVendor: defaultMold,
+      massProductionType: "OUTSOURCING",
+      massVendor: defaultMass,
+      cavity: "",
+      material: "",
+      partWeight: "",
+      annualVolume: "",
+      machineTon: "",
+      hrsSpec: "",
+      moldMaterial: "",
+      resinSpec: "",
+      warrantyShots: "",
+      registeredDate: "",
+      quoteSubmitDate: "",
+      orderDate: "",
+      kickoffDate: "",
+      targetMoldDays: "",
+      targetT1Date: "",
+      moldDeliveryDate: "",
+      targetMassDate: "",
+      massStartDate: "",
+      currentStep: 0,
+      stepStatus: "진행중",
+      trialDegree: "T1 대기",
+    });
     setSelectedItemCode("");
     setIsNewProjectModalOpen(true);
   };
@@ -701,6 +695,18 @@ export default function ProjectStatus13StepsPage() {
   // 기존 프로젝트 번호 연동 선택 시 기본 정보 자동 세팅 핸들러
   const handleSelectExistingProject = (pNo: string) => {
     setSelectedExistingProjectNo(pNo);
+    if (!pNo) {
+      setFormState((prev) => ({
+        ...prev,
+        projectNo: "",
+        projectName: "",
+        productName: "",
+        customerName: CUSTOMER_OPTIONS[0],
+        partNo: "",
+        moldNo: "",
+      }));
+      return;
+    }
     const existing = projects.find(p => p.projectNo === pNo);
     if (existing) {
       const nextQNo = generateNextQuoteNo(projects);
@@ -742,8 +748,13 @@ export default function ProjectStatus13StepsPage() {
 
   // 신규 프로젝트 등록 (M으로 시작하는 프로젝트 번호 & Q 견적번호 분리)
   const handleCreateProject = () => {
+    // [사용자 요청] 연동할 기존 프로젝트를 선택하지 않으면 등록 차단
+    if (projectCreationMode === "EXISTING" && !selectedExistingProjectNo?.trim()) {
+      alert("연동할 기존 프로젝트를 반드시 선택해야 프로젝트 등록이 가능합니다.");
+      return;
+    }
     if (!formState.projectNo?.trim()) {
-      alert("프로젝트 번호를 입력해주세요.");
+      alert("연동할 기존 프로젝트를 선택하여 프로젝트 번호를 지정해주세요.");
       return;
     }
     const trimmedNo = formState.projectNo.trim();
@@ -3178,12 +3189,19 @@ export default function ProjectStatus13StepsPage() {
                   {projectCreationMode === "EXISTING" && (
                     <div className="pt-2 border-t flex flex-col gap-1.5 bg-purple-50/50 dark:bg-purple-950/20 p-2.5 rounded-md">
                       <div className="flex items-center gap-2">
-                        <span className="text-zinc-700 dark:text-zinc-300 font-bold shrink-0">연동할 기존 프로젝트:</span>
+                        <span className="text-zinc-700 dark:text-zinc-300 font-bold shrink-0">
+                          <span className="text-red-500 mr-0.5">*</span>연동할 기존 프로젝트:
+                        </span>
                         <select
-                          value={selectedExistingProjectNo || formState.projectNo}
+                          value={selectedExistingProjectNo}
                           onChange={(e) => handleSelectExistingProject(e.target.value)}
-                          className="h-8 flex-1 rounded border border-purple-300 bg-white dark:bg-zinc-800 px-2 text-xs font-mono font-bold text-purple-800 dark:text-purple-200"
+                          className={`h-8 flex-1 rounded border px-2 text-xs font-mono font-bold bg-white dark:bg-zinc-800 ${
+                            !selectedExistingProjectNo
+                              ? "border-amber-400 text-amber-700 dark:text-amber-300 ring-1 ring-amber-400"
+                              : "border-purple-300 text-purple-800 dark:text-purple-200"
+                          }`}
                         >
+                          <option value="">-- [필수 선택] 연동할 기존 프로젝트를 선택하세요 --</option>
                           {Array.from(new Set(projects.map((p) => p.projectNo))).map((pNo) => {
                             const p = projects.find((item) => item.projectNo === pNo);
                             return (
@@ -3194,9 +3212,16 @@ export default function ProjectStatus13StepsPage() {
                           })}
                         </select>
                       </div>
-                      <span className="text-[10px] text-purple-700 dark:text-purple-300">
-                        * 동일한 프로젝트 번호로 차수(설변 E001 또는 추가금형 M2)를 등록하여, 관리대장에서 같은 프로젝트로 식별되어 프로세스를 재진행합니다.
-                      </span>
+                      <div className="flex items-center justify-between text-[10px]">
+                        <span className="text-purple-700 dark:text-purple-300">
+                          * 동일한 프로젝트 번호로 차수(설변 E001 또는 추가금형 M2)를 등록하여, 관리대장에서 같은 프로젝트로 식별되어 프로세스를 재진행합니다.
+                        </span>
+                        {!selectedExistingProjectNo && (
+                          <span className="text-red-600 dark:text-red-400 font-bold shrink-0 ml-2">
+                            * 기존 프로젝트 선택 필수
+                          </span>
+                        )}
+                      </div>
                     </div>
                   )}
                 </div>
@@ -3824,11 +3849,15 @@ export default function ProjectStatus13StepsPage() {
               </Button>
               <Button 
                 onClick={handleCreateProject}
+                disabled={projectCreationMode === "EXISTING" && !selectedExistingProjectNo}
                 className={`h-8 px-4 text-xs text-white gap-1.5 font-bold ${
                   projectCreationMode === "PROMOTED"
                     ? "bg-indigo-600 hover:bg-indigo-700 shadow-md"
+                    : projectCreationMode === "EXISTING" && !selectedExistingProjectNo
+                    ? "bg-slate-400 dark:bg-zinc-600 cursor-not-allowed opacity-60"
                     : "bg-sky-600 hover:bg-sky-700"
                 }`}
+                title={projectCreationMode === "EXISTING" && !selectedExistingProjectNo ? "연동할 기존 프로젝트를 먼저 선택하세요" : ""}
               >
                 <Check className="h-3.5 w-3.5" />
                 {projectCreationMode === "PROMOTED" ? "승격 프로젝트 등록 확정" : "프로젝트 등록"}
