@@ -962,7 +962,12 @@ export function deleteProjectFromStorage(idOrNo: number | string): ProjectItem[]
   saveProjectsToStorage(updated);
 
   if (target?.projectNo) {
-    fetch(`/api/v1/projects?projectNo=${encodeURIComponent(target.projectNo)}`, {
+    const queryParams = new URLSearchParams({
+      projectNo: target.projectNo,
+      ...(typeof idOrNo === "number" ? { id: String(target.id) } : {}),
+      ...(target.changeType ? { changeType: target.changeType } : {}),
+    });
+    fetch(`/api/v1/projects?${queryParams.toString()}`, {
       method: "DELETE",
     }).catch((err) => console.error("Project DB delete error:", err));
   }
@@ -1021,12 +1026,23 @@ export function useProjectMaster() {
     saveProjectsToStorage(nextList);
     setProjects(nextList);
 
-    // DB에 비동기 영구 저장
+    // DB에 비동기 영구 저장 및 DB Sequence ID 동기화
     fetch("/api/v1/projects", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(project),
-    }).catch((err) => console.error("Project DB insert error:", err));
+    })
+      .then((res) => res.json())
+      .then((json) => {
+        if (json?.success && json?.data?.id && json.data.id !== id) {
+          const latest = getStoredProjects().map((item) =>
+            item.id === id ? { ...item, id: json.data.id } : item
+          );
+          saveProjectsToStorage(latest);
+          setProjects(latest);
+        }
+      })
+      .catch((err) => console.error("Project DB insert error:", err));
 
     return project;
   };

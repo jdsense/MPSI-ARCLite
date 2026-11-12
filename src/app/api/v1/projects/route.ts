@@ -34,7 +34,8 @@ function mapRowToProject(row: any): any {
     noteObj = {};
   }
 
-  const projectNo = row.ProjectID || noteObj.projectNo || '';
+  const rawProjectId = row.ProjectID || noteObj.projectNo || '';
+  const projectNo = noteObj.projectNo || String(rawProjectId).split('__')[0] || '';
   const orderDate = row.ProjectContractDate
     ? formatDateOnly(row.ProjectContractDate)
     : noteObj.orderDate || '';
@@ -292,9 +293,11 @@ export async function GET(request: NextRequest) {
 
     const projects = existingRows.map((row) => {
       const p = mapRowToProject(row);
-      const pId = p.projectNo;
-      const dbAtts = attachmentsByProject[pId] || {};
-      const dbMemos = memosByProject[pId] || {};
+      const rawDbId = row.ProjectID || p.projectNo;
+      const isRevision = Boolean(p.changeType && p.changeType !== 'N001');
+      const pId = isRevision ? rawDbId : p.projectNo;
+      const dbAtts = attachmentsByProject[pId] || (!isRevision ? attachmentsByProject[p.projectNo] : {}) || {};
+      const dbMemos = memosByProject[pId] || (!isRevision ? memosByProject[p.projectNo] : {}) || {};
 
       const mergedAttachments: Record<number, any[]> = { ...(p.stepAttachments || {}) };
       for (const [stepStr, atts] of Object.entries(dbAtts)) {
@@ -306,7 +309,7 @@ export async function GET(request: NextRequest) {
 
       // 3. 실시간 공정 테이블(견적, 설계, 제작, 시사출, 시양산, PPAP) DB 데이터와 완전 동기화
       const matchedDesign = designsByProject[pId];
-      const matchedQuote = quotesByProject[pId] || quotesByProject[p.estimateNo];
+      const matchedQuote = quotesByProject[pId] || (!isRevision ? quotesByProject[p.estimateNo] : undefined);
       const matchedMfg = mfgByProject[pId];
       const matchedTrial = trialsByProject[pId];
       const matchedVal = validationsByProject[pId];
@@ -560,11 +563,16 @@ export async function POST(request: NextRequest) {
       RETURNING *
     `;
 
+    // 설계변경(E001, E002 등) 또는 추가금형(M2 등) 차수는 기존 신작(N001) 이력을 덮어쓰지 않고 별도 행으로 영구 보존되도록 DB ProjectID 복합키 구성
+    const dbProjectId = (changeType && changeType !== 'N001')
+      ? `${projectNo}__${changeType}`
+      : (moldDegree && moldDegree !== 'M1' ? `${projectNo}__${moldDegree}` : projectNo);
+
     const params = [
       enterpriseId,                                // $1 EnterpriseID
       body.siteId || 'SITE_01',                    // $2 SiteID
       body.plantId || 'PLANT_01',                  // $3 PlantID
-      projectNo,                                   // $4 ProjectID
+      dbProjectId,                                 // $4 ProjectID (차수별 분리 저장)
       productName,                                 // $5 ProjectName
       body.stepStatus || '진행중',                  // $6 ProjectStatusCode
       body.moldProductionType || 'OUTSOURCING',    // $7 ResponsibleDepartmentID (외주/자체)
@@ -593,7 +601,7 @@ export async function POST(request: NextRequest) {
         ON CONFLICT ("ProjectID", "StepNumber") DO UPDATE SET
           "StepName" = EXCLUDED."StepName",
           "StepStatus" = EXCLUDED."StepStatus"`,
-        [projectNo, fullDetails.currentStep, fullDetails.stepNameCustom || '진행', fullDetails.stepStatus]
+        [dbProjectId, fullDetails.currentStep, fullDetails.stepNameCustom || '진행', fullDetails.stepStatus]
       );
     } catch {
       // optional
@@ -615,10 +623,25 @@ export async function PUT(request: NextRequest) {
     const body = await request.json();
     const enterpriseId = process.env.NEXT_PUBLIC_NODE_ID || 'MPSI_HQ';
 
-    const cur = await query(
-      'SELECT * FROM "ProjectMaster" WHERE "EnterpriseID" = $1 AND "ProjectID" = $2',
-      [enterpriseId, body.projectNo]
-    );
+    let cur = { rows: [] as any[] };
+    if (body.id) {
+      cur = await query(
+        'SELECT * FROM "ProjectMaster" WHERE "EnterpriseID" = $1 AND "ProjectMasterSequenceNo" = $2',
+        [enterpriseId, Number(body.id)]
+      );
+    }
+    if (cur.rows.length === 0 && body.changeType && body.changeType !== 'N001') {
+      cur = await query(
+        'SELECT * FROM "ProjectMaster" WHERE "EnterpriseID" = $1 AND ("ProjectID" = $2 OR ("ProjectID" = $3 AND "DivisionID" = $4)) ORDER BY "ProjectMasterSequenceNo" DESC LIMIT 1',
+        [enterpriseId, `${body.projectNo}__${body.changeType}`, body.projectNo, body.changeType]
+      );
+    }
+    if (cur.rows.length === 0) {
+      cur = await query(
+        'SELECT * FROM "ProjectMaster" WHERE "EnterpriseID" = $1 AND "ProjectID" = $2 ORDER BY "ProjectMasterSequenceNo" DESC LIMIT 1',
+        [enterpriseId, body.projectNo]
+      );
+    }
 
     if (cur.rows.length === 0) {
       return NextResponse.json({ success: false, error: '해당 프로젝트를 찾을 수 없습니다.' }, { status: 404 });
@@ -653,7 +676,7 @@ export async function PUT(request: NextRequest) {
         "DivisionID" = COALESCE($10, "DivisionID"),
         "Note" = $11,
         "ModificationDateTime" = NOW()
-      WHERE "EnterpriseID" = $12 AND "ProjectID" = $13
+      WHERE "EnterpriseID" = $12 AND "ProjectMasterSequenceNo" = $13
       RETURNING *
     `;
 
@@ -672,7 +695,7 @@ export async function PUT(request: NextRequest) {
       body.changeType || null,
       JSON.stringify(mergedNote),
       enterpriseId,
-      body.projectNo,
+      row.ProjectMasterSequenceNo,
     ];
 
     const res = await query(updateSql, params);
@@ -751,20 +774,49 @@ export async function DELETE(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const projectNo = searchParams.get('projectNo');
+    const idParam = searchParams.get('id');
+    const changeType = searchParams.get('changeType');
     const enterpriseId = process.env.NEXT_PUBLIC_NODE_ID || 'MPSI_HQ';
 
-    if (!projectNo) {
-      return NextResponse.json({ success: false, error: '삭제할 projectNo가 지정되지 않았습니다.' }, { status: 400 });
+    if (!projectNo && !idParam) {
+      return NextResponse.json({ success: false, error: '삭제할 projectNo 또는 id가 지정되지 않았습니다.' }, { status: 400 });
     }
 
-    // 물리 삭제 대신 국가표준 UseIndicator 플래그를 FALSE(삭제/비활성)로 업데이트
-    await query(
-      `UPDATE "ProjectMaster" 
-       SET "UseIndicator" = FALSE, 
-           "ModificationDateTime" = NOW() 
-       WHERE "EnterpriseID" = $1 AND "ProjectID" = $2`,
-      [enterpriseId, projectNo]
-    );
+    if (idParam && !isNaN(Number(idParam))) {
+      const delRes = await query(
+        `UPDATE "ProjectMaster" 
+         SET "UseIndicator" = FALSE, 
+             "ModificationDateTime" = NOW() 
+         WHERE "EnterpriseID" = $1 AND "ProjectMasterSequenceNo" = $2
+         RETURNING *`,
+        [enterpriseId, Number(idParam)]
+      );
+      if (delRes.rows.length > 0) {
+        return NextResponse.json({
+          success: true,
+          message: `프로젝트 [${projectNo || idParam}] (${changeType || '단일 차수'})가 삭제 처리되었습니다.`,
+        });
+      }
+    }
+
+    if (changeType && changeType !== 'N001' && projectNo) {
+      await query(
+        `UPDATE "ProjectMaster" 
+         SET "UseIndicator" = FALSE, 
+             "ModificationDateTime" = NOW() 
+         WHERE "EnterpriseID" = $1 AND ("ProjectID" = $2 OR ("ProjectID" = $3 AND "DivisionID" = $4))`,
+        [enterpriseId, `${projectNo}__${changeType}`, projectNo, changeType]
+      );
+    } else {
+      // 물리 삭제 대신 국가표준 UseIndicator 플래그를 FALSE(삭제/비활성)로 업데이트
+      await query(
+        `UPDATE "ProjectMaster" 
+         SET "UseIndicator" = FALSE, 
+             "ModificationDateTime" = NOW() 
+         WHERE "EnterpriseID" = $1 AND "ProjectID" = $2`,
+        [enterpriseId, projectNo]
+      );
+    }
 
     return NextResponse.json({
       success: true,

@@ -209,13 +209,14 @@ export default function ProjectStatus13StepsPage() {
     }
   };
 
-  // 프로젝트 삭제 핸들러 (DB 및 스토어 영구 삭제)
+  // 프로젝트 삭제 핸들러 (DB 및 스토어 영구 삭제 - 개별 차수 단위 삭제 지원)
   const handleDeleteProject = (row: ProjectItem) => {
-    const pNo = row.projectNo || row.estimateNo || row.id;
+    const pNo = row.projectNo || row.estimateNo || String(row.id);
+    const revLabel = row.changeType || "N001";
     const pName = row.productName || row.projectName;
-    if (confirm(`[프로젝트 삭제 확인]\n\n프로젝트 [${pNo}] (${pName})을(를) 정말 삭제하시겠습니까?\n이 작업은 데이터베이스(PostgreSQL)에서 즉시 삭제됩니다.`)) {
-      deleteProject(pNo);
-      alert(`프로젝트 [${pNo}]가 정상적으로 삭제되었습니다.`);
+    if (confirm(`[프로젝트 삭제 확인]\n\n프로젝트 [${pNo}] (${revLabel} - ${pName}) 항목을 정말 삭제하시겠습니까?\n이 작업은 데이터베이스(PostgreSQL)에서 즉시 반영됩니다.`)) {
+      deleteProject(row.id ?? pNo);
+      alert(`프로젝트 [${pNo}] (${revLabel}) 항목이 정상적으로 삭제되었습니다.`);
     }
   };
 
@@ -300,6 +301,51 @@ export default function ProjectStatus13StepsPage() {
   // 신작/설변 이력 모달 상태
   const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
   const [historyTargetProject, setHistoryTargetProject] = useState<ProjectItem | null>(null);
+
+  // 그리드 동일 프로젝트 번호(신작 N001 -> 설변 E001 -> E002) 그룹 펼치기(+)/접기(-) 상태
+  const [expandedProjectNos, setExpandedProjectNos] = useState<Set<string>>(new Set());
+
+  const toggleExpandProject = (projectNo: string) => {
+    setExpandedProjectNos((prev) => {
+      const next = new Set(prev);
+      if (next.has(projectNo)) {
+        next.delete(projectNo);
+      } else {
+        next.add(projectNo);
+      }
+      return next;
+    });
+  };
+
+  // 차수 정렬 가중치 (N001 -> E001 -> E002 -> E003 순서 보장)
+  const getRevisionSortWeight = (changeType?: string) => {
+    const code = (changeType || "N001").toUpperCase().trim();
+    if (code === "N001" || code.startsWith("N")) {
+      const nNum = parseInt(code.replace(/\D/g, ""), 10) || 1;
+      return nNum - 1; // N001 -> 0
+    }
+    if (code.startsWith("E")) {
+      const eNum = parseInt(code.replace(/\D/g, ""), 10) || 1;
+      return 100 + eNum; // E001 -> 101, E002 -> 102 ...
+    }
+    return 500;
+  };
+
+  // 특정 프로젝트 번호의 다음 설변 차수 코드 자동 계산 (N001 -> E001 -> E002 -> E003)
+  const getNextRevisionCode = (projectNo: string, list: ProjectItem[] = projects) => {
+    const sameGroup = list.filter(
+      (p) => (p.projectNo || "").toUpperCase() === (projectNo || "").toUpperCase()
+    );
+    let maxE = 0;
+    for (const p of sameGroup) {
+      const code = (p.changeType || "").toUpperCase().trim();
+      if (code.startsWith("E")) {
+        const num = parseInt(code.replace(/\D/g, ""), 10) || 0;
+        if (num > maxE) maxE = num;
+      }
+    }
+    return `E${String(maxE + 1).padStart(3, "0")}`;
+  };
 
   // 0~13단계 세부 공정 타임라인 카드 요약 상세 펼침 상태
   const [expandedStep, setExpandedStep] = useState<number | null>(null);
@@ -537,6 +583,36 @@ export default function ProjectStatus13StepsPage() {
     return true;
   });
 
+  // 동일 프로젝트 번호(projectNo) 기준 그룹화 및 차수(N001 -> E001 -> E002...) 오름차순 정렬
+  const groupedProjects = React.useMemo(() => {
+    const groupMap = new Map<string, ProjectItem[]>();
+    for (const item of filteredProjects) {
+      const key = (item.projectNo || String(item.id)).toUpperCase().trim();
+      if (!groupMap.has(key)) {
+        groupMap.set(key, []);
+      }
+      groupMap.get(key)!.push(item);
+    }
+
+    const result: { projectNo: string; items: ProjectItem[] }[] = [];
+    groupMap.forEach((items, key) => {
+      const sorted = [...items].sort((a, b) => {
+        const wA = getRevisionSortWeight(a.changeType);
+        const wB = getRevisionSortWeight(b.changeType);
+        if (wA !== wB) return wA - wB;
+        const mA = a.moldDegree || "M1";
+        const mB = b.moldDegree || "M1";
+        if (mA !== mB) return mA.localeCompare(mB);
+        return (a.id || 0) - (b.id || 0);
+      });
+      result.push({
+        projectNo: sorted[0]?.projectNo || key,
+        items: sorted,
+      });
+    });
+    return result;
+  }, [filteredProjects]);
+
   const handleReset = () => {
     setFilterKeyword("");
     setFilterStageGroup("ALL");
@@ -771,12 +847,13 @@ export default function ProjectStatus13StepsPage() {
       }));
       return;
     }
-    const existing = projects.find(p => p.projectNo === pNo);
+    const sameGroup = projects
+      .filter((p) => p.projectNo === pNo)
+      .sort((a, b) => getRevisionSortWeight(a.changeType) - getRevisionSortWeight(b.changeType));
+    const existing = sameGroup[sameGroup.length - 1] || projects.find((p) => p.projectNo === pNo);
     if (existing) {
       const nextQNo = generateNextQuoteNo(projects);
-      const nextChangeType = existing.changeType?.startsWith("E")
-        ? `E${String((parseInt(existing.changeType.replace("E", ""), 10) || 1) + 1).padStart(3, "0")}`
-        : "E001";
+      const nextChangeType = getNextRevisionCode(pNo, projects);
       const isEChange = nextChangeType.startsWith("E");
 
       // 금형번호 자동 입력: 프로젝트 번호에서 "P" 이전까지만 추출
@@ -1001,6 +1078,13 @@ export default function ProjectStatus13StepsPage() {
       deliveredQty: 0,
       notes: formState.notes || "",
       updatedAt: `${dateStr} 09:00`,
+    });
+
+    // 설변/연동 차수 등록 시 그리드에서 해당 프로젝트 그룹 자동 펼침
+    setExpandedProjectNos((prev) => {
+      const next = new Set(prev);
+      next.add(trimmedNo.toUpperCase());
+      return next;
     });
 
     showToast(`프로젝트 [${trimmedNo}] (견적: ${estimateNo}, 구분 필터 ${formState.changeType || "N001"}) 등록 완료`, "success");
@@ -2278,7 +2362,7 @@ export default function ProjectStatus13StepsPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200 dark:divide-zinc-800 text-zinc-800 dark:text-zinc-200 text-[11px]">
-              {filteredProjects.length === 0 ? (
+              {groupedProjects.length === 0 ? (
                 <tr>
                   <td colSpan={19} className="p-8 text-center text-zinc-400">
                     <div className="flex flex-col items-center justify-center gap-2">
@@ -2291,301 +2375,387 @@ export default function ProjectStatus13StepsPage() {
                   </td>
                 </tr>
               ) : (
-                filteredProjects.map((row, idx) => {
-                  const currentStepObj = PROCESS_13_STEPS.find((s) => s.step === row.currentStep);
-                  
-                  // 스텝 표시 명칭 결정 (수주 확정되어 currentStep > 0 진행 중인 프로젝트는 실제 공정 스텝 표시)
-                  const isProjectInProcess = row.currentStep > 0 && !row.projectNo.startsWith("Q");
-                  const isEChange = Boolean(row.changeType?.startsWith("E"));
-                  const isConfirmed = row.isContractConfirmed || row.quotationStatus === "수주확정" || row.estimateNo === "수주확정" || row.stepNameCustom === "수주확정";
-                  const isFailedQuote = (row.quotationStatus === "수주 미성사" || row.stepNameCustom === "수주 미성사") && !isProjectInProcess;
-                  const isWaitCustomer = !isProjectInProcess && !isEChange && !isConfirmed && (row.quotationStatus === "고객 답변 대기" || row.stepNameCustom === "고객 답변 대기" || (row.isQuotePending && row.projectNo.startsWith("Q") && row.quotationStatus !== "수주 미성사" && row.stepNameCustom !== "수주 미성사") || row.currentStep === 0);
+                groupedProjects.map((group, groupIdx) => {
+                  const groupKey = (group.projectNo || "").toUpperCase().trim();
+                  const rootRow = group.items[0];
+                  const subRows = group.items.slice(1);
+                  const latestRow = group.items[group.items.length - 1];
+                  const hasSubRows = subRows.length > 0;
+                  const isExpanded = expandedProjectNos.has(groupKey);
 
-                  let stepDisplayName = "";
-                  if (row.isPromotedFromQuote && !row.isRegistrationCompleted) {
-                    // 승격 건은 등록 전까지 기본 입력(고객 답변 대기 등)을 노출하지 않음
-                    stepDisplayName = "";
-                  } else if (isProjectInProcess) {
-                    stepDisplayName = (row.stepNameCustom && row.stepNameCustom !== "고객 답변 대기" && row.stepNameCustom !== "수주 미성사")
-                      ? row.stepNameCustom
-                      : (currentStepObj?.name || `Step ${row.currentStep}`);
-                  } else if (isFailedQuote) {
-                    stepDisplayName = "수주 미성사";
-                  } else if (isEChange || isConfirmed) {
-                    stepDisplayName = "수주확정";
-                  } else if (isWaitCustomer) {
-                    stepDisplayName = "고객 답변 대기";
-                  } else {
-                    stepDisplayName = "";
-                  }
-
-                  // 상태 뱃지 스타일 (스크린샷 알약 형태)
-                  const getStepPillClass = () => {
-                    if (stepDisplayName === "수주확정") {
-                      return "bg-emerald-50 text-emerald-800 border-emerald-400 font-extrabold shadow-2xs dark:bg-emerald-950/40 dark:text-emerald-300";
-                    }
-                    if (stepDisplayName === "고객 답변 대기") {
-                      return "bg-sky-50 text-sky-800 border-sky-400 font-extrabold shadow-2xs dark:bg-sky-950/40 dark:text-sky-300";
-                    }
-                    if (stepDisplayName === "수주 미성사") {
-                      return "bg-rose-50 text-rose-700 border-rose-400 font-extrabold shadow-2xs dark:bg-rose-950/40 dark:text-rose-300";
-                    }
-                    if (row.currentStep === 0 || stepDisplayName.includes("견적")) {
-                      return "bg-blue-50 text-blue-800 border-blue-300 dark:bg-blue-950/40 dark:text-blue-300 font-bold";
-                    }
-                    if (stepDisplayName.includes("양산") || row.currentStep === 13) {
-                      return "bg-emerald-50 text-emerald-700 border-emerald-300 dark:bg-emerald-950/40 dark:text-emerald-300";
-                    }
-                    if (stepDisplayName.includes("시양산") || row.currentStep === 11) {
-                      return "bg-sky-50 text-sky-700 border-sky-300 dark:bg-sky-950/40 dark:text-sky-300";
-                    }
-                    if (stepDisplayName.includes("금형육성") || row.stepStatus === "Fail(수정중)") {
-                      return "bg-rose-50 text-rose-700 border-rose-300 dark:bg-rose-950/40 dark:text-rose-300";
-                    }
-                    return "bg-zinc-100 text-zinc-700 border-zinc-300 dark:bg-zinc-800 dark:text-zinc-300";
-                  };
-
-                  // 같은 프로젝트 번호를 가진 행 개수 확인 (설변, 금형차수 공유 여부)
-                  const siblingCount = projects.filter(p => p.projectNo === row.projectNo).length;
+                  // 접혀있을 때는 최신 설변 차수(E001, E002...) 상태를 메인 행에 반영하고,
+                  // 펼쳤을 때는 상단에 N001(초도 신작), 그 아래에 E001 -> E002 순서로 트리 출력
+                  const visibleRows = isExpanded ? group.items : [rootRow];
 
                   return (
-                    <tr 
-                      key={`${row.id}-${row.projectNo}`} 
-                      className="odd:bg-white even:bg-slate-50/60 dark:odd:bg-zinc-900 dark:even:bg-zinc-800/40 hover:bg-sky-50/70 dark:hover:bg-zinc-800 transition-colors"
-                    >
-                      {/* 1. No */}
-                      <td className="p-2 text-center font-mono text-zinc-400 border-r border-slate-200 dark:border-zinc-800">{idx + 1}</td>
-                      
-                      {/* 2. 프로젝트 번호 (항상 M으로 시작) */}
-                      <td className="p-2 border-r border-slate-200 dark:border-zinc-800 text-center font-mono">
-                        <button 
-                          onClick={() => handleOpenModal(row, "detail")} 
-                          className="font-bold text-sky-600 hover:text-sky-800 hover:underline flex items-center justify-center gap-1 mx-auto"
-                          title="클릭 시 프로젝트 상세 공정 확인"
-                        >
-                          <span>
-                            {row.projectNo?.toUpperCase().startsWith("M")
-                              ? row.projectNo
-                              : row.projectNo?.toUpperCase().replace(/^Q/, "MI").replace(/-0?(\d+)/, "P$1")}
-                          </span>
-                          <ExternalLink className="h-3 w-3 text-sky-400" />
-                        </button>
-                      </td>
+                    <React.Fragment key={`group-${groupKey}-${rootRow.id}`}>
+                      {visibleRows.map((row, subIdx) => {
+                        const isChildRow = isExpanded && subIdx > 0;
+                        // 접혀있을 때(+ 상태) 이력이 존재하면 최신 차수(E001, E002) 정보를 반영하여 설변 상태가 즉시 보이도록 처리
+                        const effectiveRow = !isExpanded && hasSubRows ? latestRow : row;
 
-                      {/* 2-1. 견적번호 (수주확정 시 "수주확정" 상태값 표기, 견적 단계 시 순수 텍스트 표기) */}
-                      <td className="p-2 border-r border-slate-200 dark:border-zinc-800 text-center font-mono">
-                        {(row.isContractConfirmed || row.quotationStatus === "수주확정" || row.estimateNo === "수주확정") ? (
-                          <span 
-                            className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300 dark:bg-emerald-950/60 dark:text-emerald-300 shadow-2xs"
-                            title={row.estimateNo ? `견적번호: ${row.estimateNo} (수주확정 완료)` : "수주확정 완료"}
+                        const currentStepObj = PROCESS_13_STEPS.find((s) => s.step === effectiveRow.currentStep);
+                        
+                        // 스텝 표시 명칭 결정
+                        const isProjectInProcess = effectiveRow.currentStep > 0 && !effectiveRow.projectNo.startsWith("Q");
+                        const isEChange = Boolean(effectiveRow.changeType?.startsWith("E"));
+                        const isConfirmed = effectiveRow.isContractConfirmed || effectiveRow.quotationStatus === "수주확정" || effectiveRow.estimateNo === "수주확정" || effectiveRow.stepNameCustom === "수주확정";
+                        const isFailedQuote = (effectiveRow.quotationStatus === "수주 미성사" || effectiveRow.stepNameCustom === "수주 미성사") && !isProjectInProcess;
+                        const isWaitCustomer = !isProjectInProcess && !isEChange && !isConfirmed && (effectiveRow.quotationStatus === "고객 답변 대기" || effectiveRow.stepNameCustom === "고객 답변 대기" || (effectiveRow.isQuotePending && effectiveRow.projectNo.startsWith("Q") && effectiveRow.quotationStatus !== "수주 미성사" && effectiveRow.stepNameCustom !== "수주 미성사") || effectiveRow.currentStep === 0);
+
+                        let stepDisplayName = "";
+                        if (effectiveRow.isPromotedFromQuote && !effectiveRow.isRegistrationCompleted) {
+                          stepDisplayName = "";
+                        } else if (isProjectInProcess) {
+                          stepDisplayName = (effectiveRow.stepNameCustom && effectiveRow.stepNameCustom !== "고객 답변 대기" && effectiveRow.stepNameCustom !== "수주 미성사")
+                            ? effectiveRow.stepNameCustom
+                            : (currentStepObj?.name || `Step ${effectiveRow.currentStep}`);
+                        } else if (isFailedQuote) {
+                          stepDisplayName = "수주 미성사";
+                        } else if (isEChange || isConfirmed) {
+                          stepDisplayName = "수주확정";
+                        } else if (isWaitCustomer) {
+                          stepDisplayName = "고객 답변 대기";
+                        } else {
+                          stepDisplayName = "";
+                        }
+
+                        // 상태 뱃지 스타일 (스크린샷 알약 형태)
+                        const getStepPillClass = () => {
+                          if (stepDisplayName === "수주확정") {
+                            return "bg-emerald-50 text-emerald-800 border-emerald-400 font-extrabold shadow-2xs dark:bg-emerald-950/40 dark:text-emerald-300";
+                          }
+                          if (stepDisplayName === "고객 답변 대기") {
+                            return "bg-sky-50 text-sky-800 border-sky-400 font-extrabold shadow-2xs dark:bg-sky-950/40 dark:text-sky-300";
+                          }
+                          if (stepDisplayName === "수주 미성사") {
+                            return "bg-rose-50 text-rose-700 border-rose-400 font-extrabold shadow-2xs dark:bg-rose-950/40 dark:text-rose-300";
+                          }
+                          if (effectiveRow.currentStep === 0 || stepDisplayName.includes("견적")) {
+                            return "bg-blue-50 text-blue-800 border-blue-300 dark:bg-blue-950/40 dark:text-blue-300 font-bold";
+                          }
+                          if (stepDisplayName.includes("양산") || effectiveRow.currentStep === 13) {
+                            return "bg-emerald-50 text-emerald-700 border-emerald-300 dark:bg-emerald-950/40 dark:text-emerald-300";
+                          }
+                          if (stepDisplayName.includes("시양산") || effectiveRow.currentStep === 11) {
+                            return "bg-sky-50 text-sky-700 border-sky-300 dark:bg-sky-950/40 dark:text-sky-300";
+                          }
+                          if (stepDisplayName.includes("금형육성") || effectiveRow.stepStatus === "Fail(수정중)") {
+                            return "bg-rose-50 text-rose-700 border-rose-300 dark:bg-rose-950/40 dark:text-rose-300";
+                          }
+                          return "bg-zinc-100 text-zinc-700 border-zinc-300 dark:bg-zinc-800 dark:text-zinc-300";
+                        };
+
+                        const formattedProjectNo = effectiveRow.projectNo?.toUpperCase().startsWith("M")
+                          ? effectiveRow.projectNo
+                          : effectiveRow.projectNo?.toUpperCase().replace(/^Q/, "MI").replace(/-0?(\d+)/, "P$1");
+
+                        return (
+                          <tr 
+                            key={`${row.id}-${row.projectNo}-${row.changeType || "N001"}`} 
+                            className={
+                              isChildRow
+                                ? "bg-purple-50/40 dark:bg-purple-950/20 hover:bg-purple-100/50 dark:hover:bg-purple-900/30 transition-colors border-l-4 border-l-purple-500"
+                                : "odd:bg-white even:bg-slate-50/60 dark:odd:bg-zinc-900 dark:even:bg-zinc-800/40 hover:bg-sky-50/70 dark:hover:bg-zinc-800 transition-colors"
+                            }
                           >
-                            <Check className="h-3 w-3 text-emerald-600" />
-                            수주확정
-                          </span>
-                        ) : row.estimateNo ? (
-                          <span className="font-mono text-[11px] text-zinc-700 dark:text-zinc-300 font-medium">
-                            {row.estimateNo}
-                          </span>
-                        ) : (
-                          <span className="text-zinc-400 font-mono text-[10px]">-</span>
-                        )}
-                      </td>
-
-                      {/* 2-2. 신작/설변 (N001, E001) - 단순 상태 뱃지 표기 (클릭 모달 제거) */}
-                      <td className="p-2 border-r border-slate-200 dark:border-zinc-800 text-center font-mono">
-                        <span
-                          className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-extrabold border shadow-2xs ${
-                            row.changeType?.startsWith("E")
-                              ? "bg-purple-100 text-purple-800 border-purple-300 dark:bg-purple-950 dark:text-purple-300"
-                              : "bg-sky-50 text-sky-800 border-sky-300 dark:bg-sky-950 dark:text-sky-300"
-                          }`}
-                        >
-                          {row.changeType || "N001"}
-                        </span>
-                      </td>
-
-                      {/* 3. 고객사 */}
-                      <td className="p-2 border-r border-slate-200 dark:border-zinc-800 text-center font-bold text-zinc-800 dark:text-zinc-200">
-                        {row.customerName}
-                      </td>
-
-                      {/* 4. 프로젝트명 */}
-                      <td className="p-2 border-r border-slate-200 dark:border-zinc-800 text-center font-medium text-zinc-700 dark:text-zinc-300">
-                        {row.projectName}
-                      </td>
-
-                      {/* 5. 제품명 (품명) */}
-                      <td className="p-2 border-r border-slate-200 dark:border-zinc-800 text-left pl-3 font-semibold text-zinc-900 dark:text-zinc-100 truncate max-w-[160px]" title={row.productName}>
-                        <span 
-                          onClick={() => handleOpenModal(row, "detail")}
-                          className="hover:underline cursor-pointer"
-                        >
-                          {row.productName}
-                        </span>
-                      </td>
-
-                      {/* 6. 품 번 */}
-                      <td className="p-2 border-r border-slate-200 dark:border-zinc-800 text-right pr-3 font-mono text-zinc-600 dark:text-zinc-400">
-                        {row.partNo || "-"}
-                      </td>
-
-                      {/* 7. 금형번호 */}
-                      <td className="p-2 border-r border-slate-200 dark:border-zinc-800 text-center font-mono text-zinc-700 dark:text-zinc-300">
-                        {row.moldNo || "-"}
-                      </td>
-
-                      {/* 7-1. 금형차수 (M1, M2) */}
-                      <td className="p-2 border-r border-slate-200 dark:border-zinc-800 text-center font-mono">
-                        {row.moldDegree ? (
-                          <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-extrabold bg-purple-50 text-purple-700 border border-purple-200 dark:bg-purple-950/40 dark:text-purple-300">
-                            {row.moldDegree}
-                          </span>
-                        ) : (
-                          <span className="text-zinc-400 font-mono text-[10px]">-</span>
-                        )}
-                      </td>
-
-                      {/* 8. 캐비티사양 */}
-                      <td className="p-2 border-r border-slate-200 dark:border-zinc-800 text-center font-mono text-zinc-700 dark:text-zinc-300">
-                        {row.cavity || "-"}
-                      </td>
-
-                      {/* 9. 금형 제작처 (스크린샷 사각 테두리 뱃지 스타일) */}
-                      <td className="p-2 border-r border-slate-200 dark:border-zinc-800 text-center">
-                        {row.moldVendor && row.moldVendor !== "N/A" ? (
-                          <span className="inline-flex px-2 py-0.5 rounded-md text-[11px] font-medium border border-purple-200 bg-purple-50 text-purple-700 dark:bg-purple-950/40 dark:text-purple-300">
-                            {row.moldVendor}
-                          </span>
-                        ) : (
-                          <span className="text-zinc-400 font-mono text-[10px]">-</span>
-                        )}
-                      </td>
-
-                      {/* 10. 사출 양산처 (스크린샷 연녹색 사각 테두리 뱃지 스타일) */}
-                      <td className="p-2 border-r border-slate-200 dark:border-zinc-800 text-center">
-                        {row.massVendor && row.massVendor !== "N/A" ? (
-                          <span className="inline-flex px-2 py-0.5 rounded-md text-[11px] font-medium border border-emerald-300 bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 font-bold">
-                            {row.massVendor}
-                          </span>
-                        ) : (
-                          <span className="text-zinc-400 font-mono text-[10px]">-</span>
-                        )}
-                      </td>
-
-                      {/* 11. 현재 스텝 (고객 답변 대기 / 수주 미성사 / 공정 진행 - 수정 없는 순수 조회용) */}
-                      <td className="p-2 border-r border-slate-200 dark:border-zinc-800 text-center">
-                        <div className="flex items-center justify-center">
-                          {stepDisplayName ? (
-                            row.currentStep === 0 || row.isQuotePending || row.projectNo.startsWith("Q") ? (
-                              <button
-                                type="button"
-                                onClick={() => router.push(`/portal/quotation?projectNo=${encodeURIComponent(row.projectNo)}`)}
-                                className="hover:opacity-85 transition-opacity"
-                                title={`클릭 시 [원청사 견적관리] 화면으로 이동`}
-                              >
-                                <span className={`inline-block px-2.5 py-0.5 rounded-full text-[10px] font-bold border shadow-2xs ${getStepPillClass()}`}>
-                                  {stepDisplayName}
+                            {/* 1. No */}
+                            <td className="p-2 text-center font-mono text-zinc-400 border-r border-slate-200 dark:border-zinc-800">
+                              {isChildRow ? (
+                                <span className="text-purple-500 font-bold text-[10px]" title={`${subIdx}차 설변 하위 이력`}>
+                                  ┗
                                 </span>
-                              </button>
-                            ) : (
-                              <button
-                                type="button"
-                                onClick={() => handleNavigateToStepPage(row.currentStep, row.projectNo)}
-                                className="hover:opacity-85 transition-opacity"
-                                title={`클릭 시 [Step ${row.currentStep}: ${stepDisplayName}] 실무 화면으로 이동`}
-                              >
-                                <span className={`inline-block px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${getStepPillClass()}`}>
-                                  {stepDisplayName}
+                              ) : (
+                                groupIdx + 1
+                              )}
+                            </td>
+                            
+                            {/* 2. 프로젝트 번호 (동일 프로젝트 번호 그룹 + / - 펼치기 버튼 지원) */}
+                            <td className="p-2 border-r border-slate-200 dark:border-zinc-800 text-center font-mono">
+                              <div className="flex items-center justify-center gap-1">
+                                {!isChildRow && hasSubRows && (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      toggleExpandProject(groupKey);
+                                    }}
+                                    className={`inline-flex items-center justify-center w-4 h-4 rounded text-[11px] font-extrabold border transition-colors cursor-pointer shrink-0 ${
+                                      isExpanded
+                                        ? "bg-purple-600 text-white border-purple-700 hover:bg-purple-700"
+                                        : "bg-amber-50 text-amber-800 border-amber-400 hover:bg-amber-100"
+                                    }`}
+                                    title={
+                                      isExpanded
+                                        ? "클릭하여 신작/설변 하위 이력 접기"
+                                        : `클릭하여 신작/설변 이력 펼치기 (${group.items.map((i) => i.changeType || "N001").join(" ➔ ")})`
+                                    }
+                                  >
+                                    {isExpanded ? "−" : "+"}
+                                  </button>
+                                )}
+                                {isChildRow && (
+                                  <span className="text-purple-400 font-mono text-[10px] pl-1">┗</span>
+                                )}
+                                <button 
+                                  onClick={() => handleOpenModal(effectiveRow, "detail")} 
+                                  className="font-bold text-sky-600 hover:text-sky-800 hover:underline flex items-center justify-center gap-1"
+                                  title="클릭 시 프로젝트 상세 공정 확인"
+                                >
+                                  <span>{formattedProjectNo}</span>
+                                  <ExternalLink className="h-3 w-3 text-sky-400" />
+                                </button>
+                              </div>
+                            </td>
+
+                            {/* 2-1. 견적번호 */}
+                            <td className="p-2 border-r border-slate-200 dark:border-zinc-800 text-center font-mono">
+                              {(effectiveRow.isContractConfirmed || effectiveRow.quotationStatus === "수주확정" || effectiveRow.estimateNo === "수주확정") ? (
+                                <span 
+                                  className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300 dark:bg-emerald-950/60 dark:text-emerald-300 shadow-2xs"
+                                  title={effectiveRow.estimateNo ? `견적번호: ${effectiveRow.estimateNo} (수주확정 완료)` : "수주확정 완료"}
+                                >
+                                  <Check className="h-3 w-3 text-emerald-600" />
+                                  수주확정
                                 </span>
-                              </button>
-                            )
-                          ) : (
-                            <span className="text-zinc-400 font-mono text-[10px]">-</span>
-                          )}
-                        </div>
-                      </td>
+                              ) : effectiveRow.estimateNo ? (
+                                <span className="font-mono text-[11px] text-zinc-700 dark:text-zinc-300 font-medium">
+                                  {effectiveRow.estimateNo}
+                                </span>
+                              ) : (
+                                <span className="text-zinc-400 font-mono text-[10px]">-</span>
+                              )}
+                            </td>
 
-                      {/* 13. 킥오프 */}
-                      <td className="p-2 border-r border-slate-200 dark:border-zinc-800 text-center font-mono text-zinc-600 dark:text-zinc-400">
-                        {row.isPromotedFromQuote && !row.isRegistrationCompleted ? "" : (row.kickoffDate || row.orderDate || "")}
-                      </td>
+                            {/* 2-2. 신작/설변 (N001 -> E001 -> E002 그룹 트리 지원) */}
+                            <td className="p-2 border-r border-slate-200 dark:border-zinc-800 text-center font-mono">
+                              <div className="flex items-center justify-center gap-1">
+                                {isChildRow && (
+                                  <span className="text-purple-500 font-bold text-[10px]">┗</span>
+                                )}
+                                <span
+                                  onClick={() => {
+                                    if (hasSubRows) toggleExpandProject(groupKey);
+                                  }}
+                                  className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-extrabold border shadow-2xs ${
+                                    hasSubRows ? "cursor-pointer" : ""
+                                  } ${
+                                    effectiveRow.changeType?.startsWith("E")
+                                      ? "bg-purple-100 text-purple-800 border-purple-300 dark:bg-purple-950 dark:text-purple-300"
+                                      : "bg-sky-50 text-sky-800 border-sky-300 dark:bg-sky-950 dark:text-sky-300"
+                                  }`}
+                                  title={
+                                    hasSubRows
+                                      ? `이력: ${group.items.map((i) => i.changeType || "N001").join(" ➔ ")} (클릭하여 ${isExpanded ? "접기" : "펼치기"})`
+                                      : undefined
+                                  }
+                                >
+                                  {effectiveRow.changeType || "N001"}
+                                </span>
+                                {!isChildRow && hasSubRows && (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      toggleExpandProject(groupKey);
+                                    }}
+                                    className={`inline-flex items-center justify-center px-1.5 py-0.5 rounded text-[9px] font-extrabold border transition-colors cursor-pointer ${
+                                      isExpanded
+                                        ? "bg-zinc-100 text-zinc-700 border-zinc-300 hover:bg-zinc-200"
+                                        : "bg-amber-100 text-amber-800 border-amber-300 hover:bg-amber-200"
+                                    }`}
+                                    title={isExpanded ? "설변 하위 이력 접기" : `클릭하여 이전 이력(${rootRow.changeType || "N001"} 등 ${subRows.length}건) 펼치기`}
+                                  >
+                                    {isExpanded ? `− 접기` : `+${subRows.length}`}
+                                  </button>
+                                )}
+                              </div>
+                            </td>
 
-                      {/* 14. 목표 T1 */}
-                      <td className="p-2 border-r border-slate-200 dark:border-zinc-800 text-center font-mono font-bold text-emerald-700 dark:text-emerald-400">
-                        {row.targetT1Date || ""}
-                      </td>
+                            {/* 3. 고객사 */}
+                            <td className="p-2 border-r border-slate-200 dark:border-zinc-800 text-center font-bold text-zinc-800 dark:text-zinc-200">
+                              {effectiveRow.customerName}
+                            </td>
 
-                      {/* 금형 출고 납기 */}
-                      <td className="p-2 border-r border-slate-200 dark:border-zinc-800 text-center font-mono font-bold text-purple-700 dark:text-purple-400">
-                        {row.moldDeliveryDate || ""}
-                      </td>
+                            {/* 4. 프로젝트명 */}
+                            <td className="p-2 border-r border-slate-200 dark:border-zinc-800 text-center font-medium text-zinc-700 dark:text-zinc-300">
+                              {effectiveRow.projectName}
+                            </td>
 
-                      {/* 15. 목표 양산승인 */}
-                      <td className="p-2 border-r border-slate-200 dark:border-zinc-800 text-center font-mono font-bold text-amber-700 dark:text-amber-400">
-                        {row.targetMassDate || ""}
-                      </td>
-
-                      {/* 16. 상세 모달 열기 및 수정/삭제 버튼 */}
-                      <td className="p-2 text-center">
-                        <div className="flex items-center justify-center gap-1">
-                          {/* 6. 프로젝트 승격 건에 대한 등록 버튼 (등록 완료 시 비활성화) */}
-                          {row.isPromotedFromQuote ? (
-                            row.isRegistrationCompleted ? (
-                              <Button 
-                                size="xs" 
-                                disabled
-                                className="h-6 px-1.5 text-[10px] rounded-md font-bold gap-1 bg-zinc-100 text-zinc-400 border border-zinc-200 cursor-not-allowed shadow-2xs"
-                                title="생산 및 외주업체 등록 완료"
+                            {/* 5. 제품명 (품명) */}
+                            <td className="p-2 border-r border-slate-200 dark:border-zinc-800 text-left pl-3 font-semibold text-zinc-900 dark:text-zinc-100 truncate max-w-[160px]" title={effectiveRow.productName}>
+                              <span 
+                                onClick={() => handleOpenModal(effectiveRow, "detail")}
+                                className="hover:underline cursor-pointer"
                               >
-                                <Check className="h-3 w-3 text-zinc-400" />
-                                등록완료
-                              </Button>
-                            ) : (
-                              <Button 
-                                onClick={() => handleOpenPromotedRegisterModal(row)} 
-                                size="xs" 
-                                className="h-6 px-2 text-[10px] rounded-md font-bold gap-1 bg-indigo-600 hover:bg-indigo-700 text-white shadow-2xs animate-pulse"
-                                title="승격된 프로젝트의 생산방식 및 외주 협력사 등록"
-                              >
-                                <Sparkles className="h-3 w-3" />
-                                등록
-                              </Button>
-                            )
-                          ) : null}
+                                {effectiveRow.productName}
+                              </span>
+                            </td>
 
-                          <Button 
-                            onClick={() => handleOpenModal(row, "detail")} 
-                            size="xs" 
-                            variant="outline" 
-                            className="h-6 px-1.5 text-[10px] rounded-md font-bold gap-1 bg-white hover:bg-slate-50 border-slate-300 text-slate-700 shadow-2xs"
-                            title="상세 공정 모달 열기"
-                          >
-                            <Eye className="h-3 w-3 text-slate-500" />
-                            처리/검수
-                          </Button>
-                          <Button 
-                            onClick={() => handleOpenEditModal(row)} 
-                            size="xs" 
-                            variant="outline" 
-                            className="h-6 px-1.5 text-[10px] rounded-md font-bold gap-1 bg-white hover:bg-amber-50 border-amber-300 text-amber-700 shadow-2xs"
-                            title="프로젝트 기본정보 수정"
-                          >
-                            <Edit3 className="h-3 w-3 text-amber-600" />
-                            수정
-                          </Button>
-                          <Button
-                            onClick={() => handleDeleteProject(row)}
-                            size="xs"
-                            variant="outline"
-                            className="h-6 px-1.5 text-[10px] rounded-md font-bold gap-0.5 text-rose-600 border-rose-200 hover:bg-rose-50 hover:text-rose-700 shadow-2xs"
-                            title="프로젝트 삭제"
-                          >
-                            <Trash2 className="h-3 w-3" />
-                            삭제
-                          </Button>
-                        </div>
-                      </td>
-                    </tr>
+                            {/* 6. 품 번 */}
+                            <td className="p-2 border-r border-slate-200 dark:border-zinc-800 text-right pr-3 font-mono text-zinc-600 dark:text-zinc-400">
+                              {effectiveRow.partNo || "-"}
+                            </td>
+
+                            {/* 7. 금형번호 */}
+                            <td className="p-2 border-r border-slate-200 dark:border-zinc-800 text-center font-mono text-zinc-700 dark:text-zinc-300">
+                              {effectiveRow.moldNo || "-"}
+                            </td>
+
+                            {/* 7-1. 금형차수 (M1, M2) */}
+                            <td className="p-2 border-r border-slate-200 dark:border-zinc-800 text-center font-mono">
+                              {effectiveRow.moldDegree ? (
+                                <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-extrabold bg-purple-50 text-purple-700 border border-purple-200 dark:bg-purple-950/40 dark:text-purple-300">
+                                  {effectiveRow.moldDegree}
+                                </span>
+                              ) : (
+                                <span className="text-zinc-400 font-mono text-[10px]">-</span>
+                              )}
+                            </td>
+
+                            {/* 8. 캐비티사양 */}
+                            <td className="p-2 border-r border-slate-200 dark:border-zinc-800 text-center font-mono text-zinc-700 dark:text-zinc-300">
+                              {effectiveRow.cavity || "-"}
+                            </td>
+
+                            {/* 9. 금형 제작처 */}
+                            <td className="p-2 border-r border-slate-200 dark:border-zinc-800 text-center">
+                              {effectiveRow.moldVendor && effectiveRow.moldVendor !== "N/A" ? (
+                                <span className="inline-flex px-2 py-0.5 rounded-md text-[11px] font-medium border border-purple-200 bg-purple-50 text-purple-700 dark:bg-purple-950/40 dark:text-purple-300">
+                                  {effectiveRow.moldVendor}
+                                </span>
+                              ) : (
+                                <span className="text-zinc-400 font-mono text-[10px]">-</span>
+                              )}
+                            </td>
+
+                            {/* 10. 사출 양산처 */}
+                            <td className="p-2 border-r border-slate-200 dark:border-zinc-800 text-center">
+                              {effectiveRow.massVendor && effectiveRow.massVendor !== "N/A" ? (
+                                <span className="inline-flex px-2 py-0.5 rounded-md text-[11px] font-medium border border-emerald-300 bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 font-bold">
+                                  {effectiveRow.massVendor}
+                                </span>
+                              ) : (
+                                <span className="text-zinc-400 font-mono text-[10px]">-</span>
+                              )}
+                            </td>
+
+                            {/* 11. 현재 스텝 */}
+                            <td className="p-2 border-r border-slate-200 dark:border-zinc-800 text-center">
+                              <div className="flex items-center justify-center">
+                                {stepDisplayName ? (
+                                  effectiveRow.currentStep === 0 || effectiveRow.isQuotePending || effectiveRow.projectNo.startsWith("Q") ? (
+                                    <button
+                                      type="button"
+                                      onClick={() => router.push(`/portal/quotation?projectNo=${encodeURIComponent(effectiveRow.projectNo)}`)}
+                                      className="hover:opacity-85 transition-opacity"
+                                      title={`클릭 시 [원청사 견적관리] 화면으로 이동`}
+                                    >
+                                      <span className={`inline-block px-2.5 py-0.5 rounded-full text-[10px] font-bold border shadow-2xs ${getStepPillClass()}`}>
+                                        {stepDisplayName}
+                                      </span>
+                                    </button>
+                                  ) : (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleNavigateToStepPage(effectiveRow.currentStep, effectiveRow.projectNo)}
+                                      className="hover:opacity-85 transition-opacity"
+                                      title={`클릭 시 [Step ${effectiveRow.currentStep}: ${stepDisplayName}] 실무 화면으로 이동`}
+                                    >
+                                      <span className={`inline-block px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${getStepPillClass()}`}>
+                                        {stepDisplayName}
+                                      </span>
+                                    </button>
+                                  )
+                                ) : (
+                                  <span className="text-zinc-400 font-mono text-[10px]">-</span>
+                                )}
+                              </div>
+                            </td>
+
+                            {/* 13. 킥오프 */}
+                            <td className="p-2 border-r border-slate-200 dark:border-zinc-800 text-center font-mono text-zinc-600 dark:text-zinc-400">
+                              {effectiveRow.isPromotedFromQuote && !effectiveRow.isRegistrationCompleted ? "" : (effectiveRow.kickoffDate || effectiveRow.orderDate || "")}
+                            </td>
+
+                            {/* 14. 목표 T1 */}
+                            <td className="p-2 border-r border-slate-200 dark:border-zinc-800 text-center font-mono font-bold text-emerald-700 dark:text-emerald-400">
+                              {effectiveRow.targetT1Date || ""}
+                            </td>
+
+                            {/* 금형 출고 납기 */}
+                            <td className="p-2 border-r border-slate-200 dark:border-zinc-800 text-center font-mono font-bold text-purple-700 dark:text-purple-400">
+                              {effectiveRow.moldDeliveryDate || ""}
+                            </td>
+
+                            {/* 15. 목표 양산승인 */}
+                            <td className="p-2 border-r border-slate-200 dark:border-zinc-800 text-center font-mono font-bold text-amber-700 dark:text-amber-400">
+                              {effectiveRow.targetMassDate || ""}
+                            </td>
+
+                            {/* 16. 상세 모달 열기 및 수정/삭제 버튼 */}
+                            <td className="p-2 text-center">
+                              <div className="flex items-center justify-center gap-1">
+                                {effectiveRow.isPromotedFromQuote ? (
+                                  effectiveRow.isRegistrationCompleted ? (
+                                    <Button 
+                                      size="xs" 
+                                      disabled
+                                      className="h-6 px-1.5 text-[10px] rounded-md font-bold gap-1 bg-zinc-100 text-zinc-400 border border-zinc-200 cursor-not-allowed shadow-2xs"
+                                      title="생산 및 외주업체 등록 완료"
+                                    >
+                                      <Check className="h-3 w-3 text-zinc-400" />
+                                      등록완료
+                                    </Button>
+                                  ) : (
+                                    <Button 
+                                      onClick={() => handleOpenPromotedRegisterModal(effectiveRow)} 
+                                      size="xs" 
+                                      className="h-6 px-2 text-[10px] rounded-md font-bold gap-1 bg-indigo-600 hover:bg-indigo-700 text-white shadow-2xs animate-pulse"
+                                      title="승격된 프로젝트의 생산방식 및 외주 협력사 등록"
+                                    >
+                                      <Sparkles className="h-3 w-3" />
+                                      등록
+                                    </Button>
+                                  )
+                                ) : null}
+
+                                <Button 
+                                  onClick={() => handleOpenModal(effectiveRow, "detail")} 
+                                  size="xs" 
+                                  variant="outline" 
+                                  className="h-6 px-1.5 text-[10px] rounded-md font-bold gap-1 bg-white hover:bg-slate-50 border-slate-300 text-slate-700 shadow-2xs"
+                                  title="상세 공정 모달 열기"
+                                >
+                                  <Eye className="h-3 w-3 text-slate-500" />
+                                  처리/검수
+                                </Button>
+                                <Button 
+                                  onClick={() => handleOpenEditModal(effectiveRow)} 
+                                  size="xs" 
+                                  variant="outline" 
+                                  className="h-6 px-1.5 text-[10px] rounded-md font-bold gap-1 bg-white hover:bg-amber-50 border-amber-300 text-amber-700 shadow-2xs"
+                                  title="프로젝트 기본정보 수정"
+                                >
+                                  <Edit3 className="h-3 w-3 text-amber-600" />
+                                  수정
+                                </Button>
+                                <Button
+                                  onClick={() => handleDeleteProject(effectiveRow)}
+                                  size="xs"
+                                  variant="outline"
+                                  className="h-6 px-1.5 text-[10px] rounded-md font-bold gap-0.5 text-rose-600 border-rose-200 hover:bg-rose-50 hover:text-rose-700 shadow-2xs"
+                                  title="프로젝트 삭제"
+                                >
+                                  <Trash2 className="h-3 w-3" />
+                                  삭제
+                                </Button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </React.Fragment>
                   );
                 })
               )}
@@ -2920,7 +3090,7 @@ export default function ProjectStatus13StepsPage() {
                           </div>
                         )}
 
-                        {/* 신작/설변 뱃지 */}
+                        {/* 신작/설변 뱃지 및 동일 프로젝트 차수 전환 탭 */}
                         <span
                           className={`px-2 py-0.5 rounded text-xs font-extrabold font-mono border shadow-2xs ${
                             selectedItem.changeType?.startsWith("E")
@@ -2931,39 +3101,160 @@ export default function ProjectStatus13StepsPage() {
                           {selectedItem.changeType || "N001"}
                         </span>
 
+                        {(() => {
+                          const siblings = projects
+                            .filter((p) => (p.projectNo || "").toUpperCase() === (selectedItem.projectNo || "").toUpperCase())
+                            .sort((a, b) => getRevisionSortWeight(a.changeType) - getRevisionSortWeight(b.changeType));
+                          if (siblings.length <= 1) return null;
+                          return (
+                            <div className="inline-flex items-center gap-1 bg-white dark:bg-zinc-900 px-1.5 py-0.5 rounded-md border border-slate-200 dark:border-zinc-700">
+                              <span className="text-[10px] text-zinc-400 font-bold mr-0.5">차수이력:</span>
+                              {siblings.map((sib, idx) => {
+                                const isCurrent = sib.id === selectedItem.id;
+                                return (
+                                  <React.Fragment key={sib.id}>
+                                    {idx > 0 && <span className="text-[10px] text-zinc-300">➔</span>}
+                                    <button
+                                      type="button"
+                                      onClick={() => setSelectedItem(sib)}
+                                      className={`px-1.5 py-0.5 rounded text-[10px] font-mono font-bold transition-colors cursor-pointer ${
+                                        isCurrent
+                                          ? sib.changeType?.startsWith("E")
+                                            ? "bg-purple-600 text-white"
+                                            : "bg-sky-600 text-white"
+                                          : "bg-zinc-100 text-zinc-600 hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-300"
+                                      }`}
+                                      title={`${sib.changeType || "N001"} 차수 상세 보기`}
+                                    >
+                                      {sib.changeType || "N001"}
+                                    </button>
+                                  </React.Fragment>
+                                );
+                              })}
+                            </div>
+                          );
+                        })()}
+
                         {/* 금형차수 뱃지 */}
                         <span className="px-2 py-0.5 rounded text-xs font-bold font-mono bg-purple-50 text-purple-700 border border-purple-200">
                           금형차수: {selectedItem.moldDegree || "M1"}
                         </span>
                       </div>
 
-                      {/* [핵심] MPSI 설계변경(E채번) 발의 버튼 및 확인 후 상태값 변조 없이 '설계변경 처리함' 텍스트 표기 */}
-                      {(initiatedRevisions.has(selectedItem.projectNo) || 
-                        initiatedRevisions.has(`${selectedItem.projectNo}_${selectedItem.changeType || "N001"}`) ||
-                        selectedItem.changeType?.startsWith("E")) ? (
-                        <div className="flex items-center gap-1.5 shrink-0">
-                          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-bold bg-purple-100 text-purple-800 border border-purple-300 dark:bg-purple-950 dark:text-purple-300 shadow-2xs">
-                            <Check className="h-3.5 w-3.5 text-purple-600 dark:text-purple-400" />
-                            설계변경 처리함
-                          </span>
-                        </div>
-                      ) : (
-                        <Button
-                          type="button"
-                          onClick={() => {
-                            if (confirm(`[설계변경 발의]\n\n프로젝트 [${selectedItem.projectNo}]의 설계변경을 발의하시겠습니까?\n\n※ 확인 시 '설계변경 처리함'으로 표시되며, 신규 설계변경 차수(E001 등)는 신규 프로젝트 등록 메뉴에서 동일 프로젝트 번호로 등록하여 이력을 관리합니다.`)) {
-                              const revisionKey = `${selectedItem.projectNo}_${selectedItem.changeType || "N001"}`;
-                              markRevisionInitiated(revisionKey);
-                              markRevisionInitiated(selectedItem.projectNo);
-                              showToast(`[${selectedItem.projectNo}] 설계변경 처리가 완료되었습니다.`, "success");
-                            }
-                          }}
-                          className="h-7 px-3 bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs gap-1.5 shadow-xs shrink-0 cursor-pointer"
-                        >
-                          <Wrench className="h-3.5 w-3.5" />
-                          <span>설계변경(E채번) 발의</span>
-                        </Button>
-                      )}
+                      {/* [핵심] MPSI 설계변경(E채번) 발의 버튼: 클릭 시 기존 프로젝트는 이력으로 보존하고 새 E차수(E001 -> E002...) 생성 및 그리드 즉시 반영 */}
+                      {(() => {
+                        const siblings = projects
+                          .filter((p) => (p.projectNo || "").toUpperCase() === (selectedItem.projectNo || "").toUpperCase())
+                          .sort((a, b) => getRevisionSortWeight(a.changeType) - getRevisionSortWeight(b.changeType));
+                        const latestInGroup = siblings[siblings.length - 1] || selectedItem;
+                        const isOlderHistoryRow = siblings.length > 1 && latestInGroup.id !== selectedItem.id;
+                        const nextECode = getNextRevisionCode(selectedItem.projectNo, projects);
+
+                        if (isOlderHistoryRow) {
+                          return (
+                            <div className="flex items-center gap-1.5 shrink-0">
+                              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-bold bg-purple-100 text-purple-800 border border-purple-300 dark:bg-purple-950 dark:text-purple-300 shadow-2xs">
+                                <Check className="h-3.5 w-3.5 text-purple-600 dark:text-purple-400" />
+                                설계변경 이력 보존됨 (최신: {latestInGroup.changeType})
+                              </span>
+                              <Button
+                                type="button"
+                                size="xs"
+                                variant="outline"
+                                onClick={() => setSelectedItem(latestInGroup)}
+                                className="h-7 px-2.5 text-xs font-bold border-purple-300 text-purple-700 hover:bg-purple-50 cursor-pointer"
+                              >
+                                최신({latestInGroup.changeType}) 이동
+                              </Button>
+                            </div>
+                          );
+                        }
+
+                        return (
+                          <Button
+                            type="button"
+                            onClick={() => {
+                              const currentRev = selectedItem.changeType || "N001";
+                              if (
+                                confirm(
+                                  `[설계변경(${nextECode}) 발의]\n\n프로젝트 [${selectedItem.projectNo}] (현재: ${currentRev})의 설계변경을 발의하여 [${nextECode}] 차수로 전환하시겠습니까?\n\n※ 변경 전 [${currentRev}] 프로젝트는 이력으로 보존되며, 그리드에서 [+] 버튼을 펼치면 ${currentRev} ➔ ${nextECode} 하위 이력을 모두 확인할 수 있습니다.`
+                                )
+                              ) {
+                                const today = new Date();
+                                const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+
+                                // 금형번호: 기존 값 유지하되 없으면 P 문자 이전까지만 자동 추출
+                                let targetMoldNo = selectedItem.moldNo || "";
+                                if (!targetMoldNo) {
+                                  const pIdx = (selectedItem.projectNo || "").toUpperCase().indexOf("P");
+                                  targetMoldNo = pIdx > 0 ? selectedItem.projectNo.substring(0, pIdx) : selectedItem.projectNo;
+                                }
+
+                                const createdRevision = addProject({
+                                  projectNo: selectedItem.projectNo,
+                                  estimateNo: "수주확정",
+                                  projectName: selectedItem.projectName || "",
+                                  productName: selectedItem.productName || "",
+                                  customerName: selectedItem.customerName || "고객사",
+                                  partNo: selectedItem.partNo || "",
+                                  moldNo: targetMoldNo,
+                                  moldDegree: selectedItem.moldDegree || "M1",
+                                  changeType: nextECode,
+                                  isPromotedFromQuote: Boolean(selectedItem.isPromotedFromQuote),
+                                  isRegistrationCompleted: true,
+                                  isContractConfirmed: true,
+                                  isQuotePending: false,
+                                  quotationStatus: "수주확정",
+                                  stepNameCustom: "제품 data 접수",
+                                  moldProductionType: selectedItem.moldProductionType || "OUTSOURCING",
+                                  moldVendor: selectedItem.moldVendor || "",
+                                  massProductionType: selectedItem.massProductionType || "OUTSOURCING",
+                                  massVendor: selectedItem.massVendor || "",
+                                  cavity: selectedItem.cavity || "",
+                                  material: selectedItem.material || "",
+                                  partWeight: selectedItem.partWeight || "",
+                                  annualVolume: Number(selectedItem.annualVolume || 0),
+                                  machineTon: selectedItem.machineTon || "",
+                                  hrsSpec: selectedItem.hrsSpec || "",
+                                  moldMaterial: selectedItem.moldMaterial || "",
+                                  resinSpec: selectedItem.resinSpec || "",
+                                  warrantyShots: Number(selectedItem.warrantyShots || 0),
+                                  registeredDate: todayStr,
+                                  quoteSubmitDate: selectedItem.quoteSubmitDate || "",
+                                  orderDate: todayStr,
+                                  kickoffDate: selectedItem.kickoffDate || todayStr,
+                                  targetMoldDays: Number(selectedItem.targetMoldDays || 45),
+                                  targetT1Date: selectedItem.targetT1Date || "",
+                                  moldDeliveryDate: selectedItem.moldDeliveryDate || "",
+                                  targetMassDate: selectedItem.targetMassDate || "",
+                                  massStartDate: selectedItem.massStartDate || "",
+                                  currentStep: 1,
+                                  stepStatus: "진행중",
+                                  trialDegree: "T1 대기",
+                                  trialCompletionRate: 0,
+                                  facilityEvent: "설계변경중 (A/S)",
+                                  orderQty: Number(selectedItem.orderQty || 0),
+                                  deliveredQty: 0,
+                                  notes: `[설계변경 발의 (${todayStr})] ${currentRev} ➔ ${nextECode} 설계변경 차수 발의`,
+                                  updatedAt: `${todayStr} 09:00`,
+                                });
+
+                                const revisionKey = `${selectedItem.projectNo}_${currentRev}`;
+                                markRevisionInitiated(revisionKey);
+                                setSelectedItem(createdRevision);
+                                showToast(
+                                  `[${selectedItem.projectNo}] 설계변경 [${nextECode}] 발의 완료! 그리드에 [${nextECode}]가 반영되었으며 이전 [${currentRev}] 건은 하위 이력(+)에 보존되었습니다.`,
+                                  "success"
+                                );
+                              }
+                            }}
+                            className="h-7 px-3 bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs gap-1.5 shadow-xs shrink-0 cursor-pointer"
+                          >
+                            <Wrench className="h-3.5 w-3.5" />
+                            <span>설계변경({nextECode} 채번) 발의</span>
+                          </Button>
+                        );
+                      })()}
                     </div>
                   </div>
 
