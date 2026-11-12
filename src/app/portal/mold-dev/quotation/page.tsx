@@ -28,7 +28,7 @@ import {
 import { sendAppNotification, cleanCompanyAuthor } from "@/lib/notification-store";
 
 export default function MoldDevQuotationPage() {
-  const { projects, activeProjects } = useProjectMaster();
+  const { projects, activeProjects, updateStep } = useProjectMaster();
   const { 
     estimates, 
     isLoading,
@@ -301,13 +301,31 @@ export default function MoldDevQuotationPage() {
 
     const found = (activeProjects && activeProjects.length > 0 ? activeProjects : projects).find((p) => p.projectNo === pNo);
     if (found) {
-      // 1. 프로젝트 등록 시 지정했던 외주 금형업체 자동 바인딩
+      // 1. 프로젝트 등록 시 지정했던 외주 금형업체 자동 바인딩 (선택안함/미지정/대여 제외)
       let targetVendors: string[] = [];
       if (found.moldProductionType === "IN_HOUSE") {
         targetVendors = ["MPSI 자체개발팀"];
-      } else if (found.moldVendor) {
-        // "우성정공(주) (배희섭 수석)" 등 프로젝트 등록 시 선택한 업체 바인딩
-        targetVendors = [found.moldVendor];
+      } else if (
+        found.moldVendor && 
+        found.moldVendor !== "선택안함" && 
+        found.moldVendor !== "미지정" && 
+        found.moldVendor !== "금형대여" &&
+        found.moldVendor !== "고객사 대여 금형"
+      ) {
+        // vendorList 항목과 정규화 비교하여 정확한 표시명(예: '우성정공 (금형제작)')으로 매핑
+        const cleanName = (s?: string) => (s || "").replace(/\([^)]*\)/g, "").replace(/주식회사|\s/g, "").trim().toLowerCase();
+        const pVendorClean = cleanName(found.moldVendor);
+        
+        const matched = vendorList.find((v) => {
+          const vClean = cleanName(v.name);
+          return vClean && pVendorClean && (vClean === pVendorClean || vClean.includes(pVendorClean) || pVendorClean.includes(vClean));
+        });
+
+        if (matched) {
+          targetVendors = [matched.name];
+        } else {
+          targetVendors = [found.moldVendor];
+        }
       }
 
       // 2. 연결된 원청사 견적 조회
@@ -447,9 +465,12 @@ export default function MoldDevQuotationPage() {
     }
 
     setNewForm((prev) => {
+      const cleanV = (str?: string) => (str || "").replace(/\([^)]*\)/g, "").replace(/주식회사|\s/g, "").trim().toLowerCase();
+      const targetClean = cleanV(vendorName);
       let current = prev.assignedVendors.filter(v => v !== "전체 업체");
-      if (current.includes(vendorName)) {
-        current = current.filter(v => v !== vendorName);
+      const existsIndex = current.findIndex(v => v === vendorName || (cleanV(v) && targetClean && (cleanV(v) === targetClean || cleanV(v).includes(targetClean) || targetClean.includes(cleanV(v)))));
+      if (existsIndex >= 0) {
+        current = current.filter((_, idx) => idx !== existsIndex);
       } else {
         current = [...current, vendorName];
       }
@@ -669,6 +690,32 @@ export default function MoldDevQuotationPage() {
 
     // 외주 협력사로 상태 변경 알림 발송
     if (nextStatus === "수주확정") {
+      // [요구사항 3] 외주업체 수주 확정 시 프로젝트 관리대장 그리드 및 DB 동기화
+      const targetProjectNo = selectedItem.officialProjectNo || selectedItem.projectNo;
+      const matchedProj = projects.find(
+        (p) => p.projectNo === targetProjectNo || p.projectNo === selectedItem.projectNo || p.estimateNo === selectedItem.projectNo
+      );
+      const officialNo = matchedProj?.projectNo || targetProjectNo;
+
+      if (officialNo) {
+        // 1. 프론트엔드 프로젝트 상태 및 로컬스토리지/이벤트 디스패치 동기화 (프로젝트 관리대장 실시간 반영)
+        updateStep(officialNo, {
+          moldVendor: submission.vendorName,
+          moldProductionType: "OUTSOURCING"
+        });
+
+        // 2. 백엔드 ProjectMaster DB 영구 동기화
+        fetch("/api/v1/projects", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            projectNo: officialNo,
+            moldVendor: submission.vendorName,
+            moldProductionType: "OUTSOURCING"
+          })
+        }).catch((err) => console.error("Failed to sync moldVendor to Project DB:", err));
+      }
+
       await sendAppNotification({
         menuName: "금형 견적 관리",
         menuPath: "/portal/vendor-portal/mold/quotation",

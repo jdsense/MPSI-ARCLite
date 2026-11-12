@@ -29,7 +29,7 @@ import {
 import { autoEnrollMassValidationFromQuotation } from "@/lib/mass-validation-store";
 
 export default function MassProductionQuotationPage() {
-  const { projects, activeProjects } = useProjectMaster();
+  const { projects, activeProjects, updateStep } = useProjectMaster();
   const { 
     estimates, 
     addEstimate, 
@@ -206,19 +206,25 @@ export default function MassProductionQuotationPage() {
         ? found.projectNo
         : `MI${found.projectNo.replace(/^Q/i, "")}`;
 
-      // 실제 프로젝트 마스터에 지정된 사출처가 있으면 해당 업체 선택, 없으면 전체 배포
+      // 실제 프로젝트 마스터에 지정된 사출처가 있으면 해당 업체 선택, 없으면 선택안함(빈 배열)
       const isSelfMass = found.massProductionType === "IN_HOUSE" || found.massVendor?.includes("자체");
+      const hasValidMassVendor = Boolean(
+        found.massVendor &&
+        found.massVendor !== "선택안함" &&
+        found.massVendor !== "미지정" &&
+        !found.massVendor.includes("자체")
+      );
       const initialAssignedVendors = isSelfMass
         ? ["MPSI 자체사출공장"]
-        : matchedVendor
+        : (hasValidMassVendor && matchedVendor)
         ? [matchedVendor]
-        : ["전체 업체"];
+        : [];
 
       const initialVendorName = isSelfMass
         ? "MPSI 자체사출공장"
-        : matchedVendor
+        : (hasValidMassVendor && matchedVendor)
         ? matchedVendor
-        : `전체 양산처 (${dbMassVendors.length}개사)`;
+        : "미지정";
 
       setNewForm((prev) => ({
         ...prev,
@@ -570,6 +576,28 @@ export default function MassProductionQuotationPage() {
         nextProcCost = winner.processingCost;
         nextPackCost = winner.packagingCost;
         nextLogCost = winner.logisticsCost;
+
+        // [동기화] 사출 외주업체 수주 확정 시 프로젝트 관리대장 그리드 및 DB 동기화
+        const targetPNo = selectedItem.projectNo || selectedItem.estimateNo;
+        const matchedProj = projects.find(
+          (p) => p.projectNo === targetPNo || p.estimateNo === targetPNo
+        );
+        const officialNo = matchedProj?.projectNo || targetPNo;
+        if (officialNo) {
+          updateStep(officialNo, {
+            massVendor: winner.vendorName,
+            massProductionType: "OUTSOURCING"
+          });
+          fetch("/api/v1/projects", {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              projectNo: officialNo,
+              massVendor: winner.vendorName,
+              massProductionType: "OUTSOURCING"
+            })
+          }).catch((err) => console.error("Failed to sync massVendor to Project DB:", err));
+        }
       } else if (draftStatus === "반려/미성사" || (draftQuotes.length > 0 && draftQuotes.every((vq) => vq.status === "반려/미성사"))) {
         nextStatus = "반려/미성사";
         nextUnitPrice = 0;

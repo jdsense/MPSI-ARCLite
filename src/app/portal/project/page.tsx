@@ -706,8 +706,6 @@ export default function ProjectStatus13StepsPage() {
   const handleOpenNewProjectModal = () => {
     setProjectCreationMode("EXISTING");
     setSelectedExistingProjectNo("");
-    const defaultMold = moldVendorOptions[0]?.name || "우성정공(주)";
-    const defaultMass = massVendorOptions[0]?.name || "(주)뉴몰드";
 
     setFormState({
       projectNo: "",
@@ -720,9 +718,9 @@ export default function ProjectStatus13StepsPage() {
       moldDegree: "M1",
       changeType: "E001",
       moldProductionType: "OUTSOURCING",
-      moldVendor: defaultMold,
+      moldVendor: "",
       massProductionType: "OUTSOURCING",
-      massVendor: defaultMass,
+      massVendor: "",
       cavity: "",
       material: "",
       partWeight: "",
@@ -823,9 +821,9 @@ export default function ProjectStatus13StepsPage() {
       targetMoldNo = pjtNo.replace(/M$/i, "");
     }
 
-    // [요구사항 4] 실제 DB 연동 협력업체(외주업체) 바인딩 (순수 회사명만 적용)
-    const defaultMold = cleanVendorName(row.moldVendor) || moldVendorOptions[0]?.name || "우성정공(주)";
-    const defaultMass = cleanVendorName(row.massVendor) || massVendorOptions[0]?.name || "(주)뉴몰드";
+    // [요구사항 4] 실제 DB 연동 협력업체(외주업체) 바인딩 (순수 회사명만 적용, 미지정 시 선택안함)
+    const defaultMold = cleanVendorName(row.moldVendor) || "";
+    const defaultMass = cleanVendorName(row.massVendor) || "";
 
     setFormState({
       projectNo: row.projectNo, // 견적에서 승격된 프로젝트 번호 바인딩 (모달에서 수정 가능)
@@ -1081,9 +1079,9 @@ export default function ProjectStatus13StepsPage() {
       quotationStatus: isEChange ? "수주확정" : (isQuote ? "고객 답변 대기" : undefined),
       stepNameCustom: isEChange ? "수주확정" : (isQuote ? "고객 답변 대기" : undefined),
       moldProductionType: formState.moldProductionType || "OUTSOURCING",
-      moldVendor: formState.moldVendor || "우성정공(주)",
+      moldVendor: formState.moldVendor || "",
       massProductionType: formState.massProductionType || "OUTSOURCING",
-      massVendor: formState.massVendor || "(주)뉴몰드",
+      massVendor: formState.massVendor || "",
       cavity: formState.cavity || "1*2 Cavity",
       material: formState.material || "NAK80",
       partWeight: formState.partWeight || "420g",
@@ -3963,7 +3961,7 @@ export default function ProjectStatus13StepsPage() {
                           onChange={() => setFormState({
                             ...formState,
                             moldProductionType: "OUTSOURCING",
-                            moldVendor: formState.moldVendor && formState.moldVendor !== "MPSI 자체제작팀" && formState.moldVendor !== "금형대여" ? formState.moldVendor : "우성정공(주)"
+                            moldVendor: formState.moldVendor && formState.moldVendor !== "MPSI 자체제작팀" && formState.moldVendor !== "금형대여" ? formState.moldVendor : ""
                           })}
                         />
                         <span className="font-medium">외주 제작 (협력사)</span>
@@ -4002,10 +4000,11 @@ export default function ProjectStatus13StepsPage() {
                       <div>
                         <label className="block text-[10px] text-zinc-500 mb-0.5">금형제작 외주업체 선택 (DB 연동)</label>
                         <select
-                          value={formState.moldVendor || (moldVendorOptions[0]?.name || "우성정공(주)")}
+                          value={formState.moldVendor || ""}
                           onChange={(e) => setFormState({ ...formState, moldVendor: e.target.value })}
                           className="h-7 w-full rounded border bg-white dark:bg-zinc-900 px-2 text-xs font-bold text-purple-700"
                         >
+                          <option value="">선택안함</option>
                           {moldVendorOptions.map(v => (
                             <option key={v.id} value={v.name}>{v.name}</option>
                           ))}
@@ -4048,7 +4047,7 @@ export default function ProjectStatus13StepsPage() {
                           onChange={() => setFormState({
                             ...formState,
                             massProductionType: "OUTSOURCING",
-                            massVendor: massVendorOptions[0]?.name || "(주)뉴몰드"
+                            massVendor: formState.massVendor && formState.massVendor !== "MPSI 자체사출라인" ? formState.massVendor : ""
                           })}
                         />
                         <span className="font-medium">외주 양산 (협력사)</span>
@@ -4073,10 +4072,11 @@ export default function ProjectStatus13StepsPage() {
                       <div>
                         <label className="block text-[10px] text-zinc-500 mb-0.5">사출양산 외주업체 선택 (DB 연동)</label>
                         <select
-                          value={formState.massVendor || (massVendorOptions[0]?.name || "(주)뉴몰드")}
+                          value={formState.massVendor || ""}
                           onChange={(e) => setFormState({ ...formState, massVendor: e.target.value })}
                           className="h-7 w-full rounded border bg-white dark:bg-zinc-900 px-2 text-xs font-bold text-emerald-700"
                         >
+                          <option value="">선택안함</option>
                           {massVendorOptions.map(v => (
                             <option key={v.id} value={v.name}>{v.name}</option>
                           ))}
@@ -4605,7 +4605,7 @@ export default function ProjectStatus13StepsPage() {
                           onChange={(e) => setEditFormState({ ...editFormState, moldVendor: e.target.value })}
                           className="h-7 w-full rounded border bg-white dark:bg-zinc-900 px-2 text-xs font-bold text-purple-800"
                         >
-                          <option value="">미지정 (외주업체 선택)</option>
+                          <option value="">선택안함</option>
                           {moldVendorOptions.map((v) => (
                             <option key={v.id} value={v.name}>{v.name}</option>
                           ))}
@@ -4649,7 +4649,7 @@ export default function ProjectStatus13StepsPage() {
                           onChange={(e) => setEditFormState({ ...editFormState, massVendor: e.target.value })}
                           className="h-7 w-full rounded border bg-white dark:bg-zinc-900 px-2 text-xs font-bold text-emerald-800"
                         >
-                          <option value="">미지정 (외주업체 선택)</option>
+                          <option value="">선택안함</option>
                           {massVendorOptions.map((v) => (
                             <option key={v.id} value={v.name}>{v.name}</option>
                           ))}
