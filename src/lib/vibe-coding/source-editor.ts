@@ -886,7 +886,8 @@ async function callAnthropicEndpoint(
   apiKey: string,
   model: string,
   prompt: string,
-  imageDataUrl?: string
+  imageDataUrl?: string,
+  baseUrl?: string
 ): Promise<string> {
   const image = parseDataUrl(imageDataUrl);
   const content: unknown[] = [];
@@ -902,7 +903,12 @@ async function callAnthropicEndpoint(
   }
   content.push({ type: "text", text: prompt });
 
-  const res = await fetch("https://api.anthropic.com/v1/messages", {
+  const cleanBase = (baseUrl || "").trim().replace(/\/+$/, "");
+  const endpoint = cleanBase
+    ? (cleanBase.endsWith("/messages") ? cleanBase : `${cleanBase}/messages`)
+    : "https://api.anthropic.com/v1/messages";
+
+  const res = await fetch(endpoint, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -913,7 +919,6 @@ async function callAnthropicEndpoint(
       model: model || "claude-opus-5-5",
       max_tokens: 4096,
       messages: [{ role: "user", content }],
-      temperature: 0.1,
     }),
   });
 
@@ -963,7 +968,7 @@ export async function callAiModel(prompt: string, imageDataUrl?: string, jsonMod
   // 1) Anthropic Claude (provider가 anthropic이거나 키가 sk-ant-로 시작하거나 모델이 claude인 경우 직결)
   if (cfg.provider === "anthropic" || cfg.apiKey.startsWith("sk-ant-") || primaryModel.toLowerCase().startsWith("claude")) {
     const targetModel = primaryModel.toLowerCase().startsWith("claude") ? primaryModel : "claude-opus-5-5";
-    const text = await callAnthropicEndpoint(cfg.apiKey, targetModel, prompt, imageDataUrl);
+    const text = await callAnthropicEndpoint(cfg.apiKey, targetModel, prompt, imageDataUrl, cfg.baseUrl);
     return { text, usedEndpoint: `Anthropic Claude (${targetModel})` };
   }
 
