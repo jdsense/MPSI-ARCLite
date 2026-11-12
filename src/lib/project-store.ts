@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { MOLD_VENDOR_LIST, MASS_VENDOR_LIST } from "./role-store";
 import { ProjectMaster, toKsxProject, fromKsxProject, MpsiProjectStepAttachment } from "@/types/ksx9101";
 
@@ -1001,6 +1001,57 @@ export function deleteProjectFromStorage(idOrNo: number | string): ProjectItem[]
   return updated;
 }
 
+/**
+ * 동일한 프로젝트 번호(projectNo) 그룹 중 설계변경(E차수)이 있는 경우
+ * 이전 차수(N001 또는 이전 E차수)는 제외하고, 항상 가장 최신 차수의 활성 프로젝트만 반환합니다.
+ * (예: MI26002P0의 N001, E001, E002가 존재할 경우 이전 프로젝트는 제외되고 최신인 E002 프로젝트 1개만 추출)
+ */
+export function filterLatestRevisionProjects<
+  T extends { projectNo?: string; changeType?: string; revisionCode?: string; moldDegree?: string; id?: number }
+>(items: T[]): T[] {
+  if (!Array.isArray(items) || items.length === 0) return [];
+
+  const getWeight = (ct?: string, rc?: string) => {
+    const code = String(ct || rc || "N001").toUpperCase().trim();
+    if (code.startsWith("E")) {
+      const num = parseInt(code.replace(/\D/g, ""), 10) || 1;
+      return 100 + num;
+    }
+    const num = parseInt(code.replace(/\D/g, ""), 10) || 0;
+    return num;
+  };
+
+  const groupMap = new Map<string, T[]>();
+  for (const item of items) {
+    const key = (item.projectNo || "").toUpperCase().trim();
+    if (!key) continue;
+    if (!groupMap.has(key)) {
+      groupMap.set(key, []);
+    }
+    groupMap.get(key)!.push(item);
+  }
+
+  const result: T[] = [];
+  groupMap.forEach((group) => {
+    if (group.length === 1) {
+      result.push(group[0]);
+    } else {
+      const sorted = [...group].sort((a, b) => {
+        const wA = getWeight(a.changeType, a.revisionCode);
+        const wB = getWeight(b.changeType, b.revisionCode);
+        if (wA !== wB) return wA - wB;
+        const mA = a.moldDegree || "M1";
+        const mB = b.moldDegree || "M1";
+        if (mA !== mB) return mA.localeCompare(mB);
+        return (a.id || 0) - (b.id || 0);
+      });
+      result.push(sorted[sorted.length - 1]);
+    }
+  });
+
+  return result;
+}
+
 // 7. React 전역 동기화 커스텀 훅
 export function useProjectMaster() {
   const [projects, setProjects] = useState<ProjectItem[]>([]);
@@ -1232,8 +1283,13 @@ export function useProjectMaster() {
     return generatedCode;
   };
 
+  const activeProjects = useMemo(() => {
+    return filterLatestRevisionProjects(projects);
+  }, [projects]);
+
   return {
     projects,
+    activeProjects,
     addProject,
     updateStep,
     updateProjectById: (id: number, updates: Partial<ProjectItem>) => {

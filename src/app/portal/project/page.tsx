@@ -87,6 +87,7 @@ export default function ProjectStatus13StepsPage() {
   const router = useRouter();
   const { 
     projects, 
+    activeProjects,
     addProject, 
     updateStep, 
     updateProjectById,
@@ -3130,12 +3131,13 @@ export default function ProjectStatus13StepsPage() {
                         value={selectedItem.id}
                         onChange={(e) => {
                           const targetId = Number(e.target.value);
-                          const found = projects.find((p) => p.id === targetId);
+                          const list = activeProjects && activeProjects.length > 0 ? activeProjects : projects;
+                          const found = list.find((p) => p.id === targetId) || projects.find((p) => p.id === targetId);
                           if (found) setSelectedItem(found);
                         }}
                         className="flex-1 min-w-0 h-7 rounded border bg-white dark:bg-zinc-900 px-2 text-xs font-mono font-bold text-sky-600"
                       >
-                        {projects.map((p) => (
+                        {(activeProjects && activeProjects.length > 0 ? activeProjects : projects).map((p) => (
                           <option key={`${p.id}-${p.projectNo}`} value={p.id}>
                             [{p.projectNo}] {p.projectName} - {p.productName} ({p.customerName}){p.changeType ? ` [${p.changeType}]` : ""}
                           </option>
@@ -3664,14 +3666,17 @@ export default function ProjectStatus13StepsPage() {
                           }`}
                         >
                           <option value="">-- [필수 선택] 연동할 기존 프로젝트를 선택하세요 --</option>
-                          {Array.from(new Set(projects.map((p) => p.projectNo))).map((pNo) => {
-                            const p = projects.find((item) => item.projectNo === pNo);
-                            return (
-                              <option key={pNo} value={pNo}>
-                                [{pNo}] {p?.projectName} - {p?.productName} ({p?.customerName})
-                              </option>
-                            );
-                          })}
+                          {(() => {
+                            const list = activeProjects && activeProjects.length > 0 ? activeProjects : projects;
+                            return Array.from(new Set(list.map((p) => p.projectNo))).map((pNo) => {
+                              const p = list.find((item) => item.projectNo === pNo);
+                              return (
+                                <option key={pNo} value={pNo}>
+                                  [{pNo}] {p?.projectName} - {p?.productName} ({p?.customerName}){p?.changeType ? ` [${p.changeType}]` : ""}
+                                </option>
+                              );
+                            });
+                          })()}
                         </select>
                       </div>
                       <div className="flex items-center justify-between text-[10px]">

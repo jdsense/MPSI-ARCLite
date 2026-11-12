@@ -25,7 +25,7 @@ import { useMoldManufactureStore } from "@/lib/mold-manufacture-store";
 
 export default function VendorMoldProjectsPage() {
   const router = useRouter();
-  const { projects, updateStep } = useProjectMaster();
+  const { projects, activeProjects, updateStep } = useProjectMaster();
   const { manufactures } = useMoldManufactureStore();
   const { role, vendorName } = useAuthRole();
 
@@ -126,7 +126,9 @@ export default function VendorMoldProjectsPage() {
   // 현재 외주업체에게 배정된 금형 프로젝트 목록 필터링 (MPSI 연동)
   // * 전체 프로젝트 매트릭스는 배제
   // * 수주가 확정되어 MI로 시작하는 정식 프로젝트만 노출 ("Q"로 시작하는 견적 단계 프로젝트는 철저히 배제)
-  const vendorProjects = projects.filter((p) => {
+  // * 최신 리비전(설계변경 E차수가 있는 경우 이전 차수 배제) 적용
+  const baseProjects = activeProjects && activeProjects.length > 0 ? activeProjects : projects;
+  const vendorProjects = baseProjects.filter((p) => {
     // 1. Q로 시작하거나 0단계 견적 건은 외주업체 프로젝트 관리 목록에 절대 노출하지 않음
     if (p.projectNo?.startsWith("Q") || p.currentStep === 0 || !p.isContractConfirmed) {
       return false;

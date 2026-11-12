@@ -29,7 +29,7 @@ import {
 import { autoEnrollMassValidationFromQuotation } from "@/lib/mass-validation-store";
 
 export default function MassProductionQuotationPage() {
-  const { projects } = useProjectMaster();
+  const { projects, activeProjects } = useProjectMaster();
   const { 
     estimates, 
     addEstimate, 
@@ -169,7 +169,8 @@ export default function MassProductionQuotationPage() {
       return;
     }
 
-    const found = projects.find((p) => p.projectNo === pNo);
+    const targetProjects = activeProjects && activeProjects.length > 0 ? activeProjects : projects;
+    const found = targetProjects.find((p) => p.projectNo === pNo);
     if (found) {
       let matchedVendor = "";
       if (found.massVendor) {
@@ -1168,7 +1169,7 @@ export default function MassProductionQuotationPage() {
                   className="w-full h-8 rounded-md border border-blue-300 dark:border-blue-700 bg-white dark:bg-zinc-900 px-2 text-xs font-bold text-blue-900 dark:text-blue-200 shadow-xs cursor-pointer"
                 >
                   <option value="">-- 대상 프로젝트를 선택하세요 (필수 선택) --</option>
-                  {projects.map((p) => {
+                  {(activeProjects && activeProjects.length > 0 ? activeProjects : projects).map((p) => {
                     const pNoDisplay = p.projectNo.toUpperCase().startsWith("M") 
                       ? p.projectNo 
                       : `MI${p.projectNo.replace(/^Q/i, "")}`;

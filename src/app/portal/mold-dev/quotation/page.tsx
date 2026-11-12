@@ -28,7 +28,7 @@ import {
 import { sendAppNotification, cleanCompanyAuthor } from "@/lib/notification-store";
 
 export default function MoldDevQuotationPage() {
-  const { projects } = useProjectMaster();
+  const { projects, activeProjects } = useProjectMaster();
   const { 
     estimates, 
     isLoading,
@@ -299,7 +299,7 @@ export default function MoldDevQuotationPage() {
       return;
     }
 
-    const found = projects.find((p) => p.projectNo === pNo);
+    const found = (activeProjects && activeProjects.length > 0 ? activeProjects : projects).find((p) => p.projectNo === pNo);
     if (found) {
       // 1. 프로젝트 등록 시 지정했던 외주 금형업체 자동 바인딩
       let targetVendors: string[] = [];
@@ -1292,7 +1292,7 @@ export default function MoldDevQuotationPage() {
                   className="w-full h-8 rounded-md border border-purple-300 dark:border-purple-700 bg-white dark:bg-zinc-900 px-2.5 text-xs font-bold text-purple-900 dark:text-purple-200 shadow-xs"
                 >
                   <option value="">-- 대상 프로젝트를 선택하세요 (필수 선택) --</option>
-                  {projects.map((p) => (
+                  {(activeProjects && activeProjects.length > 0 ? activeProjects : projects).map((p) => (
                     <option key={`${p.id}-${p.projectNo}`} value={p.projectNo}>
                       [{p.projectNo}] {p.projectName} - {p.productName} ({p.customerName}){p.changeType ? ` [${p.changeType}]` : ""}
                     </option>

@@ -19,11 +19,12 @@ export function ProjectSelector({
   className = "",
   disabled = false,
 }: ProjectSelectorProps) {
-  const { projects } = useProjectMaster();
+  const { projects, activeProjects } = useProjectMaster();
+  const list = activeProjects && activeProjects.length > 0 ? activeProjects : projects;
 
   const handleSelect = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const selectedNo = e.target.value;
-    const found = projects.find((p) => p.projectNo === selectedNo);
+    const found = list.find((p) => p.projectNo === selectedNo);
     onChange(selectedNo, found);
   };
 
@@ -39,11 +40,10 @@ export function ProjectSelector({
         <option value="" disabled>
           {placeholder}
         </option>
-        {Array.from(new Set(projects.map((p) => p.projectNo))).map((pNo) => {
-          const p = projects.find((item) => item.projectNo === pNo);
+        {list.map((p) => {
           return (
-            <option key={pNo} value={pNo}>
-              [{pNo}] {p?.projectName} - {p?.productName} ({p?.customerName})
+            <option key={`${p.id}-${p.projectNo}`} value={p.projectNo}>
+              [{p.projectNo}] {p.projectName} - {p.productName} ({p.customerName}){p.changeType ? ` [${p.changeType}]` : ""}
             </option>
           );
         })}
