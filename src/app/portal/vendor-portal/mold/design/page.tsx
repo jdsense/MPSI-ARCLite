@@ -312,7 +312,7 @@ export default function VendorMoldDesignPage() {
         }
       }
 
-      showToast(`[${uploadModalTarget.title}] 파일 및 설명 메모가 MPSI 본사로 성공적으로 등록되었습니다.`);
+      showToast(`[${uploadModalTarget.title}] 파일 및 설명 메모가 저장되었습니다. 서류 검토 완료 후 하단 'MPSI 확인요청' 버튼을 눌러주세요.`);
       setUploadModalTarget({ isOpen: false, designId: 0, fileType: "moldMeetingReport", title: "", targetName: "" });
       setSelectedUploadFile(null);
     } catch (err: any) {
@@ -964,14 +964,34 @@ export default function VendorMoldDesignPage() {
                       제품 모델링 검토/최종승인 완료됨
                     </Button>
                   ) : selectedReviewItem.drStatus === "검토요청" ? (
-                    <Button 
-                      disabled
-                      size="xs"
-                      className="h-7 px-3 bg-zinc-100 text-zinc-600 border border-zinc-300 font-semibold cursor-not-allowed opacity-80"
-                    >
-                      <Clock className="h-3.5 w-3.5 mr-1 text-amber-500" />
-                      MPSI 검토 대기중 (요청 완료)
-                    </Button>
+                    <div className="flex items-center gap-1.5">
+                      <Button 
+                        disabled
+                        size="xs"
+                        className="h-7 px-3 bg-zinc-100 text-zinc-600 border border-zinc-300 font-semibold cursor-not-allowed opacity-80"
+                      >
+                        <Clock className="h-3.5 w-3.5 mr-1 text-amber-500" />
+                        MPSI 검토 대기중 (요청 완료)
+                      </Button>
+                      <Button
+                        onClick={() => {
+                          updateProductReviewStatus(
+                            selectedReviewItem.id,
+                            "검토 대기",
+                            currentVendor,
+                            `[확인요청 취소] 협력사에서 추가 서류 검토 및 보완을 위해 확인요청을 취소(회수)하였습니다.`
+                          );
+                          setSelectedReviewItem({ ...selectedReviewItem, drStatus: "검토 대기" });
+                          showToast("MPSI 확인요청이 회수되어 서류 수정이 가능합니다.");
+                        }}
+                        size="xs"
+                        variant="ghost"
+                        className="h-7 px-2 text-[11px] text-zinc-500 hover:text-zinc-800 hover:bg-zinc-100 border border-zinc-200 cursor-pointer"
+                        title="추가 서류 등록이나 수정을 위해 확인요청을 취소하고 회수합니다."
+                      >
+                        요청 회수
+                      </Button>
+                    </div>
                   ) : selectedReviewItem.drStatus === "수정요청" ? (
                     <Button 
                       onClick={() => {
@@ -979,16 +999,16 @@ export default function VendorMoldDesignPage() {
                           selectedReviewItem.id, 
                           "검토요청", 
                           currentVendor,
-                          `[금형제작협의록 및 CAE 재제출] 도면 보완 사항 반영에 따른 MPSI 승인 재요청.`
+                          `[금형제작협의록 및 CAE 재제출] 도면 보완 사항 반영에 따른 MPSI 확인요청 완료.`
                         );
                         setSelectedReviewItem({ ...selectedReviewItem, drStatus: "검토요청" });
-                        showToast("MPSI 본사로 검토 재승인 요청이 제출되었습니다.");
+                        showToast("MPSI 본사로 재확인 요청이 제출되었습니다.");
                       }}
                       size="xs"
-                      className="h-7 px-3 bg-amber-600 hover:bg-amber-700 text-white font-bold"
+                      className="h-7 px-3 bg-amber-600 hover:bg-amber-700 text-white font-bold cursor-pointer"
                     >
                       <Send className="h-3.5 w-3.5 mr-1" />
-                      MPSI로 검토 재요청 (협의록/CAE 재제출)
+                      MPSI 확인요청 (협의록/CAE 재제출)
                     </Button>
                   ) : (
                     <Button 
@@ -997,16 +1017,16 @@ export default function VendorMoldDesignPage() {
                           selectedReviewItem.id, 
                           "검토요청", 
                           currentVendor,
-                          `[금형제작협의록 및 CAE 제출] MPSI 본사 승인 요청 접수 완료.`
+                          `[금형제작협의록 및 CAE 제출] MPSI 본사 확인요청 접수 완료.`
                         );
                         setSelectedReviewItem({ ...selectedReviewItem, drStatus: "검토요청" });
-                        showToast("MPSI 본사로 검토 승인 요청이 제출되었습니다.");
+                        showToast("MPSI 본사로 확인요청이 제출되었습니다.");
                       }}
                       size="xs"
-                      className="h-7 px-3 bg-sky-600 hover:bg-sky-700 text-white font-bold"
+                      className="h-7 px-3 bg-sky-600 hover:bg-sky-700 text-white font-bold cursor-pointer"
                     >
                       <Send className="h-3.5 w-3.5 mr-1" />
-                      MPSI로 검토요청 (협의록/CAE 제출)
+                      MPSI 확인요청 (협의록/CAE 제출)
                     </Button>
                   )}
                 </div>
@@ -1359,14 +1379,34 @@ export default function VendorMoldDesignPage() {
                       금형 3D 설계 최종 승인 완료 (컨펌됨)
                     </Button>
                   ) : selectedDesignItem.moldDesignStatus === "검토요청" ? (
-                    <Button 
-                      disabled
-                      size="xs"
-                      className="h-7 px-3 bg-zinc-100 text-zinc-600 border border-zinc-300 font-semibold cursor-not-allowed opacity-80"
-                    >
-                      <Clock className="h-3.5 w-3.5 mr-1 text-amber-500" />
-                      MPSI 검토 승인 대기중 (요청 완료)
-                    </Button>
+                    <div className="flex items-center gap-1.5">
+                      <Button 
+                        disabled
+                        size="xs"
+                        className="h-7 px-3 bg-zinc-100 text-zinc-600 border border-zinc-300 font-semibold cursor-not-allowed opacity-80"
+                      >
+                        <Clock className="h-3.5 w-3.5 mr-1 text-amber-500" />
+                        MPSI 검토 승인 대기중 (요청 완료)
+                      </Button>
+                      <Button
+                        onClick={() => {
+                          updateMoldDesignStatus(
+                            selectedDesignItem.id,
+                            "검토 대기",
+                            currentVendor,
+                            `[설계 승인요청 취소] 협력사에서 금형 3D 설계 추가 보완을 위해 승인요청을 취소(회수)하였습니다.`
+                          );
+                          setSelectedDesignItem({ ...selectedDesignItem, moldDesignStatus: "검토 대기" });
+                          showToast("금형 3D 설계 승인요청이 회수되었습니다.");
+                        }}
+                        size="xs"
+                        variant="ghost"
+                        className="h-7 px-2 text-[11px] text-zinc-500 hover:text-zinc-800 hover:bg-zinc-100 border border-zinc-200 cursor-pointer"
+                        title="금형 3D 설계 추가 보완을 위해 승인요청을 회수합니다."
+                      >
+                        요청 회수
+                      </Button>
+                    </div>
                   ) : selectedDesignItem.moldDesignStatus === "수정요청" ? (
                     <Button 
                       onClick={() => {
@@ -1374,16 +1414,16 @@ export default function VendorMoldDesignPage() {
                           selectedDesignItem.id, 
                           "검토요청", 
                           currentVendor,
-                          `[금형 3D 설계 재승인 요청] 도면 수정 보완 후 MPSI 최종 승인 재요청.`
+                          `[금형 3D 설계 재승인 요청] 도면 수정 보완 후 MPSI 최종 확인요청 접수 완료.`
                         );
                         setSelectedDesignItem({ ...selectedDesignItem, moldDesignStatus: "검토요청" });
-                        showToast("MPSI 본사로 금형 3D 설계 재승인 요청이 제출되었습니다.");
+                        showToast("MPSI 본사로 금형 3D 설계 재확인 요청이 제출되었습니다.");
                       }}
                       size="xs"
-                      className="h-7 px-3 bg-amber-600 hover:bg-amber-700 text-white font-bold"
+                      className="h-7 px-3 bg-amber-600 hover:bg-amber-700 text-white font-bold cursor-pointer"
                     >
                       <Send className="h-3.5 w-3.5 mr-1" />
-                      MPSI로 금형 3D 설계 재승인 요청
+                      MPSI 확인요청 (금형 3D 설계 재승인)
                     </Button>
                   ) : (
                     <Button 
@@ -1392,16 +1432,16 @@ export default function VendorMoldDesignPage() {
                           selectedDesignItem.id, 
                           "검토요청", 
                           currentVendor,
-                          `[금형 3D 설계 승인 요청] 3D CAD 설계 완료에 따른 MPSI 최종 컨펌 요청.`
+                          `[금형 3D 설계 승인 요청] 3D CAD 설계 완료에 따른 MPSI 확인요청 접수 완료.`
                         );
                         setSelectedDesignItem({ ...selectedDesignItem, moldDesignStatus: "검토요청" });
-                        showToast("MPSI 본사로 금형 3D 설계 승인 요청이 제출되었습니다.");
+                        showToast("MPSI 본사로 금형 3D 설계 확인요청이 제출되었습니다.");
                       }}
                       size="xs"
-                      className="h-7 px-3 bg-purple-600 hover:bg-purple-700 text-white font-bold"
+                      className="h-7 px-3 bg-purple-600 hover:bg-purple-700 text-white font-bold cursor-pointer"
                     >
                       <Send className="h-3.5 w-3.5 mr-1" />
-                      MPSI로 금형 3D 설계 승인 요청
+                      MPSI 확인요청 (금형 3D 설계 승인)
                     </Button>
                   )}
                 </div>

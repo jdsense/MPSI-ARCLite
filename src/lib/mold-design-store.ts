@@ -588,17 +588,9 @@ export function useMoldDesignStore() {
         ...(item.workLogs || []),
       ];
 
-      // 금형처가 파일을 업로드하면 검토요청 상태로 자동 전환
-      let newDrStatus = item.drStatus;
-      let newDesignStatus = item.moldDesignStatus;
-      if (authorRole === "VENDOR") {
-        if (fileType === "moldMeetingReport" || fileType === "product3D" || fileType === "caeReport") {
-          newDrStatus = "검토요청";
-        }
-        if (fileType === "mold3DData") {
-          newDesignStatus = "검토요청";
-        }
-      }
+      // 파일 업로드만으로는 상태를 '검토요청'으로 자동 변경하지 않음 (사용자가 직접 확인요청 버튼을 클릭해야 상태 전이)
+      const newDrStatus = item.drStatus;
+      const newDesignStatus = item.moldDesignStatus;
 
       targetItem = {
         ...item,
