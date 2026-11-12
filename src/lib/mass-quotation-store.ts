@@ -208,139 +208,9 @@ export async function syncMassEstimateToBackend(item: MassProductionEstimateItem
   }
 }
 
-// 금형 이관 완료 시 양산 견적 자동 등재 헬퍼
-export function autoEnrollMassQuotationFromTrial(trial: {
-  projectNo: string;
-  projectName?: string;
-  productName?: string;
-  customerName?: string;
-  moldVendor?: string;
-  massVendor?: string;
-  cavity?: string;
-  material?: string;
-  resinSpec?: string;
-  machineTon?: string;
-  partWeight?: number | string;
-  annualVolume?: number | string;
-  monthlyVolume?: number;
-  targetCycleTime?: number;
-  transferPlanDate?: string;
-  transferActualDate?: string;
-}): MassProductionEstimateItem | null {
-  if (typeof window === "undefined" || !trial || !trial.projectNo) return null;
-
-  const current = getStoredMassEstimates();
-  const exists = current.find((e) => e.projectNo === trial.projectNo);
-
-  const isSelf = 
-    trial.massVendor?.includes("자체") || 
-    trial.massVendor?.includes("MPSI") || 
-    trial.massVendor === "MPSI 자체사출공장";
-
-  const productionType: "OUTSOURCING" | "IN_HOUSE" = isSelf ? "IN_HOUSE" : "OUTSOURCING";
-  const vendorName = isSelf ? "MPSI 자체사출공장" : (trial.massVendor || "(주)뉴몰드");
-  const assignedVendors = isSelf ? ["MPSI 자체사출공장"] : [vendorName];
-  const status: MassQuotationStatus = isSelf ? "자체진행" : "견적요청";
-
-  const actualMachineTon = trial.machineTon 
-    ? (String(trial.machineTon).includes("T") ? String(trial.machineTon) : `${trial.machineTon}T`) 
-    : "700T";
-  const actualResin = trial.resinSpec || trial.material || "PP 컴파운드 사출물";
-  const actualPartWeight = Number(trial.partWeight) || 100;
-  const actualMonthlyVolume = trial.monthlyVolume || 
-    (trial.annualVolume ? Math.round(Number(trial.annualVolume) / 12) : 250);
-  const actualCT = trial.targetCycleTime || 35;
-
-  if (exists) {
-    const updated = current.map((item) => {
-      if (item.projectNo !== trial.projectNo) return item;
-      const merged: MassProductionEstimateItem = {
-        ...item,
-        projectName: trial.projectName || item.projectName,
-        productName: trial.productName || item.productName,
-        customerName: trial.customerName || item.customerName,
-        productionType,
-        vendorName,
-        selectedVendorName: vendorName,
-        assignedVendors,
-        cavity: trial.cavity || item.cavity,
-        machineTonnage: actualMachineTon || item.machineTonnage,
-        resinSpec: actualResin || item.resinSpec,
-        partWeightGram: actualPartWeight || item.partWeightGram,
-        monthlyVolume: actualMonthlyVolume || item.monthlyVolume,
-        targetCycleTime: actualCT || item.targetCycleTime,
-        status: item.status === "단가합의완료" || item.status === "양산계약확정" ? item.status : status,
-      };
-      syncMassEstimateToBackend(merged);
-      return merged;
-    });
-    saveMassEstimatesToStorage(updated);
-    return updated.find((e) => e.projectNo === trial.projectNo) || null;
-  }
-
-  const id = current.length > 0 ? Math.max(...current.map((c) => c.id)) + 1 : 1;
-  const now = new Date();
-  const dateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
-  const estimateNo = `${trial.projectNo}사출견적`;
-
-  const newItem: MassProductionEstimateItem = {
-    id,
-    estimateNo,
-    projectNo: trial.projectNo,
-    officialProjectNo: trial.projectNo,
-    projectName: trial.projectName || "견적명11",
-    productName: trial.productName || "BMS Battery Case Module",
-    customerName: trial.customerName || "현대자동차 (광주공장)",
-    vendorName,
-    selectedVendorName: vendorName,
-    assignedVendors,
-    productionType,
-    resinSpec: actualResin,
-    resinPricePerKg: 2850,
-    partWeightGram: actualPartWeight,
-    runnerWeightGram: 15,
-    cavity: trial.cavity || "1*3",
-    machineTonnage: actualMachineTon,
-    targetCycleTime: actualCT,
-    targetMassApprovalDate: trial.transferPlanDate || "2026-12-20",
-    massStartDate: trial.transferActualDate || "2026-11-12",
-    sph: actualCT > 0 ? Math.round(3600 / actualCT) : 102,
-    monthlyVolume: actualMonthlyVolume,
-    materialCost: 1250,
-    processingCost: 720,
-    overheadCost: 60,
-    profitCost: 40,
-    packagingCost: 150,
-    logisticsCost: 136,
-    finalUnitPrice: isSelf ? 2356 : 0,
-    estimateFileName: "",
-    estimateFileSize: "",
-    estimateFileDate: "",
-    status,
-    requestDate: dateStr,
-    submittedDate: isSelf ? dateStr : "",
-    notes: isSelf
-      ? "[자체생산 - 견적 패스] MPSI 자체사출공장 배정으로 외주 견적 심의 절차를 패스하고 시양산(Step 11)으로 즉시 진행합니다."
-      : `[금형 이관 완료 자동 연계] 금형제작처(${trial.moldVendor || "우성정공(주)"})에서 5대 서류 승인 및 금형 이관 완료에 따라 사출양산처(${vendorName})에 사출 양산 견적 건이 자동 등재되었습니다.`,
-    comments: [
-      {
-        id: `c-init-${Date.now()}`,
-        author: "MPSI 시스템",
-        authorRole: "MPSI",
-        content: isSelf
-          ? "금형 이관 완료에 따라 MPSI 사내 사출공장 생산 배정(견적 패스/자체진행) 처리되었습니다."
-          : `금형 이관 완료에 따라 지정된 사출 양산처 [${vendorName}]에 양산 견적 요청이 자동 생성되었습니다.`,
-        createdAt: dateStr,
-      }
-    ],
-    submissionHistory: [],
-    vendorQuotes: []
-  };
-
-  const nextList = [newItem, ...current];
-  saveMassEstimatesToStorage(nextList);
-  syncMassEstimateToBackend(newItem);
-  return newItem;
+// 금형 이관 완료 시 양산 견적 자동 등재 헬퍼 (사용자 요청: 자동 등록 비활성화 - 금형 견적과 동일하게 '신규 등록'으로만 진행)
+export function autoEnrollMassQuotationFromTrial(_trial: any): MassProductionEstimateItem | null {
+  return null;
 }
 
 export function useMassQuotationStore() {
@@ -719,9 +589,26 @@ export function useMassQuotationStore() {
     }
   };
 
+  // 7. 양산 견적 삭제
+  const deleteEstimate = async (estimateNo: string) => {
+    const current = getStoredMassEstimates();
+    const nextList = current.filter((item) => item.estimateNo !== estimateNo);
+    saveMassEstimatesToStorage(nextList);
+    setEstimatesState(nextList);
+
+    try {
+      await fetch(`/api/v1/mass-prod/quotations?estimateNo=${encodeURIComponent(estimateNo)}`, {
+        method: "DELETE",
+      });
+    } catch (e) {
+      console.warn("Failed to delete quotation from backend:", e);
+    }
+  };
+
   return {
     estimates,
     addEstimate,
+    deleteEstimate,
     submitVendorQuote,
     updateStatus,
     updateVendorQuoteStatus,

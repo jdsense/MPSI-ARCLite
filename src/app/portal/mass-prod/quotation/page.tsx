@@ -33,6 +33,7 @@ export default function MassProductionQuotationPage() {
   const { 
     estimates, 
     addEstimate, 
+    deleteEstimate,
     updateStatus, 
     updateVendorQuoteStatus,
     addMpsiReplyToVendorQuote,
@@ -1146,15 +1147,30 @@ export default function MassProductionQuotationPage() {
 
                       {/* 14열 관리 */}
                       <td className="py-2 px-2.5 text-center whitespace-nowrap">
-                        <Button 
-                          onClick={() => handleOpenDetailModal(item)}
-                          variant="outline" 
-                          size="xs" 
-                          className="h-6 text-[11px] px-2 gap-1 text-blue-700 hover:bg-blue-50 cursor-pointer"
-                        >
-                          <Eye className="h-3 w-3" />
-                          상세/심의
-                        </Button>
+                        <div className="flex items-center justify-center gap-1">
+                          <Button 
+                            onClick={() => handleOpenDetailModal(item)}
+                            variant="outline" 
+                            size="xs" 
+                            className="h-6 text-[11px] px-2 gap-1 text-blue-700 hover:bg-blue-50 cursor-pointer"
+                          >
+                            <Eye className="h-3 w-3" />
+                            상세/심의
+                          </Button>
+                          <Button 
+                            onClick={() => {
+                              if (confirm(`[${item.estimateNo}] 양산 견적을 삭제하시겠습니까?`)) {
+                                deleteEstimate(item.estimateNo);
+                              }
+                            }}
+                            variant="ghost" 
+                            size="xs" 
+                            className="h-6 w-6 p-0 text-zinc-400 hover:text-rose-600 hover:bg-rose-50 cursor-pointer"
+                            title="양산 견적 삭제"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
                       </td>
                     </tr>
                   );

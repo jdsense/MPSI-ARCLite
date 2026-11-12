@@ -143,161 +143,8 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url);
     const projectId = searchParams.get("projectId");
 
-    // 1. 금형 이관 완료된 실제 프로젝트(MI26005P0 등) 자동 동기화 확인
-    try {
-      const trialRows = await query(`
-        SELECT t."ProjectID", t."TrialDegree", t."TrialStatus", t."Note"
-        FROM "MpsiMoldTrial" t
-      `);
-
-      for (const t of trialRows.rows) {
-        let trialMeta: any = {};
-        try {
-          trialMeta = JSON.parse(t.Note || "{}");
-        } catch {}
-
-        const pid = t.ProjectID || trialMeta.projectNo;
-        if (!pid) continue;
-
-        // 더미 프로젝트 배제 (과거 초기 테스트 데이터만 배제)
-        if (
-          pid === "MI25001P1" ||
-          pid === "MI25001P2" ||
-          trialMeta.projectName?.includes("현대 NT5 도어 트림") ||
-          trialMeta.projectName?.includes("NQ5 Door Armrest")
-        ) {
-          continue;
-        }
-
-        // 5대 서류 승인 및 금형 이관 여부 확인
-        const allDocsVerified = trialMeta.finalDocuments?.every((d: any) => Boolean(d.fileName) && d.isVerified);
-        const isApproved = trialMeta.isMoldApproved || allDocsVerified || trialMeta.currentTrial === "금형 승인";
-
-        // MpsiMassQuotation 테이블에 이미 있는지 확인
-        const existMass = await query(
-          `SELECT "MassQuotationID" FROM "MpsiMassQuotation" WHERE "ProjectID" = $1`,
-          [pid]
-        );
-
-        if (existMass.rows.length === 0 && isApproved) {
-          // ProjectMaster 실제 스펙 조회
-          let pMeta: any = {};
-          try {
-            const pRes = await query(`SELECT "ProjectName", "PersonInChargeID", "Note" FROM "ProjectMaster" WHERE "ProjectID" = $1`, [pid]);
-            if (pRes.rows.length > 0) {
-              const rowNote = pRes.rows[0].Note;
-              pMeta = typeof rowNote === "string" ? JSON.parse(rowNote) : rowNote || {};
-              pMeta.ProjectName = pRes.rows[0].ProjectName;
-              pMeta.CustomerName = pMeta.customerName || pRes.rows[0].PersonInChargeID;
-            }
-          } catch {}
-
-          const isSelf = trialMeta.massVendor?.includes("자체") || trialMeta.massVendor?.includes("MPSI");
-          const vendorName = isSelf ? "MPSI 자체사출공장" : (trialMeta.massVendor || pMeta.massVendor || "(주)뉴몰드");
-          const status = isSelf ? "자체진행" : "견적요청";
-          const dateStr = new Date().toISOString().slice(0, 10);
-          const estimateNo = `${pid}사출견적`;
-
-          const actualProjectName = pMeta.projectName || pMeta.ProjectName || trialMeta.projectName || "Door Armrest Base";
-          const actualProductName = pMeta.productName || pMeta.ProductName || trialMeta.productName || "Main Part";
-          const actualCustomerName = pMeta.customerName || pMeta.CustomerName || trialMeta.customerName || "현대자동차 (1차사)";
-          const actualCavity = pMeta.cavity || trialMeta.cavity || "1*2 Cavity";
-          const actualMachineTon = pMeta.machineTon 
-            ? (String(pMeta.machineTon).includes("T") ? String(pMeta.machineTon) : `${pMeta.machineTon}T`) 
-            : "700T";
-          const actualResin = pMeta.resinSpec || "PP 컴파운드 사출물";
-          const actualPartWeight = (pMeta.partWeight ? Number(pMeta.partWeight) : 0) || 100;
-          const actualMonthlyVolume = (pMeta.annualVolume ? Math.round(Number(pMeta.annualVolume) / 12) : 0) ||
-            (pMeta.orderQty ? Math.round(Number(pMeta.orderQty) / 12) : 0) || 250;
-          
-          const latestTrial = (trialMeta.trials && trialMeta.trials.length > 0) ? trialMeta.trials[trialMeta.trials.length - 1] : null;
-          const actualCycleTime = latestTrial?.targetCycleTime || latestTrial?.cycleTime || 35;
-          const actualTargetApproval = trialMeta.transferPlanDate || pMeta.targetMassDate || "2026-12-20";
-          const actualMassStart = trialMeta.transferActualDate || "2026-12-25";
-
-          const initialNote = {
-            officialProjectNo: pid,
-            projectName: actualProjectName,
-            productName: actualProductName,
-            customerName: actualCustomerName,
-            vendorName,
-            selectedVendorName: vendorName,
-            assignedVendors: [vendorName],
-            productionType: isSelf ? "IN_HOUSE" : "OUTSOURCING",
-            resinSpec: actualResin,
-            resinPricePerKg: 2850,
-            partWeightGram: actualPartWeight,
-            runnerWeightGram: 15,
-            cavity: actualCavity,
-            machineTonnage: actualMachineTon,
-            targetCycleTime: actualCycleTime,
-            targetMassApprovalDate: actualTargetApproval,
-            massStartDate: actualMassStart,
-            sph: actualCycleTime > 0 ? Math.round(3600 / actualCycleTime) : 102,
-            monthlyVolume: actualMonthlyVolume,
-            materialCost: 1250,
-            processingCost: 720,
-            overheadCost: 60,
-            profitCost: 40,
-            packagingCost: 150,
-            logisticsCost: 136,
-            finalUnitPrice: isSelf ? 2356 : 0,
-            estimateFileName: "",
-            estimateFileSize: "",
-            estimateFileDate: "",
-            status,
-            requestDate: dateStr,
-            submittedDate: isSelf ? dateStr : "",
-            notes: isSelf
-              ? "[자체생산 - 견적 패스] MPSI 자체사출공장 배정으로 외주 견적 심의 절차를 패스하고 시양산(Step 11)으로 즉시 진행합니다."
-              : `[금형 이관 완료 자동 연계] 금형제작처(${trialMeta.moldVendor || "우성정공(주)"})에서 5대 서류 승인 및 금형 이관 완료에 따라 사출양산처(${vendorName})에 사출 양산 견적 건이 자동 등재되었습니다.`,
-            comments: [
-              {
-                id: `c-init-${Date.now()}`,
-                author: "MPSI 시스템",
-                authorRole: "MPSI",
-                content: isSelf
-                  ? "금형 이관 완료에 따라 MPSI 사내 사출공장 생산 배정(견적 패스/자체진행) 처리되었습니다."
-                  : `금형 이관 완료에 따라 지정된 사출 양산처 [${vendorName}]에 양산 견적 요청이 자동 생성되었습니다.`,
-                createdAt: dateStr,
-              }
-            ],
-            submissionHistory: [],
-            vendorQuotes: []
-          };
-
-          await query(`
-            INSERT INTO "MpsiMassQuotation" (
-              "MassQuotationID", "ProjectID", "EstimateNumber", "MassVendorID", "ProductionType",
-              "UnitPrice", "MaterialCost", "ProcessingCost", "PackagingCost", "LogisticsCost",
-              "TargetCycleTime", "QuotationStatus", "RequestDate", "SubmissionDate", "CreatorID",
-              "CreationDateTime", "Note"
-            ) VALUES (
-              $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, NOW(), $16
-            )
-          `, [
-            estimateNo,
-            pid,
-            estimateNo,
-            vendorName,
-            isSelf ? "IN_HOUSE" : "OUTSOURCING",
-            isSelf ? 2356 : 0,
-            1250,
-            720,
-            150,
-            136,
-            35,
-            status,
-            dateStr,
-            isSelf ? dateStr : null,
-            "MPSI_HQ",
-            JSON.stringify(initialNote)
-          ]);
-        }
-      }
-    } catch (e) {
-      console.warn("[MassQuotation AutoSync Warning]", e);
-    }
+    // 사용자 요청: 금형 이관 완료 시 자동 양산견적 등록 비활성화
+    // (양산 견적은 금형 견적과 동일하게 '신규 양산 견적 등록'을 통해서만 명시적으로 등록됨)
 
     // 2. 조회 실행 및 ProjectMaster / MoldTrial 실시간 연동 매핑
     const projectRows = await query(`SELECT "ProjectID", "ProjectName", "PersonInChargeID", "Note" FROM "ProjectMaster"`);
@@ -468,4 +315,35 @@ export async function POST(req: NextRequest) {
 export async function PUT(req: NextRequest) {
   return POST(req);
 }
+
+export async function DELETE(req: NextRequest) {
+  try {
+    await ensureTableInitialized();
+    const { searchParams } = new URL(req.url);
+    const estimateNo = searchParams.get("estimateNo");
+    const projectId = searchParams.get("projectId");
+    const id = searchParams.get("id");
+
+    if (!estimateNo && !projectId && !id) {
+      return NextResponse.json({ success: false, error: "Identifier required" }, { status: 400 });
+    }
+
+    if (id) {
+      await query(`DELETE FROM "MpsiMassQuotation" WHERE "MassQuotationSequenceNo" = $1`, [id]);
+    } else if (estimateNo) {
+      await query(`DELETE FROM "MpsiMassQuotation" WHERE "MassQuotationID" = $1`, [estimateNo]);
+    } else if (projectId) {
+      await query(`DELETE FROM "MpsiMassQuotation" WHERE "ProjectID" = $1`, [projectId]);
+    }
+
+    return NextResponse.json({ success: true, message: "Deleted successfully" });
+  } catch (error: any) {
+    console.error("[API mass-prod/quotations DELETE Error]", error);
+    return NextResponse.json(
+      { success: false, error: error.message || "Failed to delete" },
+      { status: 500 }
+    );
+  }
+}
+
 

@@ -22,8 +22,6 @@ import {
   cleanVendorName
 } from "@/lib/project-store";
 
-import { autoEnrollMassQuotationFromTrial } from "@/lib/mass-quotation-store";
-
 import { 
   useMoldTrialStore, 
   MoldTrialProject, 
@@ -403,13 +401,6 @@ export default function MoldTrialPage() {
           : `[금형 승인] 5대 필수서류 검증 완료 및 금형 양산처 이관 승인(Step 10 완료)`,
       });
 
-      // 양산 견적 관리대장(/portal/mass-prod/quotation) 자동 등재
-      autoEnrollMassQuotationFromTrial({
-        ...currentProject,
-        transferPlanDate: transferPlanDate || currentProject.transferPlanDate,
-        transferActualDate: transferActualDate || currentProject.transferActualDate,
-      });
-
       // 외주 금형처로 5대 서류 완결 알림
       await sendAppNotification({
         menuName: "금형 육성 및 시사출",
@@ -421,20 +412,7 @@ export default function MoldTrialPage() {
         targetVendorName: currentProject.moldVendor
       });
 
-      // 사출 양산 외주처가 지정되어 있으면 견적 등록 알림
-      if (currentProject.massVendor && currentProject.massVendor !== "자체생산") {
-        await sendAppNotification({
-          menuName: "사출 양산 견적",
-          menuPath: "/portal/vendor-portal/mass/quotation",
-          senderCompany: "MPSI",
-          content: `[${currentProject.projectNo}] 금형 이관 승인 완료에 따라 사출 양산 견적 요청이 배정되었습니다.`,
-          projectId: currentProject.projectNo,
-          targetRole: "VENDOR_MASS",
-          targetVendorName: currentProject.massVendor
-        });
-      }
-
-      alert(`[금형 승인 완료] 5대 필수 서류가 모두 승인되었습니다.\n- 0~13단계 총괄 관제: ${hasActualTransfer ? "Step 11(시양산) 진행중" : "Step 10(금형 승인 후 이관) 완료"}\n- 양산 견적 관리대장(/portal/mass-prod/quotation)에 자동 등재되었습니다.`);
+      alert(`[금형 승인 완료] 5대 필수 서류가 모두 승인되었습니다.\n- 0~13단계 총괄 관제: ${hasActualTransfer ? "Step 11(시양산) 진행중" : "Step 10(금형 승인 후 이관) 완료"}`);
     }
   };
 
@@ -488,13 +466,7 @@ export default function MoldTrialPage() {
         notes: `[우성정공(주) -> ${currentProject.massVendor}] 금형 이관 완료(${transferActualDate}), Step 11(시양산/양산성검증) 착수`,
       });
 
-      autoEnrollMassQuotationFromTrial({
-        ...currentProject,
-        transferPlanDate,
-        transferActualDate,
-      });
-
-      alert(`금형 이관 실적일(${transferActualDate})이 저장되었습니다.\n- 0~13단계 총괄 관제: Step 11(양산승인 사출/시양산)으로 전환 완료\n- 양산 견적 관리대장(/portal/mass-prod/quotation)에 자동 연계되었습니다.`);
+      alert(`금형 이관 실적일(${transferActualDate})이 저장되었습니다.\n- 0~13단계 총괄 관제: Step 11(양산승인 사출/시양산)으로 전환 완료`);
     } else {
       alert("금형 이관 계획일 및 실적일이 저장되었습니다.");
     }
