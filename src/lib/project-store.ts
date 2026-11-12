@@ -1179,10 +1179,10 @@ export function useProjectMaster() {
     saveProjectsToStorage(updated);
     setProjects(updated);
 
-    // PM/설변 관리 스토리지(mpsi_pm_revision_store_v1)에도 동기화 반영
+    // PM/설변 관리 스토리지(mpsi_pm_revision_store_v5)에도 동기화 반영
     if (typeof window !== "undefined") {
       try {
-        const PM_STORAGE_KEY = "mpsi_pm_revision_store_v1";
+        const PM_STORAGE_KEY = "mpsi_pm_revision_store_v5";
         const SYNC_EVENT_NAME = "mpsi_pm_revision_updated";
         const rawPm = localStorage.getItem(PM_STORAGE_KEY);
         if (rawPm) {

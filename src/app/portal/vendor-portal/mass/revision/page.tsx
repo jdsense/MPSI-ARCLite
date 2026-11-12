@@ -38,11 +38,17 @@ export default function VendorMassPmRevisionPage() {
   const { vendorName } = useAuthRole();
   const currentVendor = vendorName || "(주)뉴몰드";
 
-  // 프로젝트 마스터(masterProjects)의 설변(E00..) 프로젝트 자동 동기화
+  // 프로젝트 마스터(masterProjects)의 설변(E00..) 프로젝트 자동 동기화 (무한 루프 방지 서명 캐싱)
+  const lastSyncSignatureRef = React.useRef<string>("");
   React.useEffect(() => {
-    if (masterProjects && masterProjects.length > 0 && syncFromMasterProjects) {
-      syncFromMasterProjects(masterProjects);
-    }
+    if (!masterProjects || masterProjects.length === 0 || !syncFromMasterProjects) return;
+    const signature = masterProjects
+      .filter((p: any) => String(p.changeType || "").startsWith("E") || String(p.revisionCode || "").startsWith("E"))
+      .map((p: any) => `${p.projectNo}:${p.changeType || p.revisionCode}:${p.productName}:${p.updatedAt || ""}`)
+      .join("|");
+    if (!signature || lastSyncSignatureRef.current === signature) return;
+    lastSyncSignatureRef.current = signature;
+    syncFromMasterProjects(masterProjects);
   }, [masterProjects, syncFromMasterProjects]);
 
   // 검색 및 필터 상태
