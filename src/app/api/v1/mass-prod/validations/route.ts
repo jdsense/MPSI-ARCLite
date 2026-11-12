@@ -5,6 +5,7 @@ import {
   MassValidationRecord,
   ValidationCheckItem,
 } from "@/lib/mass-validation-store";
+import { syncDownstreamToProjectMaster } from "@/lib/project-master-sync";
 
 // 6대 양산성 검증 기본 체크리스트 템플릿
 const DEFAULT_CHECKLIST: ValidationCheckItem[] = [
@@ -393,6 +394,15 @@ export async function POST(req: NextRequest) {
       );
       savedItem = { ...body, id: Number(insRes.rows[0].ValidationSequenceNo) };
     }
+
+    const anyBody = body as any;
+    await syncDownstreamToProjectMaster(body.projectNo, {
+      targetMassDate: body.targetMassApprovalDate,
+      moldDeliveryDate: body.moldTransferDate,
+      massVendor: vendorName,
+      cavity: anyBody.cavity,
+      currentStep: body.currentStep || 11,
+    });
 
     return NextResponse.json({ success: true, data: savedItem });
   } catch (error: any) {

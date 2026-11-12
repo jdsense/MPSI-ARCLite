@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { query } from '@/lib/db';
 import { DrawingDesignItem, ProductReviewStatus, MoldDesignReviewStatus } from '@/lib/mold-design-store';
+import { syncDownstreamToProjectMaster } from '@/lib/project-master-sync';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -368,6 +369,18 @@ export async function POST(request: NextRequest) {
       JSON.stringify(notePayload),
     ]);
 
+    const anyBody = body as any;
+    await syncDownstreamToProjectMaster(body.projectNo, {
+      targetT1Date: body.targetT1Date || anyBody.expectedDelivery,
+      moldDeliveryDate: anyBody.expectedDelivery,
+      kickoffDate: anyBody.kickoffDate || anyBody.orderDate,
+      cavity: anyBody.cavity,
+      material: anyBody.material,
+      moldVendor: body.moldVendor || anyBody.vendorName,
+      partNo: anyBody.partNo,
+      currentStep: body.currentStep,
+    });
+
     return NextResponse.json({ success: true, data: mapRowToDesignItem(res.rows[0]) });
   } catch (error: any) {
     console.error('POST /api/v1/mold-dev/designs error:', error);
@@ -461,6 +474,14 @@ export async function PUT(request: NextRequest) {
          WHERE "ProjectID" = $1`,
         [designId, stageNum]
       );
+      await syncDownstreamToProjectMaster(designId, {
+        targetT1Date: updatedNote.targetT1Date || undefined,
+        moldDeliveryDate: updatedNote.moldDeliveryDate || undefined,
+        targetMoldDays: updatedNote.moldPoDays || updatedNote.targetMfgDays || undefined,
+        moldVendor: updatedNote.moldVendor || undefined,
+        kickoffDate: updatedNote.moldPoApprovedDate ? String(updatedNote.moldPoApprovedDate).split(' ')[0] : undefined,
+        currentStep: stageNum,
+      });
     } catch (syncErr) {
       console.warn("ProjectMaster sync warning in designs PUT:", syncErr);
     }

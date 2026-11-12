@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { query } from '@/lib/db';
 import { MoldDevEstimateItem, MoldQuotationStatus } from '@/lib/mold-quotation-store';
+import { syncDownstreamToProjectMaster } from '@/lib/project-master-sync';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -210,6 +211,21 @@ async function saveQuotationItem(item: any): Promise<MoldDevEstimateItem> {
   ];
 
   const res = await query(insertSql, params);
+  const targetPjtNo = item.officialProjectNo || item.projectNo || '';
+  if (targetPjtNo) {
+    await syncDownstreamToProjectMaster(targetPjtNo, {
+      targetT1Date: notePayload.targetT1Date || undefined,
+      moldDeliveryDate: notePayload.moldDeliveryDate || undefined,
+      targetMoldDays: notePayload.targetMfgDays || undefined,
+      cavity: notePayload.cavity || undefined,
+      moldMaterial: notePayload.moldMaterial || notePayload.moldSteel || undefined,
+      resinSpec: notePayload.resin || undefined,
+      machineTon: notePayload.machineTypeTonnage || undefined,
+      moldNo: notePayload.moldNo || undefined,
+      moldDegree: notePayload.moldDegree || undefined,
+      moldVendor: (vendorId && vendorId !== 'WOOSUNG' && !vendorId.includes('전체')) ? vendorId : undefined,
+    });
+  }
   return mapRowToItem(res.rows[0]);
 }
 
@@ -394,6 +410,22 @@ export async function PUT(request: NextRequest) {
       body.modifierId || 'MPSI_USER',
       JSON.stringify(updatedNote),
     ]);
+
+    // 금형 견적 수정 시 ProjectMaster에 목표 T1, 금형 출고 납기, 캐비티 등 즉시 동기화
+    const targetPjtId = row.ProjectID || updatedNote.officialProjectNo || updatedNote.projectNo;
+    if (targetPjtId) {
+      await syncDownstreamToProjectMaster(targetPjtId, {
+        targetT1Date: updatedNote.targetT1Date || undefined,
+        moldDeliveryDate: updatedNote.moldDeliveryDate || undefined,
+        targetMoldDays: targetDays || updatedNote.targetMfgDays || undefined,
+        cavity: updatedNote.cavity || undefined,
+        moldMaterial: updatedNote.moldMaterial || updatedNote.moldSteel || undefined,
+        resinSpec: updatedNote.resin || undefined,
+        machineTon: updatedNote.machineTypeTonnage || undefined,
+        moldVendor: (vendorId && vendorId !== 'WOOSUNG' && !vendorId.includes('전체')) ? vendorId : undefined,
+        currentStep: status === '수주확정' ? 1 : undefined,
+      });
+    }
 
     // 수주 확정 시 ProjectMaster 및 MpsiMoldDesign 동기화
     if (status === '수주확정' && row.ProjectID) {

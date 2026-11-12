@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { query } from "@/lib/db";
 import { MassProductionEstimateItem, MassQuotationStatus } from "@/lib/mass-quotation-store";
+import { syncDownstreamToProjectMaster } from "@/lib/project-master-sync";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -442,6 +443,17 @@ export async function POST(req: NextRequest) {
       ]);
       savedItem = { ...body, id: Number(insRes.rows[0].MassQuotationSequenceNo) };
     }
+
+    const anyBody = body as any;
+    await syncDownstreamToProjectMaster(body.projectNo, {
+      targetMassDate: body.targetMassApprovalDate || anyBody.expectedDelivery,
+      massStartDate: body.massStartDate,
+      massVendor: vendorName || body.selectedVendorName || body.vendorName,
+      cavity: body.cavity,
+      resinSpec: body.resinSpec,
+      machineTon: body.machineTonnage || anyBody.machineTon,
+      partNo: anyBody.partNo,
+    });
 
     return NextResponse.json({ success: true, data: savedItem });
   } catch (error: any) {

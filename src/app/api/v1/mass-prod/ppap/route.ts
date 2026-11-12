@@ -5,6 +5,7 @@ import {
   PPAPPackageSubmissionHistoryItem,
   DEFAULT_PPAP_DOCUMENTS,
 } from "@/lib/mass-ppap-store";
+import { syncDownstreamToProjectMaster } from "@/lib/project-master-sync";
 
 async function ensureTableInitialized() {
   await query(`
@@ -312,6 +313,13 @@ export async function POST(req: NextRequest) {
     ]);
 
     const saved = mapRowToPpapItem(res.rows[0]);
+
+    await syncDownstreamToProjectMaster(pid, {
+      targetMassDate: targetApprovalDate || body.vendorSubmittedDate,
+      massStartDate: body.partPoDate,
+      massVendor: massVendor,
+      currentStep,
+    });
 
     return NextResponse.json({
       success: true,

@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { dispatchGlobalNotification, cleanCompanyAuthor } from "./notification-store";
+import { updateProjectProcess } from "./project-store";
 
 // 외주 금형 견적 진행 상태
 export type MoldQuotationStatus = 
@@ -182,6 +183,28 @@ export async function fetchEstimatesFromDb(): Promise<MoldDevEstimateItem[]> {
 async function syncItemToBackend(item: Partial<MoldDevEstimateItem> & { estimateNo: string }, method: "POST" | "PUT" = "PUT") {
   if (typeof window === "undefined") return null;
   try {
+    // 클라이언트 프로젝트 관리대장(localStorage)에도 즉시 동기화
+    const targetPjtNo = item.officialProjectNo || item.projectNo;
+    if (targetPjtNo) {
+      const anyItem = item as any;
+      const pjtUpdates: Record<string, any> = {};
+      if (item.targetT1Date) pjtUpdates.targetT1Date = item.targetT1Date;
+      if (item.moldDeliveryDate || anyItem.expectedDelivery) pjtUpdates.moldDeliveryDate = item.moldDeliveryDate || anyItem.expectedDelivery;
+      if (item.cavity) pjtUpdates.cavity = item.cavity;
+      if (item.moldSteel || anyItem.material) pjtUpdates.material = item.moldSteel || anyItem.material;
+      if (item.moldMaterial) pjtUpdates.moldMaterial = item.moldMaterial;
+      if (item.resin || anyItem.resinSpec) pjtUpdates.resinSpec = item.resin || anyItem.resinSpec;
+      if (item.machineTypeTonnage || anyItem.machineTon) pjtUpdates.machineTon = item.machineTypeTonnage || anyItem.machineTon;
+      if (anyItem.partNo) pjtUpdates.partNo = anyItem.partNo;
+      if (item.selectedVendorName || item.vendorName) pjtUpdates.moldVendor = item.selectedVendorName || item.vendorName;
+      if ((item.availableMfgDays && Number(item.availableMfgDays) > 0) || (item.targetMfgDays && Number(item.targetMfgDays) > 0)) {
+        pjtUpdates.targetMoldDays = Number(item.availableMfgDays || item.targetMfgDays);
+      }
+      if (Object.keys(pjtUpdates).length > 0) {
+        updateProjectProcess(targetPjtNo, pjtUpdates);
+      }
+    }
+
     const res = await fetch("/api/v1/mold-dev/quotations", {
       method,
       headers: { "Content-Type": "application/json" },

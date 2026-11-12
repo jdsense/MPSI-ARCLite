@@ -3,6 +3,7 @@
 
 import { useState, useEffect } from "react";
 import { autoEnrollMassValidationFromQuotation } from "./mass-validation-store";
+import { updateProjectProcess } from "./project-store";
 
 // 양산 견적 진행 상태
 export type MassQuotationStatus = 
@@ -181,6 +182,19 @@ export function saveMassEstimatesToStorage(items: MassProductionEstimateItem[]):
 // 백엔드 DB 연동 헬퍼
 export async function syncMassEstimateToBackend(item: MassProductionEstimateItem): Promise<boolean> {
   try {
+    const targetPjtNo = item.officialProjectNo || item.projectNo;
+    if (targetPjtNo) {
+      const pjtUpdates: Record<string, any> = {};
+      if (item.targetMassApprovalDate) pjtUpdates.targetMassDate = item.targetMassApprovalDate;
+      if (item.massStartDate) pjtUpdates.massStartDate = item.massStartDate;
+      if (item.cavity) pjtUpdates.cavity = item.cavity;
+      if (item.resinSpec) pjtUpdates.resinSpec = item.resinSpec;
+      if (item.machineTonnage) pjtUpdates.machineTon = item.machineTonnage;
+      if (item.selectedVendorName || item.vendorName) pjtUpdates.massVendor = item.selectedVendorName || item.vendorName;
+      if (Object.keys(pjtUpdates).length > 0) {
+        updateProjectProcess(targetPjtNo, pjtUpdates);
+      }
+    }
     const res = await fetch("/api/v1/mass-prod/quotations", {
       method: "POST",
       headers: { "Content-Type": "application/json" },

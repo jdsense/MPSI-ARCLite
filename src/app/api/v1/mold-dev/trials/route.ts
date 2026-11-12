@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { query } from "@/lib/db";
+import { syncDownstreamToProjectMaster } from "@/lib/project-master-sync";
 
 // 5대 필수 서류 기본 템플릿 (서버용)
 export function createServerDefaultFinalDocs() {
@@ -363,6 +364,17 @@ export async function PUT(req: Request) {
       JSON.stringify(merged),
       seqNo
     ]);
+
+    await syncDownstreamToProjectMaster(projectNo, {
+      targetT1Date: merged.targetT1Date,
+      actualT1Date: merged.actualT1Date,
+      moldDeliveryDate: merged.transferActualDate || merged.transferPlanDate,
+      trialDegree: merged.currentTrial,
+      cavity: merged.cavity,
+      moldVendor: merged.moldVendor,
+      massVendor: merged.massVendor,
+      currentStep: merged.currentStep || (merged.isMoldApproved ? 10 : undefined),
+    });
 
     // 금형 승인 또는 이관 완료 시 시양산(MpsiMassValidation)의 moldTransferConfirmed 동기화
     if (merged.isMoldApproved || merged.transferActualDate || merged.currentStep >= 10) {

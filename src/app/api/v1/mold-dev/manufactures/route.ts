@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { query } from "@/lib/db";
 import { createInitialTrialRecord } from "../trials/route";
+import { syncDownstreamToProjectMaster } from "@/lib/project-master-sync";
 
 // 7대 핵심 공정 기본 템플릿
 const DEFAULT_PROCESSES = [
@@ -498,6 +499,8 @@ export async function PUT(req: Request) {
         "PolishingProgress" = $8,
         "AssemblyProgress" = $9,
         "Note" = $10,
+        "TargetT1Date" = COALESCE($12::date, "TargetT1Date"),
+        "MoldDeliveryDate" = COALESCE($13::date, "MoldDeliveryDate"),
         "ModifierID" = 'SYSTEM_USER',
         "ModificationDateTime" = NOW()
       WHERE "ManufactureSequenceNo" = $11
@@ -512,21 +515,19 @@ export async function PUT(req: Request) {
       wrProgress,
       assyProg,
       JSON.stringify(meta),
-      currentSeq
+      currentSeq,
+      meta.targetT1Date || null,
+      meta.moldDeliveryDate || null,
     ]);
 
-    // 4. ProjectMaster와도 동기화 (CurrentProcessStage 및 진척)
-    try {
-      await query(`
-        UPDATE "ProjectMaster"
-        SET 
-          "CurrentProcessStage" = 'Step 6: 금형 가공착수',
-          "ModificationDateTime" = NOW()
-        WHERE "ProjectID" = $1
-      `, [projectNo]);
-    } catch (e) {
-      console.warn("[Manufacture PUT ProjectMaster sync warning]", e);
-    }
+    // 4. ProjectMaster와도 동기화 (CurrentProcessStage 및 진척 + 목표T1/출고납기 등)
+    await syncDownstreamToProjectMaster(projectNo, {
+      targetT1Date: meta.targetT1Date,
+      moldDeliveryDate: meta.moldDeliveryDate,
+      cavity: meta.cavity,
+      moldVendor: meta.vendor,
+      currentStep: nextStatus === "금형 육성 중" ? 7 : 6,
+    });
 
     // 5. '금형 육성 중' 상태로 전환 시 시사출 대장(MpsiMoldTrial, Step 7)에 신규 연계 등재
     if (nextStatus === "금형 육성 중") {

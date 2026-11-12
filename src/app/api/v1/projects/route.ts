@@ -139,13 +139,27 @@ export async function GET(request: NextRequest) {
       [enterpriseId]
     );
 
-    // 1. MpsiMoldDesign, MpsiMoldQuotation, MpsiMoldManufacture, MpsiMoldTrial, MpsiMassValidation, MpsiMassPpap 실시간 동기화 데이터 조회
+    // 1. 전 공정 테이블(원청사견적, 금형견적, 금형설계, 금형제작, 시사출, 양산견적, 시양산, PPAP) 실시간 동기화 데이터 조회
+    let primeQuotesByProject: Record<string, any> = {};
     let designsByProject: Record<string, any> = {};
     let quotesByProject: Record<string, any> = {};
     let mfgByProject: Record<string, any> = {};
     let trialsByProject: Record<string, any> = {};
+    let massQuotesByProject: Record<string, any> = {};
     let validationsByProject: Record<string, any> = {};
     let ppapsByProject: Record<string, any> = {};
+
+    try {
+      const pqRes = await query(`SELECT * FROM "MpsiPrimeQuotation"`);
+      for (const pq of pqRes.rows) {
+        let pqNote: any = {};
+        try { pqNote = typeof pq.Note === 'string' ? JSON.parse(pq.Note) : (pq.Note || {}); } catch {}
+        const keys = [pq.QuotationID, pq.OfficialProjectNo, pqNote.officialProjectNo, pqNote.projectNo].filter(Boolean);
+        for (const k of keys) {
+          primeQuotesByProject[k] = { ...pq, note: pqNote };
+        }
+      }
+    } catch {}
 
     try {
       const designRes = await query(`SELECT * FROM "MpsiMoldDesign"`);
@@ -169,9 +183,15 @@ export async function GET(request: NextRequest) {
       for (const q of quoteRes.rows) {
         let qNote: any = {};
         try { qNote = typeof q.Note === 'string' ? JSON.parse(q.Note) : (q.Note || {}); } catch {}
-        const pId = q.ProjectID || q.QuotationID;
+        const pId = q.ProjectID || qNote.officialProjectNo || qNote.projectNo || q.QuotationID;
         if (pId) {
           quotesByProject[pId] = {
+            ...q,
+            note: qNote,
+          };
+        }
+        if (q.QuotationID) {
+          quotesByProject[q.QuotationID] = {
             ...q,
             note: qNote,
           };
@@ -196,6 +216,16 @@ export async function GET(request: NextRequest) {
         let tNote: any = {};
         try { tNote = typeof t.Note === 'string' ? JSON.parse(t.Note) : (t.Note || {}); } catch {}
         if (t.ProjectID) trialsByProject[t.ProjectID] = { ...t, note: tNote };
+      }
+    } catch {}
+
+    try {
+      const mqRes = await query(`SELECT * FROM "MpsiMassQuotation"`);
+      for (const mq of mqRes.rows) {
+        let mqNote: any = {};
+        try { mqNote = typeof mq.Note === 'string' ? JSON.parse(mq.Note) : (mq.Note || {}); } catch {}
+        const pId = mq.ProjectID || mqNote.officialProjectNo || mqNote.projectNo;
+        if (pId) massQuotesByProject[pId] = { ...mq, note: mqNote };
       }
     } catch {}
 
@@ -307,97 +337,207 @@ export async function GET(request: NextRequest) {
 
       const mergedMemos: Record<number, string> = { ...(p.stepMemos || {}), ...dbMemos };
 
-      // 3. 실시간 공정 테이블(견적, 설계, 제작, 시사출, 시양산, PPAP) DB 데이터와 완전 동기화
-      const matchedDesign = designsByProject[pId];
-      const matchedQuote = quotesByProject[pId] || (!isRevision ? quotesByProject[p.estimateNo] : undefined);
-      const matchedMfg = mfgByProject[pId];
-      const matchedTrial = trialsByProject[pId];
-      const matchedVal = validationsByProject[pId];
-      const matchedPpap = ppapsByProject[pId];
+      // 3. 실시간 공정 테이블(원청사견적, 금형견적, 설계, 제작, 시사출, 양산견적, 시양산, PPAP) DB 데이터와 완전 동기화
+      // 설변 차수(E001, E002 등) 행이라도 하위 공정 대장이 기본 projectNo로 등재되어 있으면 일정/사양 데이터를 자동 바인딩
+      const matchedPrimeQuote = primeQuotesByProject[pId] || primeQuotesByProject[p.projectNo] || primeQuotesByProject[p.estimateNo];
+      const matchedDesign = designsByProject[pId] || designsByProject[p.projectNo];
+      const matchedQuote = quotesByProject[pId] || quotesByProject[p.projectNo] || quotesByProject[p.estimateNo];
+      const matchedMfg = mfgByProject[pId] || mfgByProject[p.projectNo];
+      const matchedTrial = trialsByProject[pId] || trialsByProject[p.projectNo];
+      const matchedMassQuote = massQuotesByProject[pId] || massQuotesByProject[p.projectNo];
+      const matchedVal = validationsByProject[pId] || validationsByProject[p.projectNo];
+      const matchedPpap = ppapsByProject[pId] || ppapsByProject[p.projectNo];
 
       let finalStep = p.currentStep;
       let isConfirmed = p.isContractConfirmed;
       let qStatus = p.quotationStatus;
       let moldVendor = p.moldVendor;
+      let massVendor = p.massVendor;
       let targetT1 = p.targetT1Date;
       let actualT1 = p.actualT1Date;
+      let moldDelivery = p.moldDeliveryDate;
+      let targetMass = p.targetMassDate;
+      let massStart = p.massStartDate;
+      let kickoff = p.kickoffDate;
       let targetDays = p.targetMoldDays;
+      let cavity = p.cavity;
+      let material = p.material;
+      let moldMaterial = p.moldMaterial;
+      let resinSpec = p.resinSpec;
+      let machineTon = p.machineTon;
+      let partNo = p.partNo;
       let stepStatus = p.stepStatus;
 
-      if (matchedDesign) {
-        const dNote = matchedDesign.note;
-        isConfirmed = true;
-        qStatus = '수주확정';
-        if (dNote.moldVendor) moldVendor = dNote.moldVendor;
-        if (dNote.targetT1Date) targetT1 = dNote.targetT1Date;
-        if (dNote.targetMfgDays) targetDays = dNote.targetMfgDays;
-        
-        let dStep = Number(dNote.currentStep || 1);
-        if (matchedDesign.DesignApprovalStatus === '검토완료' || dNote.moldDesignStatus === '검토완료') {
-          dStep = Math.max(dStep, 6);
-        } else if (dNote.moldPoApproved || dNote.moldDesignStatus === '검토요청') {
-          dStep = Math.max(dStep, 5);
-        } else if (matchedDesign.DesignReviewStatus === '검토완료' || dNote.drStatus === '검토완료' || dNote.drStatus === '최종검토완료') {
-          dStep = Math.max(dStep, 4);
-        } else if (matchedDesign.DesignReviewStatus === '수정요청' || dNote.drStatus === '수정요청') {
-          dStep = Math.max(dStep, 3);
-          stepStatus = 'Fail(수정중)';
-        } else if (matchedDesign.DesignReviewStatus === '검토요청' || dNote.drStatus === '검토요청') {
-          dStep = Math.max(dStep, 2);
+      // 3-0. 원청사 견적(MpsiPrimeQuotation) 사양 바인딩
+      if (matchedPrimeQuote) {
+        const pqNote = matchedPrimeQuote.note || {};
+        const rfq = pqNote.rfqSpec || {};
+        if (!cavity && rfq.cavity) cavity = rfq.cavity;
+        if (!resinSpec && rfq.resin) resinSpec = rfq.resin;
+        if (!material && rfq.resin) material = rfq.resin;
+        if (!moldMaterial && rfq.moldSteel) moldMaterial = rfq.moldSteel;
+        if (!machineTon && rfq.tonnage) machineTon = rfq.tonnage;
+        if (!partNo && Array.isArray(pqNote.partPriceItems) && pqNote.partPriceItems[0]?.partNo) {
+          partNo = pqNote.partPriceItems[0].partNo;
         }
-        finalStep = Math.max(finalStep, dStep);
       }
 
+      // 3-1. 금형 견적(MpsiMoldQuotation) 일정 및 사양 바인딩 (목표 T1, 금형 출고 납기, 캐비티 등)
       if (matchedQuote) {
         const q = matchedQuote;
+        const qNote = q.note || {};
         if (q.QuotationStatus === '수주확정') {
           isConfirmed = true;
           qStatus = '수주확정';
-          finalStep = Math.max(finalStep, 1);
-        } else if (q.QuotationStatus) {
+          if (!isRevision) finalStep = Math.max(finalStep, 1);
+        } else if (q.QuotationStatus && !isConfirmed) {
           qStatus = q.QuotationStatus;
         }
-        if (q.MoldVendorID) moldVendor = q.MoldVendorID;
-        if (q.TargetMoldDays && !targetDays) targetDays = q.TargetMoldDays;
+        const qVendor = qNote.selectedVendorName || qNote.vendorName || q.MoldVendorID;
+        if (qVendor && qVendor !== 'WOOSUNG' && !qVendor.includes('전체')) {
+          moldVendor = moldVendor || qVendor;
+        }
+        if (qNote.targetT1Date && !targetT1) targetT1 = qNote.targetT1Date;
+        if (qNote.moldDeliveryDate && !moldDelivery) moldDelivery = qNote.moldDeliveryDate;
+        if ((q.TargetMoldDays || qNote.targetMfgDays) && !targetDays) {
+          targetDays = q.TargetMoldDays || qNote.targetMfgDays;
+        }
+        if (qNote.cavity && !cavity) cavity = qNote.cavity;
+        if ((qNote.moldMaterial || qNote.moldSteel) && !moldMaterial) {
+          moldMaterial = qNote.moldMaterial || qNote.moldSteel;
+        }
+        if (qNote.resin && !resinSpec) resinSpec = qNote.resin;
+        if (qNote.machineTypeTonnage && !machineTon) machineTon = qNote.machineTypeTonnage;
       }
 
-      if (matchedMfg) {
-        const mProg = Number(matchedMfg.OverallProgressRate ?? matchedMfg.note?.overallProgress ?? 0);
-        if (mProg > 0 || matchedMfg.ManufactureStatus === '제작 완료') {
-          finalStep = Math.max(finalStep, mProg >= 100 || matchedMfg.ManufactureStatus === '제작 완료' ? 7 : 6);
+      // 3-2. 제품검토 및 금형설계(MpsiMoldDesign) 일정 및 진행 스텝 바인딩
+      if (matchedDesign) {
+        const dNote = matchedDesign.note || {};
+        isConfirmed = true;
+        qStatus = '수주확정';
+        if (dNote.moldVendor && !moldVendor) moldVendor = dNote.moldVendor;
+        if (dNote.targetT1Date) targetT1 = dNote.targetT1Date;
+        if (dNote.moldDeliveryDate) moldDelivery = dNote.moldDeliveryDate;
+        if (dNote.targetMfgDays) targetDays = dNote.targetMfgDays;
+        if (dNote.cavity && !cavity) cavity = dNote.cavity;
+        if (dNote.moldPoApprovedDate && !kickoff) {
+          kickoff = String(dNote.moldPoApprovedDate).split(' ')[0];
+        }
+        
+        if (!isRevision || designsByProject[pId]) {
+          let dStep = Number(dNote.currentStep || 1);
+          if (matchedDesign.DesignApprovalStatus === '검토완료' || dNote.moldDesignStatus === '검토완료') {
+            dStep = Math.max(dStep, 6);
+          } else if (dNote.moldPoApproved || dNote.moldDesignStatus === '검토요청') {
+            dStep = Math.max(dStep, 5);
+          } else if (matchedDesign.DesignReviewStatus === '검토완료' || dNote.drStatus === '검토완료' || dNote.drStatus === '최종검토완료') {
+            dStep = Math.max(dStep, 4);
+          } else if (matchedDesign.DesignReviewStatus === '수정요청' || dNote.drStatus === '수정요청') {
+            dStep = Math.max(dStep, 3);
+            stepStatus = 'Fail(수정중)';
+          } else if (matchedDesign.DesignReviewStatus === '검토요청' || dNote.drStatus === '검토요청') {
+            dStep = Math.max(dStep, 2);
+          }
+          finalStep = Math.max(finalStep, dStep);
         }
       }
 
+      // 3-3. 금형제작(MpsiMoldManufacture) 일정 및 진행 스텝 바인딩 (목표 T1, 금형 출고 납기, 캐비티)
+      if (matchedMfg) {
+        const mNote = matchedMfg.note || {};
+        const mTargetT1 = matchedMfg.TargetT1Date ? formatDateOnly(matchedMfg.TargetT1Date) : mNote.targetT1Date;
+        const mDelivery = matchedMfg.MoldDeliveryDate ? formatDateOnly(matchedMfg.MoldDeliveryDate) : mNote.moldDeliveryDate;
+        if (mTargetT1) targetT1 = mTargetT1;
+        if (mDelivery) moldDelivery = mDelivery;
+        if (mNote.cavity && !cavity) cavity = mNote.cavity;
+        if (mNote.material && !material) material = mNote.material;
+
+        if (!isRevision || mfgByProject[pId]) {
+          const mProg = Number(matchedMfg.OverallProgressRate ?? mNote.overallProgress ?? 0);
+          if (mProg > 0 || matchedMfg.ManufactureStatus === '제작 완료' || matchedMfg.ManufactureStatus === '금형 육성 중') {
+            finalStep = Math.max(finalStep, mProg >= 100 || matchedMfg.ManufactureStatus === '제작 완료' || matchedMfg.ManufactureStatus === '금형 육성 중' ? 7 : 6);
+          }
+        }
+      }
+
+      // 3-4. 시사출/금형육성(MpsiMoldTrial) 일정 및 진행 스텝 바인딩
       if (matchedTrial) {
         const tNote = matchedTrial.note || {};
+        if (tNote.targetT1Date && !targetT1) targetT1 = tNote.targetT1Date;
+        if (tNote.transferPlanDate && !moldDelivery) moldDelivery = tNote.transferPlanDate;
+        if (tNote.transferActualDate) moldDelivery = tNote.transferActualDate;
+        if (tNote.cavity && !cavity) cavity = tNote.cavity;
+        if (tNote.massVendor && !massVendor) massVendor = tNote.massVendor;
+
         const firstTrialDate = Array.isArray(tNote.trials) ? tNote.trials.find((tr: any) => tr.trialDate)?.trialDate : '';
         if (firstTrialDate && !actualT1) actualT1 = firstTrialDate;
-        if (tNote.transferActualDate) {
-          finalStep = Math.max(finalStep, 11);
-        } else if (tNote.isMoldApproved || matchedTrial.TrialStatus === '양산승인완료') {
-          finalStep = Math.max(finalStep, 10);
-        } else if (firstTrialDate || Number(tNote.currentStep || 0) > 7) {
-          finalStep = Math.max(finalStep, Number(tNote.currentStep || 7));
+
+        if (!isRevision || trialsByProject[pId]) {
+          if (tNote.transferActualDate) {
+            finalStep = Math.max(finalStep, 11);
+          } else if (tNote.isMoldApproved || matchedTrial.TrialStatus === '양산승인완료') {
+            finalStep = Math.max(finalStep, 10);
+          } else if (firstTrialDate || Number(tNote.currentStep || 0) > 7) {
+            finalStep = Math.max(finalStep, Number(tNote.currentStep || 7));
+          }
         }
       }
 
+      // 3-5. 양산 견적(MpsiMassQuotation) 목표 양산승인일 및 사출 양산처 바인딩
+      if (matchedMassQuote) {
+        const mqNote = matchedMassQuote.note || {};
+        if (mqNote.targetMassApprovalDate && !targetMass) {
+          targetMass = mqNote.targetMassApprovalDate;
+        }
+        if (mqNote.massStartDate && !massStart) {
+          massStart = mqNote.massStartDate;
+        }
+        if (mqNote.cavity && !cavity) cavity = mqNote.cavity;
+        const mqVendor = mqNote.selectedVendorName || mqNote.vendorName || matchedMassQuote.MassVendorID;
+        if (mqVendor && !massVendor) massVendor = mqVendor;
+      }
+
+      // 3-6. 시양산/유효성 검증(MpsiMassValidation) 목표 양산승인일 및 진행 스텝 바인딩
       if (matchedVal) {
         const vNote = matchedVal.note || {};
-        const hasValProgress = Number(matchedVal.ReportCount || 0) > 0 || (Array.isArray(vNote.trials) && vNote.trials.some((tr: any) => tr.totalShotCount > 0));
-        if (matchedVal.OverallStatus === '검증완료' || vNote.overallStatus === '검증완료') {
-          finalStep = Math.max(finalStep, 12);
-        } else if (hasValProgress) {
-          finalStep = Math.max(finalStep, 11);
+        const vTargetMass = matchedVal.TargetMassApprovalDate
+          ? formatDateOnly(matchedVal.TargetMassApprovalDate)
+          : vNote.targetMassApprovalDate;
+        if (vTargetMass) targetMass = vTargetMass;
+        if (vNote.moldTransferDate && !moldDelivery) moldDelivery = vNote.moldTransferDate;
+        if ((matchedVal.MassVendorID || vNote.massVendor) && !massVendor) {
+          massVendor = matchedVal.MassVendorID || vNote.massVendor;
+        }
+
+        if (!isRevision || validationsByProject[pId]) {
+          const hasValProgress = Number(matchedVal.ReportCount || 0) > 0 || (Array.isArray(vNote.trials) && vNote.trials.some((tr: any) => tr.totalShotCount > 0));
+          if (matchedVal.OverallStatus === '검증완료' || vNote.overallStatus === '검증완료') {
+            finalStep = Math.max(finalStep, 12);
+          } else if (hasValProgress) {
+            finalStep = Math.max(finalStep, 11);
+          }
         }
       }
 
+      // 3-7. 양산 승인(MpsiMassPpap) 목표 양산승인일 및 진행 스텝 바인딩
       if (matchedPpap) {
         const ppNote = matchedPpap.note || {};
-        if (matchedPpap.PpapStatus === '승인완료' || matchedPpap.PpapStatus === '양산 승인 (Pass)' || ppNote.ppapStatus === '승인완료' || ppNote.ppapStatus === '양산 승인 (Pass)') {
-          finalStep = Math.max(finalStep, 13);
-          stepStatus = '완료';
-        } else if (Array.isArray(ppNote.packageSubmissions) && ppNote.packageSubmissions.length > 0) {
-          finalStep = Math.max(finalStep, 12);
+        const ppTargetMass = matchedPpap.TargetApprovalDate
+          ? formatDateOnly(matchedPpap.TargetApprovalDate)
+          : (ppNote.targetApprovalDate || ppNote.vendorSubmittedDate);
+        if (ppTargetMass) targetMass = ppTargetMass;
+        if (ppNote.partPoDate && !massStart) massStart = ppNote.partPoDate;
+        if ((matchedPpap.MassVendorID || ppNote.massVendor) && !massVendor) {
+          massVendor = matchedPpap.MassVendorID || ppNote.massVendor;
+        }
+
+        if (!isRevision || ppapsByProject[pId]) {
+          if (matchedPpap.PpapStatus === '승인완료' || matchedPpap.PpapStatus === '양산 승인 (Pass)' || ppNote.ppapStatus === '승인완료' || ppNote.ppapStatus === '양산 승인 (Pass)') {
+            finalStep = Math.max(finalStep, 13);
+            stepStatus = '완료';
+          } else if (Array.isArray(ppNote.packageSubmissions) && ppNote.packageSubmissions.length > 0) {
+            finalStep = Math.max(finalStep, 12);
+          }
         }
       }
 
@@ -407,14 +547,25 @@ export async function GET(request: NextRequest) {
 
       return {
         ...p,
+        partNo,
+        cavity,
+        material,
+        moldMaterial,
+        resinSpec,
+        machineTon,
         currentStep: finalStep,
         stepNameCustom: cleanedStepNameCustom,
         isContractConfirmed: isConfirmed,
         isQuotePending: !isConfirmed,
         quotationStatus: qStatus,
         moldVendor,
+        massVendor,
+        kickoffDate: kickoff,
         targetT1Date: targetT1,
         actualT1Date: actualT1,
+        moldDeliveryDate: moldDelivery,
+        targetMassDate: targetMass,
+        massStartDate: massStart,
         targetMoldDays: targetDays,
         stepStatus,
         stepAttachments: mergedAttachments,
