@@ -761,6 +761,31 @@ export function updateProjectProcess(
   const now = new Date();
   const dateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")} ${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
 
+  // changeType이 지정되지 않은 경우 동일 프로젝트 번호 중 가장 최신 차수(예: E002)만 갱신하여 이전 차수(N001, E001) 이력 보존
+  let targetLatestId: number | null = null;
+  if (!changeType) {
+    const matches = current.filter(
+      (p) =>
+        p.projectNo === projectNo ||
+        p.estimateNo === projectNo ||
+        (p.projectNo && projectNo && p.projectNo.toLowerCase() === projectNo.toLowerCase()) ||
+        (p.estimateNo && projectNo && p.estimateNo.toLowerCase() === projectNo.toLowerCase())
+    );
+    if (matches.length > 1) {
+      const getRevWeight = (ct?: string) => {
+        const c = (ct || "N001").toUpperCase().trim();
+        if (c.startsWith("E")) return 100 + (parseInt(c.replace(/\D/g, ""), 10) || 1);
+        return parseInt(c.replace(/\D/g, ""), 10) || 0;
+      };
+      const sorted = [...matches].sort((a, b) => {
+        const wDiff = getRevWeight(a.changeType) - getRevWeight(b.changeType);
+        if (wDiff !== 0) return wDiff;
+        return (a.id || 0) - (b.id || 0);
+      });
+      targetLatestId = sorted[sorted.length - 1].id;
+    }
+  }
+
   const updated = current.map((p) => {
     // changeType이 주어진 경우 프로젝트번호와 차수코드가 동시에 일치해야 함 (복합키 충돌 방지)
     if (changeType && p.changeType && p.changeType !== changeType) {
@@ -773,6 +798,7 @@ export function updateProjectProcess(
       (p.estimateNo && projectNo && p.estimateNo.toLowerCase() === projectNo.toLowerCase());
 
     if (!isTarget) return p;
+    if (targetLatestId !== null && p.id !== targetLatestId) return p;
     return {
       ...p,
       ...updates,

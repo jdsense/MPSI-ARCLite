@@ -59,8 +59,9 @@ export async function syncDownstreamToProjectMaster(
 
     if (res.rows.length === 0) return;
 
-    // 가장 최신 차수 행(설변이 있으면 최신 E차수, 없으면 N001) 및 기본 행 동기화
-    for (const row of res.rows) {
+    // 가장 최신 차수 행(설변이 있으면 최신 E차수, 없으면 N001)만 동기화하여 이전 차수는 이력으로 동결 보존
+    const targetRows = [res.rows[0]];
+    for (const row of targetRows) {
       let noteObj: any = {};
       try {
         noteObj = row.Note ? (typeof row.Note === 'string' ? JSON.parse(row.Note) : row.Note) : {};

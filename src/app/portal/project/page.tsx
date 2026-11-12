@@ -211,6 +211,10 @@ export default function ProjectStatus13StepsPage() {
 
   // 프로젝트 삭제 핸들러 (DB 및 스토어 영구 삭제 - 개별 차수 단위 삭제 지원)
   const handleDeleteProject = (row: ProjectItem) => {
+    if (isSupersededRevision(row)) {
+      showToast(`설계변경으로 인해 이력으로 전환된 기존 프로젝트(${row.changeType || "N001"})는 삭제할 수 없습니다.`, "warning");
+      return;
+    }
     const pNo = row.projectNo || row.estimateNo || String(row.id);
     const revLabel = row.changeType || "N001";
     const pName = row.productName || row.projectName;
@@ -345,6 +349,26 @@ export default function ProjectStatus13StepsPage() {
       }
     }
     return `E${String(maxE + 1).padStart(3, "0")}`;
+  };
+
+  // 설계변경으로 인해 이전 차수 이력으로 전환된 기존 프로젝트 여부 판별 (최신 차수만 활성, 이전 차수들은 모든 기능 비활성화)
+  const isSupersededRevision = (row: ProjectItem, list: ProjectItem[] = projects): boolean => {
+    const groupKey = (row.projectNo || "").toUpperCase().trim();
+    if (!groupKey) return false;
+    const sameGroup = list
+      .filter((p) => (p.projectNo || "").toUpperCase().trim() === groupKey)
+      .sort((a, b) => {
+        const wA = getRevisionSortWeight(a.changeType);
+        const wB = getRevisionSortWeight(b.changeType);
+        if (wA !== wB) return wA - wB;
+        const mA = a.moldDegree || "M1";
+        const mB = b.moldDegree || "M1";
+        if (mA !== mB) return mA.localeCompare(mB);
+        return (a.id || 0) - (b.id || 0);
+      });
+    if (sameGroup.length <= 1) return false;
+    const latest = sameGroup[sameGroup.length - 1];
+    return latest.id !== row.id || (latest.changeType || "N001") !== (row.changeType || "N001");
   };
 
   // 0~13단계 세부 공정 타임라인 카드 요약 상세 펼침 상태
@@ -633,9 +657,14 @@ export default function ProjectStatus13StepsPage() {
   // 모달 열기 (13단계 프로세스 흐름도 제외, 매트릭스 & 상세공정)
   const handleOpenModal = (item?: ProjectItem, initialTab: "matrix" | "detail" = "matrix") => {
     if (item) {
+      if (isSupersededRevision(item)) {
+        showToast(`설계변경으로 인해 이력 전환된 기존 프로젝트(${item.changeType || "N001"})의 기능은 비활성화되어 있습니다.`, "warning");
+        return;
+      }
       setSelectedItem(item);
     } else if (projects.length > 0 && !selectedItem) {
-      setSelectedItem(projects[0]);
+      const activeList = projects.filter((p) => !isSupersededRevision(p));
+      setSelectedItem(activeList[0] || projects[0]);
     }
     setModalActiveTab(initialTab);
     setIsDiagramModalOpen(true);
@@ -721,6 +750,10 @@ export default function ProjectStatus13StepsPage() {
 
   // 원청사 견적 승격 건 생산 및 외주업체 등록 모달 열기 핸들러
   const handleOpenPromotedRegisterModal = (row: ProjectItem) => {
+    if (isSupersededRevision(row)) {
+      showToast(`설계변경으로 인해 이력 전환된 기존 프로젝트(${row.changeType || "N001"})는 등록할 수 없습니다.`, "warning");
+      return;
+    }
     setProjectCreationMode("PROMOTED");
     setSelectedExistingProjectNo("");
     setPromotedOriginalProjectNo(row.projectNo);
@@ -1093,6 +1126,10 @@ export default function ProjectStatus13StepsPage() {
 
   // 프로젝트 기본정보 수정 모달 열기
   const handleOpenEditModal = (item: ProjectItem) => {
+    if (isSupersededRevision(item)) {
+      showToast(`설계변경으로 인해 이력으로 전환된 기존 프로젝트(${item.changeType || "N001"})는 수정할 수 없습니다.`, "warning");
+      return;
+    }
     setEditingProject(item);
     setEditFormState({
       ...item,
@@ -2450,19 +2487,29 @@ export default function ProjectStatus13StepsPage() {
                           ? effectiveRow.projectNo
                           : effectiveRow.projectNo?.toUpperCase().replace(/^Q/, "MI").replace(/-0?(\d+)/, "P$1");
 
+                        // 설계변경으로 인해 이전 이력으로 전환된 기존 프로젝트 여부 (최신 차수만 활성, 이전 차수들은 모든 기능 비활성화)
+                        const isSuperseded =
+                          hasSubRows &&
+                          (effectiveRow.id !== latestRow.id ||
+                            (effectiveRow.changeType || "N001") !== (latestRow.changeType || "N001"));
+
                         return (
                           <tr 
                             key={`${row.id}-${row.projectNo}-${row.changeType || "N001"}`} 
                             className={
-                              isChildRow
-                                ? "bg-purple-50/40 dark:bg-purple-950/20 hover:bg-purple-100/50 dark:hover:bg-purple-900/30 transition-colors border-l-4 border-l-purple-500"
-                                : "odd:bg-white even:bg-slate-50/60 dark:odd:bg-zinc-900 dark:even:bg-zinc-800/40 hover:bg-sky-50/70 dark:hover:bg-zinc-800 transition-colors"
+                              isSuperseded
+                                ? isChildRow
+                                  ? "bg-zinc-100/70 dark:bg-zinc-900/50 text-zinc-400 dark:text-zinc-500 border-l-4 border-l-zinc-300 opacity-75"
+                                  : "bg-zinc-50/80 dark:bg-zinc-900/50 text-zinc-400 dark:text-zinc-500 opacity-75"
+                                : isChildRow
+                                  ? "bg-purple-50/40 dark:bg-purple-950/20 hover:bg-purple-100/50 dark:hover:bg-purple-900/30 transition-colors border-l-4 border-l-purple-500"
+                                  : "odd:bg-white even:bg-slate-50/60 dark:odd:bg-zinc-900 dark:even:bg-zinc-800/40 hover:bg-sky-50/70 dark:hover:bg-zinc-800 transition-colors"
                             }
                           >
                             {/* 1. No */}
                             <td className="p-2 text-center font-mono text-zinc-400 border-r border-slate-200 dark:border-zinc-800">
                               {isChildRow ? (
-                                <span className="text-purple-500 font-bold text-[10px]" title={`${subIdx}차 설변 하위 이력`}>
+                                <span className={`${isSuperseded ? "text-zinc-400" : "text-purple-500"} font-bold text-[10px]`} title={`${subIdx}차 설변 하위 이력`}>
                                   ┗
                                 </span>
                               ) : (
@@ -2495,16 +2542,25 @@ export default function ProjectStatus13StepsPage() {
                                   </button>
                                 )}
                                 {isChildRow && (
-                                  <span className="text-purple-400 font-mono text-[10px] pl-1">┗</span>
+                                  <span className={`${isSuperseded ? "text-zinc-400" : "text-purple-400"} font-mono text-[10px] pl-1`}>┗</span>
                                 )}
-                                <button 
-                                  onClick={() => handleOpenModal(effectiveRow, "detail")} 
-                                  className="font-bold text-sky-600 hover:text-sky-800 hover:underline flex items-center justify-center gap-1"
-                                  title="클릭 시 프로젝트 상세 공정 확인"
-                                >
-                                  <span>{formattedProjectNo}</span>
-                                  <ExternalLink className="h-3 w-3 text-sky-400" />
-                                </button>
+                                {isSuperseded ? (
+                                  <span
+                                    className="font-bold text-zinc-400 dark:text-zinc-500 flex items-center justify-center gap-1 cursor-not-allowed select-none"
+                                    title={`설계변경(${latestRow.changeType || "E001"})으로 인해 이력 전환된 기존 차수(${effectiveRow.changeType || "N001"})입니다 (기능 비활성화)`}
+                                  >
+                                    <span>{formattedProjectNo}</span>
+                                  </span>
+                                ) : (
+                                  <button 
+                                    onClick={() => handleOpenModal(effectiveRow, "detail")} 
+                                    className="font-bold text-sky-600 hover:text-sky-800 hover:underline flex items-center justify-center gap-1"
+                                    title="클릭 시 프로젝트 상세 공정 확인"
+                                  >
+                                    <span>{formattedProjectNo}</span>
+                                    <ExternalLink className="h-3 w-3 text-sky-400" />
+                                  </button>
+                                )}
                               </div>
                             </td>
 
@@ -2512,14 +2568,18 @@ export default function ProjectStatus13StepsPage() {
                             <td className="p-2 border-r border-slate-200 dark:border-zinc-800 text-center font-mono">
                               {(effectiveRow.isContractConfirmed || effectiveRow.quotationStatus === "수주확정" || effectiveRow.estimateNo === "수주확정") ? (
                                 <span 
-                                  className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300 dark:bg-emerald-950/60 dark:text-emerald-300 shadow-2xs"
+                                  className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold border shadow-2xs ${
+                                    isSuperseded
+                                      ? "bg-zinc-100 text-zinc-400 border-zinc-200 dark:bg-zinc-800 dark:text-zinc-500"
+                                      : "bg-emerald-100 text-emerald-800 border-emerald-300 dark:bg-emerald-950/60 dark:text-emerald-300"
+                                  }`}
                                   title={effectiveRow.estimateNo ? `견적번호: ${effectiveRow.estimateNo} (수주확정 완료)` : "수주확정 완료"}
                                 >
-                                  <Check className="h-3 w-3 text-emerald-600" />
+                                  <Check className={`h-3 w-3 ${isSuperseded ? "text-zinc-400" : "text-emerald-600"}`} />
                                   수주확정
                                 </span>
                               ) : effectiveRow.estimateNo ? (
-                                <span className="font-mono text-[11px] text-zinc-700 dark:text-zinc-300 font-medium">
+                                <span className={`font-mono text-[11px] font-medium ${isSuperseded ? "text-zinc-400" : "text-zinc-700 dark:text-zinc-300"}`}>
                                   {effectiveRow.estimateNo}
                                 </span>
                               ) : (
@@ -2531,7 +2591,7 @@ export default function ProjectStatus13StepsPage() {
                             <td className="p-2 border-r border-slate-200 dark:border-zinc-800 text-center font-mono">
                               <div className="flex items-center justify-center gap-1">
                                 {isChildRow && (
-                                  <span className="text-purple-500 font-bold text-[10px]">┗</span>
+                                  <span className={`${isSuperseded ? "text-zinc-400" : "text-purple-500"} font-bold text-[10px]`}>┗</span>
                                 )}
                                 <span
                                   onClick={() => {
@@ -2540,9 +2600,11 @@ export default function ProjectStatus13StepsPage() {
                                   className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-extrabold border shadow-2xs ${
                                     hasSubRows ? "cursor-pointer" : ""
                                   } ${
-                                    effectiveRow.changeType?.startsWith("E")
-                                      ? "bg-purple-100 text-purple-800 border-purple-300 dark:bg-purple-950 dark:text-purple-300"
-                                      : "bg-sky-50 text-sky-800 border-sky-300 dark:bg-sky-950 dark:text-sky-300"
+                                    isSuperseded
+                                      ? "bg-zinc-100 text-zinc-500 border-zinc-300 dark:bg-zinc-800 dark:text-zinc-400"
+                                      : effectiveRow.changeType?.startsWith("E")
+                                        ? "bg-purple-100 text-purple-800 border-purple-300 dark:bg-purple-950 dark:text-purple-300"
+                                        : "bg-sky-50 text-sky-800 border-sky-300 dark:bg-sky-950 dark:text-sky-300"
                                   }`}
                                   title={
                                     hasSubRows
@@ -2573,23 +2635,29 @@ export default function ProjectStatus13StepsPage() {
                             </td>
 
                             {/* 3. 고객사 */}
-                            <td className="p-2 border-r border-slate-200 dark:border-zinc-800 text-center font-bold text-zinc-800 dark:text-zinc-200">
+                            <td className={`p-2 border-r border-slate-200 dark:border-zinc-800 text-center font-bold ${isSuperseded ? "text-zinc-400 dark:text-zinc-500" : "text-zinc-800 dark:text-zinc-200"}`}>
                               {effectiveRow.customerName}
                             </td>
 
                             {/* 4. 프로젝트명 */}
-                            <td className="p-2 border-r border-slate-200 dark:border-zinc-800 text-center font-medium text-zinc-700 dark:text-zinc-300">
+                            <td className={`p-2 border-r border-slate-200 dark:border-zinc-800 text-center font-medium ${isSuperseded ? "text-zinc-400 dark:text-zinc-500" : "text-zinc-700 dark:text-zinc-300"}`}>
                               {effectiveRow.projectName}
                             </td>
 
                             {/* 5. 제품명 (품명) */}
-                            <td className="p-2 border-r border-slate-200 dark:border-zinc-800 text-left pl-3 font-semibold text-zinc-900 dark:text-zinc-100 truncate max-w-[160px]" title={effectiveRow.productName}>
-                              <span 
-                                onClick={() => handleOpenModal(effectiveRow, "detail")}
-                                className="hover:underline cursor-pointer"
-                              >
-                                {effectiveRow.productName}
-                              </span>
+                            <td className={`p-2 border-r border-slate-200 dark:border-zinc-800 text-left pl-3 font-semibold truncate max-w-[160px] ${isSuperseded ? "text-zinc-400 dark:text-zinc-500" : "text-zinc-900 dark:text-zinc-100"}`} title={effectiveRow.productName}>
+                              {isSuperseded ? (
+                                <span className="cursor-not-allowed select-none" title="설계변경으로 인해 이력 전환된 기존 차수입니다 (비활성화)">
+                                  {effectiveRow.productName}
+                                </span>
+                              ) : (
+                                <span 
+                                  onClick={() => handleOpenModal(effectiveRow, "detail")}
+                                  className="hover:underline cursor-pointer"
+                                >
+                                  {effectiveRow.productName}
+                                </span>
+                              )}
                             </td>
 
                             {/* 6. 품 번 */}
@@ -2605,7 +2673,7 @@ export default function ProjectStatus13StepsPage() {
                             {/* 7-1. 금형차수 (M1, M2) */}
                             <td className="p-2 border-r border-slate-200 dark:border-zinc-800 text-center font-mono">
                               {effectiveRow.moldDegree ? (
-                                <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-extrabold bg-purple-50 text-purple-700 border border-purple-200 dark:bg-purple-950/40 dark:text-purple-300">
+                                <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-extrabold border ${isSuperseded ? "bg-zinc-100 text-zinc-400 border-zinc-200" : "bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-950/40 dark:text-purple-300"}`}>
                                   {effectiveRow.moldDegree}
                                 </span>
                               ) : (
@@ -2621,7 +2689,7 @@ export default function ProjectStatus13StepsPage() {
                             {/* 9. 금형 제작처 */}
                             <td className="p-2 border-r border-slate-200 dark:border-zinc-800 text-center">
                               {effectiveRow.moldVendor && effectiveRow.moldVendor !== "N/A" ? (
-                                <span className="inline-flex px-2 py-0.5 rounded-md text-[11px] font-medium border border-purple-200 bg-purple-50 text-purple-700 dark:bg-purple-950/40 dark:text-purple-300">
+                                <span className={`inline-flex px-2 py-0.5 rounded-md text-[11px] font-medium border ${isSuperseded ? "bg-zinc-100 text-zinc-400 border-zinc-200" : "border-purple-200 bg-purple-50 text-purple-700 dark:bg-purple-950/40 dark:text-purple-300"}`}>
                                   {effectiveRow.moldVendor}
                                 </span>
                               ) : (
@@ -2632,7 +2700,7 @@ export default function ProjectStatus13StepsPage() {
                             {/* 10. 사출 양산처 */}
                             <td className="p-2 border-r border-slate-200 dark:border-zinc-800 text-center">
                               {effectiveRow.massVendor && effectiveRow.massVendor !== "N/A" ? (
-                                <span className="inline-flex px-2 py-0.5 rounded-md text-[11px] font-medium border border-emerald-300 bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 font-bold">
+                                <span className={`inline-flex px-2 py-0.5 rounded-md text-[11px] font-medium border ${isSuperseded ? "bg-zinc-100 text-zinc-400 border-zinc-200" : "border-emerald-300 bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 font-bold"}`}>
                                   {effectiveRow.massVendor}
                                 </span>
                               ) : (
@@ -2644,7 +2712,14 @@ export default function ProjectStatus13StepsPage() {
                             <td className="p-2 border-r border-slate-200 dark:border-zinc-800 text-center">
                               <div className="flex items-center justify-center">
                                 {stepDisplayName ? (
-                                  effectiveRow.currentStep === 0 || effectiveRow.isQuotePending || effectiveRow.projectNo.startsWith("Q") ? (
+                                  isSuperseded ? (
+                                    <span
+                                      className="inline-block px-2.5 py-0.5 rounded-full text-[10px] font-bold border bg-zinc-100 text-zinc-400 border-zinc-200 cursor-not-allowed select-none"
+                                      title="설계변경으로 인해 이력 전환된 기존 차수입니다 (비활성화)"
+                                    >
+                                      {stepDisplayName}
+                                    </span>
+                                  ) : effectiveRow.currentStep === 0 || effectiveRow.isQuotePending || effectiveRow.projectNo.startsWith("Q") ? (
                                     <button
                                       type="button"
                                       onClick={() => router.push(`/portal/quotation?projectNo=${encodeURIComponent(effectiveRow.projectNo)}`)}
@@ -2679,17 +2754,17 @@ export default function ProjectStatus13StepsPage() {
                             </td>
 
                             {/* 14. 목표 T1 */}
-                            <td className="p-2 border-r border-slate-200 dark:border-zinc-800 text-center font-mono font-bold text-emerald-700 dark:text-emerald-400">
+                            <td className={`p-2 border-r border-slate-200 dark:border-zinc-800 text-center font-mono font-bold ${isSuperseded ? "text-zinc-400" : "text-emerald-700 dark:text-emerald-400"}`}>
                               {effectiveRow.targetT1Date || ""}
                             </td>
 
                             {/* 금형 출고 납기 */}
-                            <td className="p-2 border-r border-slate-200 dark:border-zinc-800 text-center font-mono font-bold text-purple-700 dark:text-purple-400">
+                            <td className={`p-2 border-r border-slate-200 dark:border-zinc-800 text-center font-mono font-bold ${isSuperseded ? "text-zinc-400" : "text-purple-700 dark:text-purple-400"}`}>
                               {effectiveRow.moldDeliveryDate || ""}
                             </td>
 
                             {/* 15. 목표 양산승인 */}
-                            <td className="p-2 border-r border-slate-200 dark:border-zinc-800 text-center font-mono font-bold text-amber-700 dark:text-amber-400">
+                            <td className={`p-2 border-r border-slate-200 dark:border-zinc-800 text-center font-mono font-bold ${isSuperseded ? "text-zinc-400" : "text-amber-700 dark:text-amber-400"}`}>
                               {effectiveRow.targetMassDate || ""}
                             </td>
 
@@ -2697,12 +2772,12 @@ export default function ProjectStatus13StepsPage() {
                             <td className="p-2 text-center">
                               <div className="flex items-center justify-center gap-1">
                                 {effectiveRow.isPromotedFromQuote ? (
-                                  effectiveRow.isRegistrationCompleted ? (
+                                  effectiveRow.isRegistrationCompleted || isSuperseded ? (
                                     <Button 
                                       size="xs" 
                                       disabled
                                       className="h-6 px-1.5 text-[10px] rounded-md font-bold gap-1 bg-zinc-100 text-zinc-400 border border-zinc-200 cursor-not-allowed shadow-2xs"
-                                      title="생산 및 외주업체 등록 완료"
+                                      title={isSuperseded ? "설계변경으로 인해 이력 전환된 기존 차수입니다 (비활성화)" : "생산 및 외주업체 등록 완료"}
                                     >
                                       <Check className="h-3 w-3 text-zinc-400" />
                                       등록완료
@@ -2721,31 +2796,52 @@ export default function ProjectStatus13StepsPage() {
                                 ) : null}
 
                                 <Button 
-                                  onClick={() => handleOpenModal(effectiveRow, "detail")} 
+                                  onClick={() => {
+                                    if (!isSuperseded) handleOpenModal(effectiveRow, "detail");
+                                  }} 
+                                  disabled={isSuperseded}
                                   size="xs" 
                                   variant="outline" 
-                                  className="h-6 px-1.5 text-[10px] rounded-md font-bold gap-1 bg-white hover:bg-slate-50 border-slate-300 text-slate-700 shadow-2xs"
-                                  title="상세 공정 모달 열기"
+                                  className={`h-6 px-1.5 text-[10px] rounded-md font-bold gap-1 shadow-2xs ${
+                                    isSuperseded
+                                      ? "bg-zinc-100 text-zinc-400 border-zinc-200 cursor-not-allowed opacity-60"
+                                      : "bg-white hover:bg-slate-50 border-slate-300 text-slate-700"
+                                  }`}
+                                  title={isSuperseded ? `설계변경(${latestRow.changeType})으로 인해 비활성화된 이전 차수(${effectiveRow.changeType || "N001"})입니다` : "상세 공정 모달 열기"}
                                 >
-                                  <Eye className="h-3 w-3 text-slate-500" />
+                                  <Eye className={`h-3 w-3 ${isSuperseded ? "text-zinc-400" : "text-slate-500"}`} />
                                   처리/검수
                                 </Button>
                                 <Button 
-                                  onClick={() => handleOpenEditModal(effectiveRow)} 
+                                  onClick={() => {
+                                    if (!isSuperseded) handleOpenEditModal(effectiveRow);
+                                  }} 
+                                  disabled={isSuperseded}
                                   size="xs" 
                                   variant="outline" 
-                                  className="h-6 px-1.5 text-[10px] rounded-md font-bold gap-1 bg-white hover:bg-amber-50 border-amber-300 text-amber-700 shadow-2xs"
-                                  title="프로젝트 기본정보 수정"
+                                  className={`h-6 px-1.5 text-[10px] rounded-md font-bold gap-1 shadow-2xs ${
+                                    isSuperseded
+                                      ? "bg-zinc-100 text-zinc-400 border-zinc-200 cursor-not-allowed opacity-60"
+                                      : "bg-white hover:bg-amber-50 border-amber-300 text-amber-700"
+                                  }`}
+                                  title={isSuperseded ? `설계변경(${latestRow.changeType})으로 인해 비활성화된 이전 차수(${effectiveRow.changeType || "N001"})입니다` : "프로젝트 기본정보 수정"}
                                 >
-                                  <Edit3 className="h-3 w-3 text-amber-600" />
+                                  <Edit3 className={`h-3 w-3 ${isSuperseded ? "text-zinc-400" : "text-amber-600"}`} />
                                   수정
                                 </Button>
                                 <Button
-                                  onClick={() => handleDeleteProject(effectiveRow)}
+                                  onClick={() => {
+                                    if (!isSuperseded) handleDeleteProject(effectiveRow);
+                                  }}
+                                  disabled={isSuperseded}
                                   size="xs"
                                   variant="outline"
-                                  className="h-6 px-1.5 text-[10px] rounded-md font-bold gap-0.5 text-rose-600 border-rose-200 hover:bg-rose-50 hover:text-rose-700 shadow-2xs"
-                                  title="프로젝트 삭제"
+                                  className={`h-6 px-1.5 text-[10px] rounded-md font-bold gap-0.5 shadow-2xs ${
+                                    isSuperseded
+                                      ? "bg-zinc-100 text-zinc-400 border-zinc-200 cursor-not-allowed opacity-60"
+                                      : "text-rose-600 border-rose-200 hover:bg-rose-50 hover:text-rose-700"
+                                  }`}
+                                  title={isSuperseded ? `설계변경(${latestRow.changeType})으로 인해 비활성화된 이전 차수(${effectiveRow.changeType || "N001"})입니다` : "프로젝트 삭제"}
                                 >
                                   <Trash2 className="h-3 w-3" />
                                   삭제

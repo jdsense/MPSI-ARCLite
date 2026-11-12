@@ -321,13 +321,29 @@ export async function GET(request: NextRequest) {
       console.warn('Failed to load MpsiProjectStepMemo:', e);
     }
 
+    // 동일 프로젝트 번호(base projectNo) 그룹 내에서 가장 최신 차수 행(SequenceNo 기준) 판별
+    const latestSeqByBaseProjectNo: Record<string, number> = {};
+    for (const row of existingRows) {
+      const baseNo = String(row.ProjectID || '').split('__')[0].toUpperCase().trim();
+      const seq = Number(row.ProjectMasterSequenceNo || 0);
+      if (baseNo && (!latestSeqByBaseProjectNo[baseNo] || seq > latestSeqByBaseProjectNo[baseNo])) {
+        latestSeqByBaseProjectNo[baseNo] = seq;
+      }
+    }
+
     const projects = existingRows.map((row) => {
       const p = mapRowToProject(row);
       const rawDbId = row.ProjectID || p.projectNo;
       const isRevision = Boolean(p.changeType && p.changeType !== 'N001');
       const pId = isRevision ? rawDbId : p.projectNo;
-      const dbAtts = attachmentsByProject[pId] || (!isRevision ? attachmentsByProject[p.projectNo] : {}) || {};
-      const dbMemos = memosByProject[pId] || (!isRevision ? memosByProject[p.projectNo] : {}) || {};
+      const baseKey = (p.projectNo || '').toUpperCase().trim();
+      const isLatestRevisionInGroup =
+        !baseKey ||
+        !latestSeqByBaseProjectNo[baseKey] ||
+        Number(row.ProjectMasterSequenceNo || 0) === latestSeqByBaseProjectNo[baseKey];
+
+      const dbAtts = attachmentsByProject[pId] || (isLatestRevisionInGroup ? attachmentsByProject[p.projectNo] : {}) || {};
+      const dbMemos = memosByProject[pId] || (isLatestRevisionInGroup ? memosByProject[p.projectNo] : {}) || {};
 
       const mergedAttachments: Record<number, any[]> = { ...(p.stepAttachments || {}) };
       for (const [stepStr, atts] of Object.entries(dbAtts)) {
@@ -338,15 +354,15 @@ export async function GET(request: NextRequest) {
       const mergedMemos: Record<number, string> = { ...(p.stepMemos || {}), ...dbMemos };
 
       // 3. 실시간 공정 테이블(원청사견적, 금형견적, 설계, 제작, 시사출, 양산견적, 시양산, PPAP) DB 데이터와 완전 동기화
-      // 설변 차수(E001, E002 등) 행이라도 하위 공정 대장이 기본 projectNo로 등재되어 있으면 일정/사양 데이터를 자동 바인딩
-      const matchedPrimeQuote = primeQuotesByProject[pId] || primeQuotesByProject[p.projectNo] || primeQuotesByProject[p.estimateNo];
-      const matchedDesign = designsByProject[pId] || designsByProject[p.projectNo];
-      const matchedQuote = quotesByProject[pId] || quotesByProject[p.projectNo] || quotesByProject[p.estimateNo];
-      const matchedMfg = mfgByProject[pId] || mfgByProject[p.projectNo];
-      const matchedTrial = trialsByProject[pId] || trialsByProject[p.projectNo];
-      const matchedMassQuote = massQuotesByProject[pId] || massQuotesByProject[p.projectNo];
-      const matchedVal = validationsByProject[pId] || validationsByProject[p.projectNo];
-      const matchedPpap = ppapsByProject[pId] || ppapsByProject[p.projectNo];
+      // 설계변경으로 인해 이전 이력이 된 차수는 자체 스냅샷을 유지하고, 최신 활성 차수에만 기본 projectNo 하위 공정 데이터를 실시간 바인딩
+      const matchedPrimeQuote = primeQuotesByProject[pId] || (isLatestRevisionInGroup ? (primeQuotesByProject[p.projectNo] || primeQuotesByProject[p.estimateNo]) : undefined);
+      const matchedDesign = designsByProject[pId] || (isLatestRevisionInGroup ? designsByProject[p.projectNo] : undefined);
+      const matchedQuote = quotesByProject[pId] || (isLatestRevisionInGroup ? (quotesByProject[p.projectNo] || quotesByProject[p.estimateNo]) : undefined);
+      const matchedMfg = mfgByProject[pId] || (isLatestRevisionInGroup ? mfgByProject[p.projectNo] : undefined);
+      const matchedTrial = trialsByProject[pId] || (isLatestRevisionInGroup ? trialsByProject[p.projectNo] : undefined);
+      const matchedMassQuote = massQuotesByProject[pId] || (isLatestRevisionInGroup ? massQuotesByProject[p.projectNo] : undefined);
+      const matchedVal = validationsByProject[pId] || (isLatestRevisionInGroup ? validationsByProject[p.projectNo] : undefined);
+      const matchedPpap = ppapsByProject[pId] || (isLatestRevisionInGroup ? ppapsByProject[p.projectNo] : undefined);
 
       let finalStep = p.currentStep;
       let isConfirmed = p.isContractConfirmed;
