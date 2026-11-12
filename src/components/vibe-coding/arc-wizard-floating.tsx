@@ -34,7 +34,7 @@ type EditStatus = "pending" | "applying" | "applied" | "cancelled" | "error";
 
 type BusyKind = "freeform" | "image" | "search" | "createPage" | "column" | "undo" | "config";
 
-function getBusySteps(kind: BusyKind, targetLabel: string, modelLabel: string): { title: string; steps: string[] } {
+function getBusySteps(kind: BusyKind, targetLabel: string): { title: string; steps: string[] } {
   switch (kind) {
     case "image":
       return {
@@ -42,7 +42,7 @@ function getBusySteps(kind: BusyKind, targetLabel: string, modelLabel: string): 
         steps: [
           "1. 보안 정책 및 아크위저드 수정 제한 규칙 검증",
           `2. 첨부 이미지 인코딩 및 현재 화면(${targetLabel}) DOM 스캔`,
-          `3. AI 멀티모달 엔진(${modelLabel}) 시각 요소·문구 대조 분석`,
+          "3. AI 멀티모달 엔진 시각 요소·문구 대조 분석",
           "4. 변경 대상 소스 라인 매칭 및 Diff 제안 카드 생성",
         ],
       };
@@ -85,7 +85,7 @@ function getBusySteps(kind: BusyKind, targetLabel: string, modelLabel: string): 
         title: "AI 엔진 설정 및 연결 상태 확인 중",
         steps: [
           "1. API 공급자 및 모델 설정값 검증",
-          `2. AI 엔드포인트(${modelLabel}) 응답 테스트 및 저장`,
+          "2. AI 엔드포인트 응답 테스트 및 저장",
         ],
       };
     case "freeform":
@@ -95,7 +95,7 @@ function getBusySteps(kind: BusyKind, targetLabel: string, modelLabel: string): 
         steps: [
           "1. 보안 정책 및 아크위저드 보호 영역 검증",
           `2. 현재 화면 DOM 컨텍스트 및 타겟 소스(${targetLabel}) 스캔`,
-          `3. AI 엔진(${modelLabel}) 프롬프트 의도 분석 및 코드 탐색`,
+          "3. AI 엔진 프롬프트 의도 분석 및 코드 탐색",
           "4. 소스 파일 라인·컬럼 매칭 및 수정안(Diff) 검증",
         ],
       };
@@ -332,7 +332,7 @@ export function ArcWizardFloating() {
       return;
     }
     const startedAt = Date.now();
-    const { steps } = getBusySteps(busyKind, pageFile || pathname || "현재 화면", llmEnabled ? aiModel : "규칙 엔진");
+    const { steps } = getBusySteps(busyKind, pageFile || pathname || "현재 화면");
     const maxIdx = Math.max(0, steps.length - 1);
 
     const timer = window.setInterval(() => {
@@ -740,9 +740,6 @@ export function ArcWizardFloating() {
             <div className="flex flex-col text-left">
               <div className="flex items-center gap-1.5">
                 <span className="text-xs font-black tracking-wider text-sky-300">ARC-WIZARD</span>
-                <span className="text-[9px] px-1 rounded bg-emerald-950 text-emerald-300 border border-emerald-700 font-mono">
-                  {aiModel}
-                </span>
               </div>
               <span className="text-[10px] text-zinc-400 -mt-0.5">화면 편집 (관리자)</span>
             </div>
@@ -776,7 +773,7 @@ export function ArcWizardFloating() {
                       }`}
                       title="클릭하여 AI 모델/API 키 설정 변경"
                     >
-                      {llmEnabled ? `⚡ ${aiModel}` : "규칙 엔진"}
+                      {llmEnabled ? "⚡ AI 엔진" : "규칙 엔진"}
                     </button>
                   </div>
                   <span className="text-[10px] text-blue-200/80 truncate flex items-center gap-1">
@@ -850,8 +847,7 @@ export function ArcWizardFloating() {
                   )}
                   {busy && (() => {
                     const targetLabel = pageFile || pathname || "현재 화면";
-                    const modelLabel = llmEnabled ? aiModel : "규칙 엔진";
-                    const { title, steps } = getBusySteps(busyKind, targetLabel, modelLabel);
+                    const { title, steps } = getBusySteps(busyKind, targetLabel);
                     const totalSteps = steps.length;
                     const activeIdx = Math.min(busyStepIdx, totalSteps - 1);
                     const progressPct = Math.round(((activeIdx + 1) / totalSteps) * 100);
