@@ -18,7 +18,8 @@ import {
   PROCESS_13_STEPS, 
   getStepActor, 
   getStepBullets, 
-  ProjectItem 
+  ProjectItem,
+  cleanVendorName
 } from "@/lib/project-store";
 import { useAuthRole, MASS_VENDOR_LIST } from "@/lib/role-store";
 import { 
@@ -68,10 +69,8 @@ export default function VendorMoldTrialPage() {
   const [transferPlanDate, setTransferPlanDate] = useState("");
   const [transferActualDate, setTransferActualDate] = useState("");
 
-  // 사출양산 외주업체 목록 (기본 + DB 연동)
-  const [dbMassVendors, setDbMassVendors] = useState<{ id: string; name: string }[]>(
-    MASS_VENDOR_LIST.filter((v) => !v.isSelf).map((v) => ({ id: v.id, name: v.name }))
-  );
+  // 실제 DB에 등록된 사출양산 거래처 목록만 동적 로드 (하드코딩 제거)
+  const [dbMassVendors, setDbMassVendors] = useState<{ id: string; name: string }[]>([]);
 
   useEffect(() => {
     async function loadMassVendors() {
@@ -80,29 +79,52 @@ export default function VendorMoldTrialPage() {
         if (res.ok) {
           const json = await res.json();
           if (json.success && Array.isArray(json.data) && json.data.length > 0) {
-            const list = json.data
-              .filter((v: any) => v.category === "공급업체" || (v.bizItem && (v.bizItem.includes("사출") || v.bizItem.includes("양산"))))
-              .map((v: any) => ({
-                id: v.vendorCode || v.companyName,
-                name: v.companyName,
-              }));
-            if (list.length > 0) {
-              setDbMassVendors((prev) => {
-                const map = new Map<string, { id: string; name: string }>();
-                prev.forEach(item => map.set(item.name, item));
-                list.forEach((item: any) => map.set(item.name, item));
-                map.set("MPSI 자체사출라인", { id: "MPSI_SELF", name: "MPSI 자체사출라인" });
-                return Array.from(map.values());
-              });
-            }
+            // 공급업체 중 금형제작 전용을 제외하고 실제 사출/양산 관련 공급업체만 필터링
+            const massOnly = json.data.filter((v: any) => {
+              if (v.category !== "공급업체" && String(v.vendorCode).startsWith("C-")) return false;
+              const cName = v.companyName || "";
+              const bItem = v.bizItem || "";
+              if (cName.includes("금형제작") || (cName.includes("금형") && !cName.includes("사출"))) {
+                return false;
+              }
+              return (
+                cName.includes("사출") ||
+                cName.includes("뉴몰드") ||
+                cName.includes("몰드") ||
+                cName.includes("양산") ||
+                bItem.includes("사출") ||
+                bItem.includes("양산")
+              );
+            });
+
+            // 순수 회사명으로 중복 없이 정제
+            const map = new Map<string, { id: string; name: string }>();
+            massOnly.forEach((v: any) => {
+              const cleaned = cleanVendorName(v.companyName);
+              if (cleaned) {
+                map.set(cleaned, { id: String(v.vendorCode || v.id || cleaned), name: cleaned });
+              }
+            });
+
+            setDbMassVendors(Array.from(map.values()));
           }
         }
       } catch (e) {
-        console.warn("Failed to load mass vendors:", e);
+        console.warn("Failed to load mass vendors from DB:", e);
       }
     }
     loadMassVendors();
   }, []);
+
+  // 현재 프로젝트에 지정된 업체가 있다면 목록에 반드시 포함되도록 보장
+  const availableMassVendors = React.useMemo(() => {
+    const list = [...dbMassVendors];
+    const cur = selectedProject?.massVendor?.trim();
+    if (cur && cur !== "선택안함" && cur !== "미지정" && !list.some((v) => v.name === cur)) {
+      list.push({ id: `cur-${cur}`, name: cur });
+    }
+    return list;
+  }, [dbMassVendors, selectedProject?.massVendor]);
 
   // 사출양산처 선택 / 변경 핸들러 (MpsiMoldTrial + ProjectMaster 실시간 상호 DB 동기화)
   const handleMassVendorChange = async (newVendor: string) => {
@@ -981,7 +1003,7 @@ export default function VendorMoldTrialPage() {
                       title="사출양산처 선택 / 변경 (DB 자동 동기화)"
                     >
                       <option value="">선택안함</option>
-                      {dbMassVendors.map((v) => (
+                      {availableMassVendors.map((v) => (
                         <option key={v.id} value={v.name}>{v.name}</option>
                       ))}
                     </select>
@@ -1539,7 +1561,7 @@ export default function VendorMoldTrialPage() {
                           title="사출양산처 선택 / 변경 (DB 자동 동기화)"
                         >
                           <option value="">선택안함</option>
-                          {dbMassVendors.map((v) => (
+                          {availableMassVendors.map((v) => (
                             <option key={v.id} value={v.name}>{v.name}</option>
                           ))}
                         </select>
