@@ -15,13 +15,15 @@ import { useAuthRole } from "@/lib/role-store";
 import { 
   useMassQuotationStore, 
   MassProductionEstimateItem, 
-  MassQuotationStatus 
+  MassQuotationStatus,
+  cleanMassVendorName,
+  isMatchingMassVendor,
+  isInvalidMassVendorName
 } from "@/lib/mass-quotation-store";
 import { sendAppNotification } from "@/lib/notification-store";
 
 export default function VendorMassQuotationPage() {
-  const { vendorName } = useAuthRole();
-  const currentVendor = vendorName || "(주)뉴몰드";
+  const { role, vendorName, userName, switchRole } = useAuthRole();
 
   const { 
     estimates, 
@@ -30,6 +32,80 @@ export default function VendorMassQuotationPage() {
     refreshFromDb,
     isLoading
   } = useMassQuotationStore();
+
+  // DB VendorPartyMaster에 실제 등록된 사출양산처 목록 동기화
+  const [dbMassVendorNames, setDbMassVendorNames] = useState<string[]>(["(주)뉴몰드", "(주)한국정밀사출"]);
+
+  useEffect(() => {
+    fetch("/api/v1/basic-info/vendors?type=mass", { cache: "no-store" })
+      .then((res) => res.json())
+      .then((json) => {
+        if (json.success && Array.isArray(json.data) && json.data.length > 0) {
+          const names = json.data.map((v: any) => {
+            let n = (v.companyName || "").replace(/\(사출양산\)|\(금형제작\)/g, "").trim();
+            if (n === "뉴몰드") n = "(주)뉴몰드";
+            return n;
+          }).filter(Boolean);
+          if (names.length > 0) {
+            setDbMassVendorNames(names);
+          }
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  // 견적 요청을 받은 해당 기업(외주 협력사) 목록만 추출 (실제 DB 사출양산처 및 배포 대상 기준)
+  const availableAssignedVendors = React.useMemo(() => {
+    const list: string[] = [];
+    const addUnique = (name?: string) => {
+      if (!name || name === "전체 업체" || name.includes("자체") || name.includes("외 ") || isInvalidMassVendorName(name)) return;
+      if (!list.some((existing) => isMatchingMassVendor(existing, name))) {
+        list.push(name);
+      }
+    };
+
+    estimates.forEach((item) => {
+      if (item.productionType !== "IN_HOUSE") {
+        if (item.assignedVendors?.includes("전체 업체")) {
+          dbMassVendorNames.forEach(addUnique);
+        }
+        item.assignedVendors?.forEach(addUnique);
+        item.vendorQuotes?.forEach((vq) => addUnique(vq.vendorName));
+        addUnique(item.vendorName);
+      }
+    });
+
+    // DB에 실제 등록된 사출양산처 목록 보충
+    dbMassVendorNames.forEach(addUnique);
+
+    return list;
+  }, [estimates, dbMassVendorNames]);
+
+  // 견적 요청받은 해당 기업(외주 협력사) 계정 기준 단독 바인딩
+  const currentVendor = React.useMemo(() => {
+    if (role === "VENDOR_MASS" && vendorName && !isInvalidMassVendorName(vendorName)) {
+      const matched = availableAssignedVendors.find((v) => isMatchingMassVendor(v, vendorName));
+      return matched || vendorName;
+    }
+    // 만약 vendorName이 '(본사/해당없음)' 등으로 잘못 세팅된 계정인 경우 userName으로 매칭 시도
+    if (userName && !isInvalidMassVendorName(userName)) {
+      const matchedByUser = availableAssignedVendors.find((v) => isMatchingMassVendor(v, userName));
+      if (matchedByUser) return matchedByUser;
+    }
+    // 뉴몰드가 아닌 다른 외주사로 로그인했으나 소속명이 누락된 경우 제2외주사((주)한국정밀사출 등) 우선 매칭
+    if (role === "VENDOR_MASS" && isInvalidMassVendorName(vendorName)) {
+      const secondVendor = availableAssignedVendors.find((v) => !isMatchingMassVendor(v, "(주)뉴몰드"));
+      if (secondVendor) return secondVendor;
+    }
+    return availableAssignedVendors[0] || "(주)뉴몰드";
+  }, [role, vendorName, userName, availableAssignedVendors]);
+
+  // 세션의 vendorName이 '(본사/해당없음)' 등 비정상 값일 때 자동으로 정상 외주사명으로 즉시 복구
+  useEffect(() => {
+    if (role === "VENDOR_MASS" && isInvalidMassVendorName(vendorName) && currentVendor && !isInvalidMassVendorName(currentVendor)) {
+      switchRole("VENDOR_MASS", currentVendor);
+    }
+  }, [role, vendorName, currentVendor]);
 
   const [filterKeyword, setFilterKeyword] = useState("");
   const [filterStatus, setFilterStatus] = useState("ALL");
@@ -211,7 +287,8 @@ export default function VendorMassQuotationPage() {
   };
 
   const handleSaveQuoteSubmit = () => {
-    if (!selectedItem) return;
+    const target = currentItem || selectedItem;
+    if (!target) return;
     if (Number(submitForm.finalUnitPrice) <= 0) {
       alert("양산 납품 견적단가를 입력해주세요.");
       return;
@@ -225,7 +302,7 @@ export default function VendorMassQuotationPage() {
       return;
     }
 
-    submitVendorQuote(selectedItem.estimateNo, {
+    submitVendorQuote(target.estimateNo, {
       finalUnitPrice: Number(submitForm.finalUnitPrice),
       targetCycleTime: Number(submitForm.targetCycleTime),
       targetMassApprovalDate: submitForm.targetMassApprovalDate,
@@ -252,13 +329,13 @@ export default function VendorMassQuotationPage() {
       menuName: "양산견적관리",
       menuPath: "/portal/mass-prod/quotation",
       senderCompany: currentVendor,
-      content: `[${getQuoteNoDisplay(selectedItem)}] 양산 견적서 제출 (단가: ${Number(submitForm.finalUnitPrice).toLocaleString()}원, C/T: ${submitForm.targetCycleTime}초)`,
-      projectNo: selectedItem.projectNo || selectedItem.estimateNo,
+      content: `[${getQuoteNoDisplay(target)}] 양산 견적서 제출 (단가: ${Number(submitForm.finalUnitPrice).toLocaleString()}원, C/T: ${submitForm.targetCycleTime}초)`,
+      projectNo: target.projectNo || target.estimateNo,
       targetRole: "MPSI",
     });
 
     setIsSubmitModalOpen(false);
-    alert(`[${getQuoteNoDisplay(selectedItem)}] MPSI로 양산 견적서가 성공적으로 제출되었습니다.\n기존 견적서 파일은 신규 파일로 교체되었으며, 제출 메모는 관리 이력으로 저장되었습니다.`);
+    alert(`[${getQuoteNoDisplay(target)}] MPSI로 [${currentVendor}] 양산 견적서가 성공적으로 제출되었습니다.\n기존 견적서 파일은 신규 파일로 교체되었으며, 제출 메모는 관리 이력으로 저장되었습니다.`);
   };
 
   const handleAddComment = () => {
@@ -300,19 +377,16 @@ export default function VendorMassQuotationPage() {
     setNewComment("");
   };
 
-  // 협력사 이름 정규화 유틸리티 ((주), 주식회사, 공백 제거 후 비교)
+  // 협력사 이름 정규화 유틸리티
   const cleanVendorName = (name?: string) => {
-    return (name || "").replace(/\(주\)|주식회사|\s/g, "").trim().toLowerCase();
+    return cleanMassVendorName(name);
   };
 
   const isMatchingVendor = (vendorA?: string, vendorB?: string) => {
-    const a = cleanVendorName(vendorA);
-    const b = cleanVendorName(vendorB);
-    if (!a || !b) return false;
-    return a === b || a.includes(b) || b.includes(a);
+    return isMatchingMassVendor(vendorA, vendorB);
   };
 
-  // 현재 외주업체에 실제 배포된 양산 견적 목록만 필터링 (배포 대상 협력사 보안 격리)
+  // 현재 외주업체에 실제 배포된 양산 견적 목록만 필터링 (견적 요청받은 해당 기업만 조회 가능하도록 보안 격리)
   const vendorEstimates = estimates.filter((item) => {
     // 1. MPSI 자체생산 건은 외주사에게 절대 비노출
     if (item.productionType === "IN_HOUSE") return false;
@@ -320,13 +394,20 @@ export default function VendorMassQuotationPage() {
     // 2. MPSI가 전체 업체 일괄 배포한 건은 모든 양산 협력사에 노출
     if (item.assignedVendors?.includes("전체 업체")) return true;
 
-    // 3. MPSI가 특정 협력사들을 지정하여 배포한 경우: 자사가 배포 대상에 포함되어 있을 때만 노출
+    // 3. MPSI가 특정 협력사들을 지정하여 배포한 경우: 자사(currentVendor)가 배포 대상에 포함되어 있을 때만 노출
     if (item.assignedVendors && item.assignedVendors.length > 0) {
-      return item.assignedVendors.some((assigned) => isMatchingVendor(assigned, currentVendor));
+      if (item.assignedVendors.some((assigned) => isMatchingVendor(assigned, currentVendor))) {
+        return true;
+      }
     }
 
-    // 4. 레거시 호환: 주 제작처 또는 최종 확정처가 자사인 경우만 노출
-    return isMatchingVendor(item.vendorName, currentVendor) || isMatchingVendor(item.selectedVendorName, currentVendor);
+    // 4. 주 제작처 또는 최종 확정처가 자사(currentVendor)인 경우 노출
+    if (isMatchingVendor(item.vendorName, currentVendor) || isMatchingVendor(item.selectedVendorName, currentVendor)) {
+      return true;
+    }
+
+    // 5. 배포처가 지정되지 않은 일반 외주 건 안전망 (자사 지정인 경우만)
+    return isMatchingVendor(item.vendorName, currentVendor);
   });
 
   // 자사 제출 견적건 조회 (MPSI 답변 포함)
@@ -334,22 +415,22 @@ export default function VendorMassQuotationPage() {
     return (item.vendorQuotes || []).find((q) => isMatchingVendor(q.vendorName, currentVendor));
   };
 
-  // 현재 로그인한 양산 협력사(자사) 관점 진행상태 판별 (MPSI 본사 대장과 100% 동기화)
+  // 현재 로그인한 양산 협력사(자사) 관점 진행상태 판별 (자사 제출 내역 기준 100% 독립 판별)
   const getVendorSpecificStatus = (item: MassProductionEstimateItem): MassQuotationStatus => {
-    // 1. MPSI 본사 진행상태가 명시되어 있는 경우 본사 상태 우선 동기화
-    if (item.status === "양산계약확정" || item.status === "단가합의완료" || item.status === "원가검토중" || item.status === "반려/미성사") {
-      return item.status;
-    }
-    // 2. 자사 제출 내역 확인
+    // 1. 자사 제출 내역(myQuote) 최우선 확인
     const myQuote = getMyVendorQuote(item);
     if (myQuote) {
-      if (myQuote.status === "수주확정") return "단가합의완료";
+      if (myQuote.status === "수주확정") {
+        return item.status === "양산계약확정" ? "양산계약확정" : "단가합의완료";
+      }
       if (myQuote.status === "검토협의") return "원가검토중";
       if (myQuote.status === "반려/미성사") return "반려/미성사";
-      return item.status || "외주견적제출";
+      // 자사가 견적서를 제출 완료한 상태이면 무조건 '외주견적제출' 반환
+      return "외주견적제출";
     }
-    // 3. 자사가 아직 미제출한 경우 -> "견적요청"
-    return item.status || "견적요청";
+
+    // 2. 자사가 아직 미제출한 경우 -> 무조건 "견적요청"
+    return "견적요청";
   };
 
   const filtered = vendorEstimates.filter((item) => {
@@ -428,13 +509,13 @@ export default function VendorMassQuotationPage() {
   return (
     <div className="flex flex-col gap-3 text-xs">
       {/* 헤더 배너 */}
-      <div className="bg-blue-50 dark:bg-zinc-800/60 border border-blue-200 dark:border-zinc-700 rounded-md p-3 flex items-center justify-between shadow-xs">
+      <div className="bg-blue-50 dark:bg-zinc-800/60 border border-blue-200 dark:border-zinc-700 rounded-md p-3 flex flex-wrap items-center justify-between gap-3 shadow-xs">
         <div className="flex items-center gap-2">
           <Factory className="h-5 w-5 text-blue-600" />
           <div>
             <div className="font-bold text-zinc-900 dark:text-zinc-100 flex items-center gap-1.5">
               <span>[{currentVendor}] 양산 견적 관리</span>
-              <span className="text-[10px] px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded font-semibold">
+              <span className="text-[10px] px-1.5 py-0.5 bg-blue-100 dark:bg-blue-900/60 text-blue-700 dark:text-blue-300 rounded font-semibold">
                 MPSI 시스템 연동
               </span>
             </div>
@@ -667,11 +748,11 @@ export default function VendorMassQuotationPage() {
                             setIsDetailModalOpen(true);
                           }}
                           size="xs"
-                          variant="ghost"
-                          className="h-6 text-[11px] px-1.5 text-zinc-600 hover:text-zinc-900 cursor-pointer"
+                          variant="outline"
+                          className="h-6 text-[11px] px-2 text-zinc-700 dark:text-zinc-300 hover:text-zinc-900 dark:hover:text-white border-zinc-300 dark:border-zinc-700 cursor-pointer"
                           title="상세보기"
                         >
-                          <Eye className="h-3.5 w-3.5" />
+                          상세
                         </Button>
                       </div>
                     </td>
@@ -1187,19 +1268,31 @@ export default function VendorMassQuotationPage() {
               {/* 협력사 세부 원가 산출 내역 (6대 원가 구성비) */}
               {(() => {
                 const myQuote = getMyVendorQuote(selectedItem);
-                const isMyItem = isMatchingVendor(selectedItem.vendorName, currentVendor);
-                const matCost = myQuote?.materialCost || (isMyItem ? selectedItem.materialCost : 0);
-                const procCost = myQuote?.processingCost || (isMyItem ? selectedItem.processingCost : 0);
-                const overCost = myQuote?.overheadCost || (isMyItem ? (selectedItem as any).overheadCost : 0) || 60;
-                const profCost = myQuote?.profitCost || (isMyItem ? (selectedItem as any).profitCost : 0) || 40;
-                const packCost = myQuote?.packagingCost || (isMyItem ? selectedItem.packagingCost : 0);
-                const logCost = myQuote?.logisticsCost || (isMyItem ? selectedItem.logisticsCost : 0);
-                const unitPrice = myQuote?.unitPrice || (matCost + procCost + overCost + profCost + packCost + logCost);
-                const submittedDate = myQuote?.submittedDate || (isMyItem ? selectedItem.submittedDate : "") || new Date().toISOString().split("T")[0];
 
-                if (!matCost && !procCost && !packCost && !logCost && !myQuote) return null;
+                // 외주사 관점: 자사가 견적서를 제출하지 않은 미제출 상태인 경우 안내 박스 노출
+                if (!myQuote || !myQuote.unitPrice) {
+                  return (
+                    <div className="p-4 bg-zinc-50 dark:bg-zinc-800/40 border border-dashed rounded-md text-center flex flex-col items-center justify-center gap-1.5 py-6">
+                      <Clock className="h-5 w-5 text-amber-500 animate-pulse" />
+                      <span className="font-bold text-xs text-zinc-700 dark:text-zinc-200">
+                        세부 원가 산출 내역 미제출 (견적서 작성 대기)
+                      </span>
+                      <p className="text-[11px] text-zinc-400 max-w-md">
+                        MPSI로부터 사출 양산 견적 요청이 접수된 상태입니다. 목록 우측의 [견적서 작성] 버튼을 클릭하여 재료비·가공비 등 세부 원가를 입력하고 견적서 파일을 제출해 주세요.
+                      </p>
+                    </div>
+                  );
+                }
 
-                const displayVendorName = myQuote?.vendorName || (isMyItem ? selectedItem.vendorName : currentVendor);
+                const matCost = myQuote.materialCost || 0;
+                const procCost = myQuote.processingCost || 0;
+                const overCost = myQuote.overheadCost || 0;
+                const profCost = myQuote.profitCost || 0;
+                const packCost = myQuote.packagingCost || 0;
+                const logCost = myQuote.logisticsCost || 0;
+                const unitPrice = myQuote.unitPrice || (matCost + procCost + overCost + profCost + packCost + logCost);
+                const submittedDate = myQuote.submittedDate || selectedItem.submittedDate || "";
+                const displayVendorName = myQuote.vendorName || currentVendor;
 
                 return (
                   <div className="p-3 bg-white dark:bg-zinc-900 border rounded-md space-y-2">
@@ -1209,50 +1302,50 @@ export default function VendorMassQuotationPage() {
                         1. [{displayVendorName}] 세부 원가 산출 내역 (6대 원가 구성비)
                       </span>
                       <span className="text-[11px] text-zinc-500 font-mono font-normal">
-                        제출일자: <b className="text-zinc-700 dark:text-zinc-300">{submittedDate}</b> (목표 C/T {selectedItem.targetCycleTime || 35}초)
+                        제출일자: <b className="text-zinc-700 dark:text-zinc-300">{submittedDate}</b> (제안 C/T {myQuote.targetCycleTime || selectedItem.targetCycleTime || 35}초)
                       </span>
                     </div>
                     <div className="grid grid-cols-2 sm:grid-cols-7 gap-1.5 text-center text-xs">
                       <div className="bg-zinc-50 dark:bg-zinc-800 p-2 rounded border">
                         <span className="text-[10px] text-zinc-400 block">재료비</span>
                         <span className="font-mono font-bold text-zinc-800 dark:text-zinc-200">
-                          {matCost ? `${matCost.toLocaleString()}원` : "0원"}
+                          {matCost.toLocaleString()}원
                         </span>
                       </div>
                       <div className="bg-zinc-50 dark:bg-zinc-800 p-2 rounded border">
                         <span className="text-[10px] text-zinc-400 block">가공비(임가공)</span>
                         <span className="font-mono font-bold text-zinc-800 dark:text-zinc-200">
-                          {procCost ? `${procCost.toLocaleString()}원` : "0원"}
+                          {procCost.toLocaleString()}원
                         </span>
                       </div>
                       <div className="bg-zinc-50 dark:bg-zinc-800 p-2 rounded border">
                         <span className="text-[10px] text-zinc-400 block">일반관리비</span>
                         <span className="font-mono font-bold text-zinc-800 dark:text-zinc-200">
-                          {overCost ? `${overCost.toLocaleString()}원` : "0원"}
+                          {overCost.toLocaleString()}원
                         </span>
                       </div>
                       <div className="bg-zinc-50 dark:bg-zinc-800 p-2 rounded border">
                         <span className="text-[10px] text-zinc-400 block">이윤</span>
                         <span className="font-mono font-bold text-zinc-800 dark:text-zinc-200">
-                          {profCost ? `${profCost.toLocaleString()}원` : "0원"}
+                          {profCost.toLocaleString()}원
                         </span>
                       </div>
                       <div className="bg-zinc-50 dark:bg-zinc-800 p-2 rounded border">
                         <span className="text-[10px] text-zinc-400 block">포장비</span>
                         <span className="font-mono font-bold text-zinc-800 dark:text-zinc-200">
-                          {packCost ? `${packCost.toLocaleString()}원` : "0원"}
+                          {packCost.toLocaleString()}원
                         </span>
                       </div>
                       <div className="bg-zinc-50 dark:bg-zinc-800 p-2 rounded border">
                         <span className="text-[10px] text-zinc-400 block">운송비</span>
                         <span className="font-mono font-bold text-zinc-800 dark:text-zinc-200">
-                          {logCost ? `${logCost.toLocaleString()}원` : "0원"}
+                          {logCost.toLocaleString()}원
                         </span>
                       </div>
                       <div className="bg-blue-50 dark:bg-blue-950/40 p-2 rounded border border-blue-300">
                         <span className="text-[10px] text-blue-700 font-bold block">합계 단가</span>
                         <span className="font-mono font-bold text-blue-900 dark:text-blue-200">
-                          {unitPrice ? `${unitPrice.toLocaleString()}원` : "0원"}
+                          {unitPrice.toLocaleString()}원
                         </span>
                       </div>
                     </div>
@@ -1263,10 +1356,9 @@ export default function VendorMassQuotationPage() {
               {/* 현재 첨부 견적서 파일 - 자사 제출 건만 표시 */}
               {(() => {
                 const myQuote = getMyVendorQuote(selectedItem);
-                const isMyItem = isMatchingVendor(selectedItem.vendorName, currentVendor);
-                const fileName = myQuote?.quotationFileName || (isMyItem ? selectedItem.estimateFileName : undefined);
-                const fileSize = myQuote?.quotationFileSize || (isMyItem ? selectedItem.estimateFileSize : "첨부 완료");
-                const fileUrl = myQuote?.quotationFileUrl || (isMyItem ? selectedItem.estimateFileUrl : undefined);
+                const fileName = myQuote?.quotationFileName;
+                const fileSize = myQuote?.quotationFileSize || "첨부 완료";
+                const fileUrl = myQuote?.quotationFileUrl;
 
                 if (!fileName) return null;
 

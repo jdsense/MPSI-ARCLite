@@ -135,6 +135,15 @@
           "ADMIN",
           "MPSI"
         ]
+      },
+      {
+        "id": "mass-prod-revision",
+        "title": "4. 설변 PM관리 (자체)",
+        "url": "/portal/mass-prod/revision",
+        "roles": [
+          "ADMIN",
+          "MPSI"
+        ]
       }
     ]
   },

@@ -116,6 +116,31 @@ export function isDummyPpap(item: any): boolean {
   );
 }
 
+// 시양산 검증 단계에서 MPSI가 [적합 판정] 양산승인 및 PPAP 연동 확정을 완료했는지 검증하는 헬퍼
+export function isPpapConfirmedByMpsi(projectNo?: string): boolean {
+  if (typeof window === "undefined" || !projectNo) return true;
+  try {
+    const rawVals = localStorage.getItem("mpsi_mass_validations_v4");
+    if (!rawVals) return true;
+    const vals = JSON.parse(rawVals);
+    if (!Array.isArray(vals)) return true;
+
+    // 시양산 검증 데이터에서 해당 프로젝트 검색
+    const targetVal = vals.find((v: any) => v.projectNo === projectNo || v.officialProjectNo === projectNo);
+    if (targetVal) {
+      // 검증 데이터가 존재하면 MPSI 확정 여부 필수 확인
+      const isConfirmed =
+        Boolean(targetVal.isPpapLinked) === true ||
+        Boolean(targetVal.ppapLinked) === true ||
+        (Array.isArray(targetVal.trials) && targetVal.trials.some((tr: any) => tr.status === "양산승인(내부)"));
+      return isConfirmed;
+    }
+  } catch (e) {
+    console.warn("isPpapConfirmedByMpsi check warning:", e);
+  }
+  return true;
+}
+
 export function getStoredPpapItems(): PPAPApprovalItem[] {
   if (typeof window === "undefined") return [];
   try {
@@ -123,7 +148,7 @@ export function getStoredPpapItems(): PPAPApprovalItem[] {
     if (stored) {
       const parsed = JSON.parse(stored);
       if (Array.isArray(parsed)) {
-        return parsed.filter((it: any) => !isDummyPpap(it));
+        return parsed.filter((it: any) => !isDummyPpap(it) && isPpapConfirmedByMpsi(it.projectNo));
       }
     }
   } catch (e) {
@@ -135,7 +160,7 @@ export function getStoredPpapItems(): PPAPApprovalItem[] {
 export function savePpapItemsToStorage(items: PPAPApprovalItem[]): void {
   if (typeof window === "undefined") return;
   try {
-    const cleanList = items.filter((it) => !isDummyPpap(it));
+    const cleanList = items.filter((it) => !isDummyPpap(it) && isPpapConfirmedByMpsi(it.projectNo));
     localStorage.setItem(STORAGE_KEY, JSON.stringify(cleanList));
     window.dispatchEvent(new CustomEvent(SYNC_EVENT_NAME, { detail: cleanList }));
   } catch (e) {
@@ -162,6 +187,17 @@ export async function syncPpapToBackend(item: PPAPApprovalItem) {
 // 양산성 검증 완료 시 PPAP 자동 등재 전역 함수
 export async function autoEnrollMassPpapFromValidation(valProject: any): Promise<PPAPApprovalItem | null> {
   if (typeof window === "undefined" || !valProject?.projectNo || isDummyPpap(valProject)) return null;
+
+  // MPSI 연동 확정 여부 검증 (MPSI가 [적합 판정] 양산승인 및 PPAP 연동 확정 버튼을 누르기 전까지는 절대 PPAP 등록 불가)
+  const isMpsiConfirmed = 
+    Boolean(valProject.isPpapLinked) === true ||
+    Boolean(valProject.ppapLinked) === true ||
+    (Array.isArray(valProject.trials) && valProject.trials.some((tr: any) => tr.status === "양산승인(내부)"));
+
+  if (!isMpsiConfirmed) {
+    console.warn("[autoEnrollMassPpapFromValidation] MPSI PPAP 연동 확정 전이므로 PPAP 등재 보류:", valProject.projectNo);
+    return null;
+  }
 
   const current = getStoredPpapItems();
   const pid = valProject.officialProjectNo || valProject.projectNo;
@@ -219,7 +255,7 @@ export function useMassPpapStore() {
   const refreshFromDb = useCallback(async () => {
     setIsLoading(true);
     try {
-      const res = await fetch("/api/v1/mass-prod/ppap");
+      const res = await fetch("/api/v1/mass-prod/ppap", { cache: "no-store" });
       if (res.ok) {
         const json = await res.json();
         if (json.success && Array.isArray(json.data)) {

@@ -224,8 +224,15 @@ export async function GET(request: NextRequest) {
       for (const mq of mqRes.rows) {
         let mqNote: any = {};
         try { mqNote = typeof mq.Note === 'string' ? JSON.parse(mq.Note) : (mq.Note || {}); } catch {}
-        const pId = mq.ProjectID || mqNote.officialProjectNo || mqNote.projectNo;
-        if (pId) massQuotesByProject[pId] = { ...mq, note: mqNote };
+        const keys = [mq.ProjectID, mqNote.officialProjectNo, mqNote.projectNo].filter(Boolean);
+        const isFinalized = mqNote.status === '단가합의완료' || mqNote.status === '양산계약확정';
+        for (const pId of keys) {
+          const existing = massQuotesByProject[pId];
+          const existingFinalized = existing?.note?.status === '단가합의완료' || existing?.note?.status === '양산계약확정';
+          if (!existing || (isFinalized && !existingFinalized)) {
+            massQuotesByProject[pId] = { ...mq, note: mqNote };
+          }
+        }
       }
     } catch {}
 
@@ -234,7 +241,10 @@ export async function GET(request: NextRequest) {
       for (const v of valRes.rows) {
         let vNote: any = {};
         try { vNote = typeof v.Note === 'string' ? JSON.parse(v.Note) : (v.Note || {}); } catch {}
-        if (v.ProjectID) validationsByProject[v.ProjectID] = { ...v, note: vNote };
+        const keys = [v.ProjectID, vNote.officialProjectNo, vNote.projectNo].filter(Boolean);
+        for (const k of keys) {
+          validationsByProject[k] = { ...v, note: vNote };
+        }
       }
     } catch {}
 
@@ -243,7 +253,10 @@ export async function GET(request: NextRequest) {
       for (const pp of ppapRes.rows) {
         let ppNote: any = {};
         try { ppNote = typeof pp.Note === 'string' ? JSON.parse(pp.Note) : (pp.Note || {}); } catch {}
-        if (pp.ProjectID) ppapsByProject[pp.ProjectID] = { ...pp, note: ppNote };
+        const keys = [pp.ProjectID, ppNote.officialProjectNo, ppNote.projectNo].filter(Boolean);
+        for (const k of keys) {
+          ppapsByProject[k] = { ...pp, note: ppNote };
+        }
       }
     } catch {}
 
@@ -510,7 +523,10 @@ export async function GET(request: NextRequest) {
         }
         if (mqNote.cavity && !cavity) cavity = mqNote.cavity;
         const mqVendor = mqNote.selectedVendorName || mqNote.vendorName || matchedMassQuote.MassVendorID;
-        if (mqVendor && !massVendor) massVendor = mqVendor;
+        const isMqConfirmed = mqNote.status === '단가합의완료' || mqNote.status === '양산계약확정';
+        if (mqVendor && (!massVendor || (isMqConfirmed && mqNote.selectedVendorName))) {
+          massVendor = mqVendor;
+        }
       }
 
       // 3-6. 시양산/유효성 검증(MpsiMassValidation) 목표 양산승인일 및 진행 스텝 바인딩
@@ -557,9 +573,31 @@ export async function GET(request: NextRequest) {
         }
       }
 
-      const cleanedStepNameCustom = (finalStep > 0 && (p.stepNameCustom === '고객 답변 대기' || p.stepNameCustom === '수주 미성사'))
-        ? undefined
-        : p.stepNameCustom;
+      const defaultStepNames = new Set([
+        '견적 및 수주',
+        '제품 data 접수',
+        '제품 3D data 검토',
+        '최종 제품 3D data 수신',
+        '금형 발주',
+        '금형 설계',
+        '소재발주 및 제작',
+        '금형완료/시사출',
+        '제품 치수/외관 확인 및 금형검사',
+        '금형 육성 완료',
+        '금형 승인 후 이관',
+        '양산승인 사출(시양산)',
+        '양산품질 검증',
+        '양산 승인/납품시작',
+      ]);
+      const cleanedStepNameCustom =
+        finalStep > 0 &&
+        (!p.stepNameCustom ||
+          p.stepNameCustom === '고객 답변 대기' ||
+          p.stepNameCustom === '수주 미성사' ||
+          p.stepNameCustom === '수주확정' ||
+          defaultStepNames.has(p.stepNameCustom))
+          ? undefined
+          : p.stepNameCustom;
 
       return {
         ...p,

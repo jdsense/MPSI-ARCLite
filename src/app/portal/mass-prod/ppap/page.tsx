@@ -18,7 +18,8 @@ import {
   useMassPpapStore, 
   PPAPApprovalItem, 
   PPAPPackageSubmissionHistoryItem,
-  getMassPpapStatus 
+  getMassPpapStatus,
+  isPpapConfirmedByMpsi
 } from "@/lib/mass-ppap-store";
 
 export default function MassProdPPAPPage() {
@@ -141,7 +142,7 @@ export default function MassProdPPAPPage() {
     }
   };
 
-  // 검색 필터 적용 (더미 데이터 배제)
+  // 검색 필터 적용 (더미 데이터 배제 및 MPSI 연동 확정 확인)
   const filteredData = items.filter((item) => {
     if (
       item.projectName?.includes("현대 NT5") ||
@@ -149,6 +150,10 @@ export default function MassProdPPAPPage() {
       item.projectNo === "MI25001P1" ||
       item.projectNo === "MI25001P2"
     ) {
+      return false;
+    }
+    // MPSI 양산승인 및 PPAP 연동 확정 버튼을 누르기 전까지는 노출 차단
+    if (!isPpapConfirmedByMpsi(item.projectNo)) {
       return false;
     }
     const status = getMassPpapStatus(item);

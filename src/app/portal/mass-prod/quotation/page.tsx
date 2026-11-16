@@ -104,23 +104,6 @@ export default function MassProductionQuotationPage() {
   // 프로젝트 선택 연동 (직접 입력 없이 등록된 프로젝트 선택만 허용)
   const [selectedProjectNo, setSelectedProjectNo] = useState<string>("");
 
-  // 신규 모달 열기 시 폼 초기화
-  const handleOpenNewModal = () => {
-    setSelectedProjectNo("");
-    setNewForm(getEmptyNewForm());
-    setIsNewModalOpen(true);
-  };
-
-  // estimates 변경 시 열려 있는 selectedItem 동기화
-  useEffect(() => {
-    if (selectedItem) {
-      const found = estimates.find((e) => e.estimateNo === selectedItem.estimateNo || e.id === selectedItem.id);
-      if (found) {
-        setSelectedItem(found);
-      }
-    }
-  }, [estimates]);
-
   // DB VendorPartyMaster 테이블 기반 실제 사출양산처 인터페이스
   interface DbMassVendor {
     id: string;
@@ -130,38 +113,53 @@ export default function MassProductionQuotationPage() {
     telNo?: string;
   }
 
-  const DEFAULT_MASS_VENDORS_FROM_DB: DbMassVendor[] = [
-    { id: "S-NM-002", name: "뉴몰드 (사출양산)", bizRegNo: "134-81-67890", managerName: "김영수 부장 (품질보증)" },
-    { id: "S-KP-004", name: "(주)한국정밀사출 (사출양산)", bizRegNo: "135-86-44332", managerName: "강성호 부장 (품질관리)" }
-  ];
+  // 실제 DB에 등록된 사출양산처 목록 상태 (더미 목록 없이 100% DB 동기화)
+  const [dbMassVendors, setDbMassVendors] = useState<DbMassVendor[]>([]);
 
-  // 실제 DB 사출양산처 목록 상태
-  const [dbMassVendors, setDbMassVendors] = useState<DbMassVendor[]>(DEFAULT_MASS_VENDORS_FROM_DB);
-
-  // DB VendorPartyMaster 테이블에서 실제 사출양산처 목록 동기화
-  useEffect(() => {
-    async function loadMassVendors() {
-      try {
-        const res = await fetch("/api/v1/basic-info/vendors?type=mass");
-        if (res.ok) {
-          const json = await res.json();
-          if (json.success && Array.isArray(json.data) && json.data.length > 0) {
-            const mapped: DbMassVendor[] = json.data.map((v: any) => ({
-              id: v.vendorCode,
-              name: v.companyName,
+  // DB VendorPartyMaster 테이블로부터 실제 등록된 사출양산 협력사 목록만 100% 동기화
+  const loadMassVendors = async () => {
+    try {
+      const res = await fetch("/api/v1/basic-info/vendors?type=mass", { cache: "no-store" });
+      if (res.ok) {
+        const json = await res.json();
+        if (json.success && Array.isArray(json.data) && json.data.length > 0) {
+          const mapped: DbMassVendor[] = json.data.map((v: any) => {
+            // (사출양산), (금형제작) 등 부가 꼬리표 제거 후 표준 정규화
+            let normalizedName = v.companyName
+              ? v.companyName.replace(/\(사출양산\)|\(금형제작\)/g, "").trim()
+              : v.companyName;
+            if (normalizedName === "뉴몰드") normalizedName = "(주)뉴몰드";
+            return {
+              id: v.vendorCode || v.id,
+              name: normalizedName,
               bizRegNo: v.bizRegNo,
               managerName: v.managerName,
               telNo: v.telNo
-            }));
-            setDbMassVendors(mapped);
-          }
+            };
+          });
+
+          // DB에 실제 존재하는 업체만 순수하게 세팅 (하드코딩 더미 목록 강제 병합 차단)
+          setDbMassVendors(mapped);
+          return mapped;
         }
-      } catch (err) {
-        console.warn("[loadMassVendors fallback to default]", err);
       }
+    } catch (err) {
+      console.warn("[loadMassVendors Error]", err);
     }
+    return [];
+  };
+
+  useEffect(() => {
     loadMassVendors();
   }, []);
+
+  // 신규 모달 열기 시 폼 초기화 및 최신 DB 사출 협력사 실시간 동기화
+  const handleOpenNewModal = () => {
+    setSelectedProjectNo("");
+    setNewForm(getEmptyNewForm());
+    loadMassVendors();
+    setIsNewModalOpen(true);
+  };
 
   const handleSelectProject = (pNo: string) => {
     setSelectedProjectNo(pNo);
@@ -259,23 +257,32 @@ export default function MassProductionQuotationPage() {
   // 외주처 다중 선택 토글 핸들러 (체크박스 필터 방식 - DB 사출양산처 목록 기준)
   const handleToggleVendor = (vendorName: string) => {
     if (vendorName === "전체 업체") {
+      const isAllSelected = newForm.assignedVendors.includes("전체 업체") || 
+        (newForm.assignedVendors.length === dbMassVendors.length && dbMassVendors.length > 0);
       setNewForm((prev) => ({
         ...prev,
-        assignedVendors: prev.assignedVendors.includes("전체 업체") ? [] : ["전체 업체"]
+        assignedVendors: isAllSelected ? [] : ["전체 업체"]
       }));
       return;
     }
 
     setNewForm((prev) => {
-      let current = prev.assignedVendors.filter((v) => v !== "전체 업체");
+      const isAllSelected = prev.assignedVendors.includes("전체 업체");
+      let current = isAllSelected 
+        ? dbMassVendors.map((v) => v.name) 
+        : [...prev.assignedVendors.filter((v) => v !== "전체 업체")];
+
       if (current.includes(vendorName)) {
         current = current.filter((v) => v !== vendorName);
       } else {
         current = [...current, vendorName];
       }
+
       return {
         ...prev,
-        assignedVendors: current.length === dbMassVendors.length ? ["전체 업체"] : current
+        assignedVendors: (current.length === dbMassVendors.length && dbMassVendors.length > 0)
+          ? ["전체 업체"] 
+          : current
       };
     });
   };
@@ -425,7 +432,7 @@ export default function MassProductionQuotationPage() {
   };
 
   // 신규 등록 저장
-  const handleSaveNewEstimate = () => {
+  const handleSaveNewEstimate = async () => {
     if (!selectedProjectNo || !newForm.projectNo) {
       alert("견적을 등록할 대상 프로젝트를 선택해주세요.");
       return;
@@ -448,21 +455,27 @@ export default function MassProductionQuotationPage() {
       ? newForm.projectNo
       : `MI${newForm.projectNo.replace(/^Q/i, "")}`;
 
+    // 실제 배포할 외주사 이름 배열 확정 ("전체 업체" 선택 시 DB에 등록된 실제 사출양산처 전체 목록으로 전개)
+    const resolvedAssignedVendors =
+      newForm.productionType === "IN_HOUSE"
+        ? ["MPSI 자체사출공장"]
+        : newForm.assignedVendors.includes("전체 업체") && dbMassVendors.length > 0
+        ? dbMassVendors.map((v) => v.name)
+        : newForm.assignedVendors;
+
     // 외주사 표기명 결정
     let vendorDisplayName = "(주)뉴몰드";
     if (newForm.productionType === "IN_HOUSE") {
       vendorDisplayName = "MPSI 자체사출공장";
-    } else if (newForm.assignedVendors.includes("전체 업체")) {
-      vendorDisplayName = `전체 양산처 (${dbMassVendors.length}개사)`;
-    } else if (newForm.assignedVendors.length === 1) {
-      vendorDisplayName = newForm.assignedVendors[0];
-    } else {
-      vendorDisplayName = `${newForm.assignedVendors[0]} 외 ${newForm.assignedVendors.length - 1}개사`;
+    } else if (resolvedAssignedVendors.length === 1) {
+      vendorDisplayName = resolvedAssignedVendors[0];
+    } else if (resolvedAssignedVendors.length > 1) {
+      vendorDisplayName = `${resolvedAssignedVendors[0]} 외 ${resolvedAssignedVendors.length - 1}개사`;
     }
 
     const generatedEstimateNo = `${formattedPjtNo}사출견적`;
 
-    addEstimate({
+    await addEstimate({
       estimateNo: generatedEstimateNo,
       projectNo: formattedPjtNo,
       officialProjectNo: formattedPjtNo,
@@ -470,7 +483,7 @@ export default function MassProductionQuotationPage() {
       productName: newForm.productName.trim(),
       customerName: newForm.customerName,
       vendorName: vendorDisplayName,
-      assignedVendors: newForm.productionType === "IN_HOUSE" ? ["MPSI 자체사출공장"] : newForm.assignedVendors,
+      assignedVendors: resolvedAssignedVendors,
       productionType: newForm.productionType,
       resinSpec: newForm.resinSpec,
       resinPricePerKg: Number(newForm.resinPricePerKg || 0),
@@ -498,8 +511,8 @@ export default function MassProductionQuotationPage() {
 
     setIsNewModalOpen(false);
     if (newForm.productionType === "OUTSOURCING") {
-      const assignedNames = newForm.assignedVendors.includes("전체 업체") ? "전체 협력사(4개사)" : newForm.assignedVendors.join(", ");
-      alert(`[외주요청 완료] 사출 협력사(${assignedNames})에 양산 견적요청이 전송되었습니다.\n상단 역할 전환에서 [양산외주] 협력사로 이동하시면 바로 견적서 작성이 가능합니다.`);
+      const assignedNames = newForm.assignedVendors.includes("전체 업체") ? `전체 협력사(${dbMassVendors.length}개사)` : newForm.assignedVendors.join(", ");
+      alert(`[외주요청 완료] 사출 협력사(${assignedNames})에 양산 견적요청이 전송되었습니다.\n외주 협력사 포털(/portal/vendor-portal/mass/quotation)에서 바로 견적서 작성이 가능합니다.`);
     } else {
       alert(`[자체생산 등록 완료] MPSI 자체 사출공장 건으로 '자체생산' 상태로 등록되었습니다.`);
     }

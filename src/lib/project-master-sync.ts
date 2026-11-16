@@ -49,7 +49,7 @@ export async function syncDownstreamToProjectMaster(
   try {
     // baseNo 또는 baseNo__E001 등 동일 프로젝트 번호 계열 조회
     const res = await query(
-      `SELECT "ProjectMasterSequenceNo", "ProjectID", "CurrentProcessStage", "Note"
+      `SELECT "ProjectMasterSequenceNo", "ProjectID", "Note"
        FROM "ProjectMaster"
        WHERE ("ProjectID" = $1 OR "ProjectID" LIKE $2)
          AND ("UseIndicator" IS TRUE OR "UseIndicator" IS NULL)
@@ -96,7 +96,7 @@ export async function syncDownstreamToProjectMaster(
       if (payload.trialDegree) noteObj.trialDegree = payload.trialDegree;
       if (payload.stepStatus) noteObj.stepStatus = payload.stepStatus;
 
-      const currentStage = Number(row.CurrentProcessStage || noteObj.currentStep || 0);
+      const currentStage = Number(noteObj.currentStep || 0);
       const nextStep = payload.currentStep !== undefined
         ? Math.max(currentStage, Number(payload.currentStep))
         : currentStage;
@@ -115,14 +115,12 @@ export async function syncDownstreamToProjectMaster(
         `UPDATE "ProjectMaster"
          SET "ExpectedStartDate" = COALESCE($1, "ExpectedStartDate"),
              "ExpectedEndDate" = COALESCE($2, "ExpectedEndDate"),
-             "CurrentProcessStage" = CASE WHEN $3::INT > 0 THEN $3::VARCHAR ELSE "CurrentProcessStage" END,
-             "Note" = $4,
+             "Note" = $3,
              "ModificationDateTime" = NOW()
-         WHERE "ProjectMasterSequenceNo" = $5`,
+         WHERE "ProjectMasterSequenceNo" = $4`,
         [
           expectedStart,
           expectedEnd,
-          nextStep,
           JSON.stringify(noteObj),
           row.ProjectMasterSequenceNo,
         ]

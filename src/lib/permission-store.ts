@@ -180,6 +180,19 @@ export const INITIAL_MENU_PERMISSIONS: MenuPermissionItem[] = [
     },
   },
   {
+    id: 111,
+    groupNm: "사출양산",
+    screenId: "C340000",
+    screenName: "4. 설변 PM관리 (자체)",
+    url: "/portal/mass-prod/revision",
+    permissions: {
+      ADMIN: { canRead: true, canCreate: true, canUpdate: true, canDelete: true },
+      MPSI: { canRead: true, canCreate: true, canUpdate: true, canDelete: true },
+      VENDOR_MOLD: { canRead: false, canCreate: false, canUpdate: false, canDelete: false },
+      VENDOR_MASS: { canRead: false, canCreate: false, canUpdate: false, canDelete: false },
+    },
+  },
+  {
     id: 12,
     groupNm: "물류배송",
     screenId: "C400000",

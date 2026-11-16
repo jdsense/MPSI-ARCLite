@@ -30,16 +30,14 @@ const ROLE_OPTIONS: { id: RoleType; name: string }[] = [
   { id: "VENDOR_MASS", name: "양산 협력사" },
 ];
 
-// 협력사 표준 코드 매핑
-const VENDOR_OPTIONS = [
-  { code: "", name: "(본사/해당없음)" },
-  { code: "1", name: "1 (시스템/본사)" },
-  { code: "WOOSUNG", name: "WOOSUNG - 우성정공(주)" },
-  { code: "NEWMOLD", name: "NEWMOLD - (주)뉴몰드" },
-  { code: "DAEHAN", name: "DAEHAN - 대한금형정공" },
-  { code: "SAMWOO", name: "SAMWOO - (주)삼우정밀" },
-  { code: "SEWON", name: "SEWON - 세원사출(주)" },
-  { code: "JEIL", name: "JEIL - 제일프라테크" },
+// 협력사 기본 표준 코드 매핑
+const DEFAULT_VENDOR_OPTIONS = [
+  { code: "", name: "(본사/해당없음)", companyName: "MPSI 본사" },
+  { code: "1", name: "1 (시스템/본사)", companyName: "MPSI 기술본부" },
+  { code: "WOOSUNG", name: "WOOSUNG - 우성정공(주)", companyName: "우성정공(주)" },
+  { code: "NEWMOLD", name: "NEWMOLD - (주)뉴몰드", companyName: "(주)뉴몰드" },
+  { code: "KOREAPLAS", name: "KOREAPLAS - (주)한국정밀사출", companyName: "(주)한국정밀사출" },
+  { code: "DAEHAN", name: "DAEHAN - 대한금형(주)", companyName: "대한금형(주)" },
 ];
 
 export default function UserManagementPage() {
@@ -50,6 +48,37 @@ export default function UserManagementPage() {
     deleteUser, 
     saveAllUsers 
   } = useUserAccountStore();
+
+  const [vendorOptions, setVendorOptions] = useState(DEFAULT_VENDOR_OPTIONS);
+
+  // DB VendorPartyMaster 공급업체 목록 실시간 동기화
+  React.useEffect(() => {
+    fetch("/api/v1/basic-info/vendors?category=공급업체", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((json) => {
+        if (json.success && Array.isArray(json.data)) {
+          const dbOpts = json.data.map((v: any) => {
+            let cleanComp = (v.companyName || "")
+              .replace(/\(사출양산\)|\(금형제작\)/g, "")
+              .trim();
+            if (cleanComp === "뉴몰드") cleanComp = "(주)뉴몰드";
+            return {
+              code: v.vendorCode || cleanComp,
+              name: `${v.vendorCode || cleanComp} - ${cleanComp}`,
+              companyName: cleanComp,
+            };
+          });
+          const merged = [...DEFAULT_VENDOR_OPTIONS];
+          dbOpts.forEach((opt: any) => {
+            if (!merged.some((m) => m.code === opt.code || m.companyName === opt.companyName)) {
+              merged.push(opt);
+            }
+          });
+          setVendorOptions(merged);
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   // 단일 선택된 행 ID
   const [selectedUserId, setSelectedUserId] = useState<number>(1);
@@ -153,7 +182,18 @@ export default function UserManagementPage() {
     }
 
     const roleObj = ROLE_OPTIONS.find((r) => r.id === editingItem.roleId) || ROLE_OPTIONS[1];
-    const vendorObj = VENDOR_OPTIONS.find((v) => v.code === editingItem.vendorCode);
+    const vendorObj = vendorOptions.find((v) => v.code === editingItem.vendorCode);
+
+    let resolvedVendorName = vendorObj?.companyName || "";
+    if (roleObj.id === "VENDOR_MASS" || roleObj.id === "VENDOR_MOLD") {
+      if (!editingItem.vendorCode || editingItem.vendorCode === "1" || !resolvedVendorName || resolvedVendorName.includes("MPSI")) {
+        resolvedVendorName = editingItem.userName.trim() || (roleObj.id === "VENDOR_MASS" ? "(주)한국정밀사출" : "우성정공(주)");
+      }
+    } else if (roleObj.id === "MPSI") {
+      resolvedVendorName = "MPSI 본사";
+    } else if (roleObj.id === "ADMIN") {
+      resolvedVendorName = "MPSI 기술본부";
+    }
 
     const payload = {
       userId: editingItem.userId.trim(),
@@ -162,7 +202,7 @@ export default function UserManagementPage() {
       roleId: roleObj.id,
       roleName: roleObj.name,
       vendorCode: editingItem.vendorCode || "",
-      vendorName: vendorObj?.name || (roleObj.id === "MPSI" ? "MPSI 본사" : "협력사"),
+      vendorName: resolvedVendorName,
       department: editingItem.department || "SCM 사업부",
       email: editingItem.email || `${editingItem.userId.trim()}@mpsi.co.kr`,
       tel: editingItem.tel || "02-555-0100",
@@ -716,7 +756,7 @@ export default function UserManagementPage() {
                     onChange={(e) => setEditingItem({ ...editingItem, vendorCode: e.target.value })}
                     className="h-7 flex-1 rounded border bg-white dark:bg-zinc-900 px-2 text-xs font-mono font-bold text-purple-800"
                   >
-                    {VENDOR_OPTIONS.map((v) => (
+                    {vendorOptions.map((v) => (
                       <option key={v.code} value={v.code}>
                         {v.name}
                       </option>

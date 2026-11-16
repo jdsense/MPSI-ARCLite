@@ -1,13 +1,13 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { 
   Wrench, AlertTriangle, Clock, CheckCircle2, 
   Calendar, FileSpreadsheet, PlusCircle, Sparkles, 
   X, Check, Send, Search, RefreshCw, Eye, ArrowRight,
   Upload, FileText, Layers, ShieldCheck, History,
   Info, ChevronRight, Award, MessageSquare, Paperclip,
-  ExternalLink
+  ExternalLink, RotateCcw
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,15 +15,40 @@ import { DateRangeFilter, isWithinDateRange, DatePresetType } from "@/components
 import { useAuthRole } from "@/lib/role-store";
 import { useProjectMaster } from "@/lib/project-store";
 import { useNotificationStore, cleanCompanyAuthor } from "@/lib/notification-store";
+import { isMatchingMassVendor, isInvalidMassVendorName } from "@/lib/mass-quotation-store";
 import { 
   usePmRevisionStore, 
   PmRevisionProjectItem,
   RevisionHistoryItem 
 } from "@/lib/pm-revision-store";
 
+// 날짜 문자열을 <input type="date"> 규격(YYYY-MM-DD)으로 정규화
+function normalizeDateForInput(val?: string | null): string {
+  if (!val) return "";
+  const trimmed = String(val).trim();
+  if (!trimmed || trimmed === "-" || trimmed === "공급업체입력" || trimmed === "자체검증") return "";
+  const dotted = trimmed.match(/^(\d{4})\.\s*(\d{1,2})\.\s*(\d{1,2})/);
+  if (dotted) {
+    return `${dotted[1]}-${dotted[2].padStart(2, "0")}-${dotted[3].padStart(2, "0")}`;
+  }
+  const iso = trimmed.split("T")[0];
+  if (/^\d{4}-\d{2}-\d{2}$/.test(iso)) return iso;
+  return "";
+}
+
+// 숫자만 추출해 천 단위 콤마 포맷 반환 (숫자 외 입력 차단)
+function formatNumericInput(val?: string | number | null): string {
+  if (val === undefined || val === null) return "";
+  const digits = String(val).replace(/[^0-9]/g, "");
+  if (!digits) return "";
+  return Number(digits).toLocaleString();
+}
+
 export default function VendorMassPmRevisionPage() {
   const { 
-    items, 
+    items,
+    isLoading,
+    refreshFromDb,
     updateRevisionMassStartDate, 
     updatePmProcess, 
     updatePmSchedule, 
@@ -31,33 +56,22 @@ export default function VendorMassPmRevisionPage() {
     savePmRoundData,
     changeProjectState,
     addMemo,
-    syncFromMasterProjects
   } = usePmRevisionStore();
   const { projects: masterProjects } = useProjectMaster();
   const { addNotification } = useNotificationStore();
-  const { vendorName } = useAuthRole();
-  const currentVendor = vendorName || "(주)뉴몰드";
-
-  // 프로젝트 마스터(masterProjects)의 설변(E00..) 프로젝트 자동 동기화 (무한 루프 방지 서명 캐싱)
-  const lastSyncSignatureRef = React.useRef<string>("");
-  React.useEffect(() => {
-    if (!masterProjects || masterProjects.length === 0 || !syncFromMasterProjects) return;
-    const signature = masterProjects
-      .filter((p: any) => String(p.changeType || "").startsWith("E") || String(p.revisionCode || "").startsWith("E"))
-      .map((p: any) => `${p.projectNo}:${p.changeType || p.revisionCode}:${p.productName}:${p.updatedAt || ""}`)
-      .join("|");
-    if (!signature || lastSyncSignatureRef.current === signature) return;
-    lastSyncSignatureRef.current = signature;
-    syncFromMasterProjects(masterProjects);
-  }, [masterProjects, syncFromMasterProjects]);
+  const { role, vendorName } = useAuthRole();
+  const currentVendor = (role === "VENDOR_MASS" && vendorName && !vendorName.includes("MPSI") && !isInvalidMassVendorName(vendorName))
+    ? vendorName
+    : (vendorName && !vendorName.includes("MPSI") && !isInvalidMassVendorName(vendorName) ? vendorName : "(주)뉴몰드");
 
   // 검색 및 필터 상태
   const [filterKeyword, setFilterKeyword] = useState("");
-  const [filterCategory, setFilterCategory] = useState<"ALL" | "REVISION_AND_PM" | "REVISION_ONLY" | "PM_ONLY">("ALL");
+  const [filterCategory, setFilterCategory] = useState<"ALL" | "REVISION_AND_PM" | "REVISION_ONLY" | "PM_ONLY">("REVISION_AND_PM");
   const [filterDateFrom, setFilterDateFrom] = useState("");
   const [filterDateTo, setFilterDateTo] = useState("");
   const [selectedDatePreset, setSelectedDatePreset] = useState<DatePresetType>("all");
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [isSyncing, setIsSyncing] = useState(false);
 
   // 모달 제어 상태
   const [selectedProject, setSelectedProject] = useState<PmRevisionProjectItem | null>(null);
@@ -71,48 +85,65 @@ export default function VendorMassPmRevisionPage() {
   const [transitionTargetState, setTransitionTargetState] = useState<"설변 중" | "PM 중" | "양산 중">("설변 중");
   const [transitionReason, setTransitionReason] = useState("");
 
-  // 설계변경 모달 폼 상태
-  const [revDateInput, setRevDateInput] = useState("2026-10-19");
-  const [revFileInput, setRevFileInput] = useState("261010_치수검토보고서.pdf");
+  // 설계변경 모달 폼 상태 (DB 연동 값 사용)
+  const [revDateInput, setRevDateInput] = useState("");
+  const [revFileInput, setRevFileInput] = useState("");
+  const [revFileUrl, setRevFileUrl] = useState("");
+  const [isUploadingFile, setIsUploadingFile] = useState(false);
   const [revMemoInput, setRevMemoInput] = useState("");
 
-  // PM 모달 폼 상태 (스크린샷 2 분홍색 수기 입력 필드)
-  const [pmActiveRound, setPmActiveRound] = useState(3);
-  const [pmCurrentShotsInput, setPmCurrentShotsInput] = useState("120,000");
-  const [pmReasonInput, setPmReasonInput] = useState("정기(정기PM, 불량개선등)");
-  const [pmLastDate, setPmLastDate] = useState("2026. 07.05");
-  const [pmLastShots, setPmLastShots] = useState("80,000");
-  const [pmMassStartDate, setPmMassStartDate] = useState("2025. 01.05 /");
-  const [pmCycleShots, setPmCycleShots] = useState("40,000");
+  // PM 모달 폼 상태 (날짜는 YYYY-MM-DD 캘린더, 숫자는 숫자만, 문자는 문자)
+  const [pmActiveRound, setPmActiveRound] = useState(1);
+  const [pmCurrentShotsInput, setPmCurrentShotsInput] = useState("");
+  const [pmReasonInput, setPmReasonInput] = useState("");
+  const [pmLastDate, setPmLastDate] = useState("");
+  const [pmLastShots, setPmLastShots] = useState("");
+  const [pmMassStartDate, setPmMassStartDate] = useState("");
+  const [pmCycleShots, setPmCycleShots] = useState("");
   const [pmActiveProcess, setPmActiveProcess] = useState("금형 분해 점검 중");
 
-  const [planStart, setPlanStart] = useState("2026-10-19");
-  const [planEnd, setPlanEnd] = useState("2026-10-20");
-  const [planMass, setPlanMass] = useState("2026-10-21");
-  const [actStart, setActStart] = useState("2026-10-19");
-  const [actEnd, setActEnd] = useState("2026-10-21");
-  const [actMass, setActMass] = useState("2026-10-22");
+  const [planStart, setPlanStart] = useState("");
+  const [planEnd, setPlanEnd] = useState("");
+  const [planMass, setPlanMass] = useState("");
+  const [actStart, setActStart] = useState("");
+  const [actEnd, setActEnd] = useState("");
+  const [actMass, setActMass] = useState("");
 
   const [pmMemoInput, setPmMemoInput] = useState("");
+
+  // items 변경 시 열려 있는 selectedProject / targetTransitionProject 실시간 동기화
+  useEffect(() => {
+    if (selectedProject) {
+      const updated = items.find(
+        (it) => it.projectNo === selectedProject.projectNo || it.id === selectedProject.id
+      );
+      if (updated) {
+        setSelectedProject(updated);
+      }
+    }
+    if (targetTransitionProject) {
+      const updatedTarget = items.find(
+        (it) => it.projectNo === targetTransitionProject.projectNo || it.id === targetTransitionProject.id
+      );
+      if (updatedTarget) {
+        setTargetTransitionProject(updatedTarget);
+      }
+    }
+  }, [items]);
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
     setTimeout(() => setToastMessage(null), 3500);
   };
 
-  // 외주처 명칭 정규화 매칭 함수
-  const isVendorMatch = (massVendor: string = "", curVendor: string = "") => {
-    if (!curVendor || !massVendor) return true;
-    const normA = massVendor.replace(/[\(\)㈜\s]/g, "").toLowerCase();
-    const normB = curVendor.replace(/[\(\)㈜\s]/g, "").toLowerCase();
-    if (normA.includes(normB) || normB.includes(normA)) return true;
-    if (
-      (normA.includes("뉴몰드") || normA.includes("newmold") || normA.includes("newmod")) &&
-      (normB.includes("뉴몰드") || normB.includes("newmold") || normB.includes("newmod"))
-    ) {
-      return true;
+  const handleSyncFromDb = async () => {
+    setIsSyncing(true);
+    try {
+      await refreshFromDb();
+      showToast("실시간 DB 데이터 동기화가 완료되었습니다.");
+    } finally {
+      setIsSyncing(false);
     }
-    return false;
   };
 
   // [핵심] masterProjects의 설변(E00..) 프로젝트들과 items를 안전하게 통합
@@ -192,16 +223,28 @@ export default function VendorMassPmRevisionPage() {
     return list;
   }, [items, masterProjects]);
 
-  // 외주처 배정 프로젝트 필터링
-  const vendorProjects = combinedItems.filter(
-    (item) => isVendorMatch(item.massVendor, currentVendor)
+  // 외주처 배정 프로젝트 필터링 (100% DB 데이터 기준, E로 시작하는 설변 채번만 조회)
+  const vendorProjects = items.filter(
+    (item) =>
+      isMatchingMassVendor(item.massVendor, currentVendor) &&
+      String(item.revisionCode || "").toUpperCase().startsWith("E")
   );
 
-  // [핵심 요구사항 1] 신작/설변 항목은 MPSI가 설변설계(E채번)로 등록한 것만 불러옴
+  // 대상 구분 / 키워드 / 기간 필터링
   const filteredProjects = vendorProjects.filter((item) => {
-    // MPSI가 설변설계로 등록한 프로젝트만 필터 (E001, E002 등 E채번 및 설변 중)
-    const isMpsiRevisionOnly = (item.revisionCode && item.revisionCode.startsWith("E")) || item.currentState === "설변 중";
-    if (!isMpsiRevisionOnly) return false;
+    let matchCategory = true;
+    if (filterCategory === "REVISION_AND_PM") {
+      matchCategory =
+        item.currentState === "설변 중" ||
+        item.currentState === "PM 중" ||
+        String(item.revisionCode || "").toUpperCase().startsWith("E");
+    } else if (filterCategory === "REVISION_ONLY") {
+      matchCategory = item.currentState === "설변 중";
+    } else if (filterCategory === "PM_ONLY") {
+      matchCategory = item.currentState === "PM 중";
+    }
+
+    if (!matchCategory) return false;
 
     const matchKey = filterKeyword
       ? (item.projectNo.toLowerCase().includes(filterKeyword.toLowerCase()) ||
@@ -210,18 +253,9 @@ export default function VendorMassPmRevisionPage() {
          item.moldNo.toLowerCase().includes(filterKeyword.toLowerCase()))
       : true;
 
-    let matchCategory = true;
-    if (filterCategory === "REVISION_AND_PM") {
-      matchCategory = item.currentState === "설변 중" || item.currentState === "PM 중";
-    } else if (filterCategory === "REVISION_ONLY") {
-      matchCategory = item.currentState === "설변 중" || item.revisionCode.startsWith("E");
-    } else if (filterCategory === "PM_ONLY") {
-      matchCategory = item.currentState === "PM 중";
-    }
-
     const matchDate = isWithinDateRange(item.updatedAt, filterDateFrom, filterDateTo);
 
-    return matchKey && matchCategory && matchDate;
+    return matchKey && matchDate;
   });
 
   // 상태 전환 모달 열기 핸들러
@@ -238,17 +272,17 @@ export default function VendorMassPmRevisionPage() {
     setIsStateTransitionModalOpen(true);
   };
 
-  const handleConfirmStateTransition = () => {
+  const handleConfirmStateTransition = async () => {
     if (!targetTransitionProject) return;
-    changeProjectState(targetTransitionProject.id, transitionTargetState, {
+    await changeProjectState(targetTransitionProject.id, transitionTargetState, {
       reason: transitionReason.trim() || (transitionTargetState === "설변 중" ? "설계변경 접수" : "PM 착수"),
       author: currentVendor
     });
     setIsStateTransitionModalOpen(false);
-    showToast(`[${targetTransitionProject.projectNo}] 프로젝트가 [${transitionTargetState}] 상태로 전환되었습니다.`);
+    showToast(`[${targetTransitionProject.projectNo}] 프로젝트가 [${transitionTargetState}] 상태로 DB에 저장되었습니다.`);
   };
 
-  // [핵심 요구사항] 특정 차수(1차~30차) 클릭 시 해당 차수의 저장된 데이터를 불러오는 함수
+  // 특정 차수(1차~30차) 클릭 시 해당 차수의 DB 저장 데이터를 불러오는 함수
   const switchPmRound = (targetRound: number, targetProject?: PmRevisionProjectItem) => {
     const proj = targetProject || selectedProject;
     if (!proj) return;
@@ -258,51 +292,53 @@ export default function VendorMassPmRevisionPage() {
     const roundData = rounds[targetRound];
 
     if (roundData) {
-      setPmCurrentShotsInput(String(roundData.currentShots));
-      setPmReasonInput(roundData.pmReason || `${targetRound}차 정기 PM`);
-      setPmLastDate(roundData.lastPmDate || "2026. 07.05");
-      setPmLastShots(String(roundData.lastPmShots || "80,000"));
-      setPmMassStartDate(roundData.massStartDate || "2025. 01.05");
-      setPmCycleShots(String(roundData.pmCycleShots || "40,000"));
+      setPmCurrentShotsInput(formatNumericInput(roundData.currentShots));
+      setPmReasonInput(roundData.pmReason || "");
+      setPmLastDate(normalizeDateForInput(roundData.lastPmDate));
+      setPmLastShots(formatNumericInput(roundData.lastPmShots));
+      setPmMassStartDate(normalizeDateForInput(roundData.massStartDate || proj.pmData?.massStartDate || proj.massStartDate));
+      setPmCycleShots(formatNumericInput(roundData.pmCycleShots));
       setPmActiveProcess(roundData.activeProcess || "금형 분해 점검 중");
-      setPlanStart(roundData.schedule.planStartDate || "2026-10-19");
-      setPlanEnd(roundData.schedule.planEndDate || "2026-10-20");
-      setPlanMass(roundData.schedule.planMassStartDate || "2026-10-21");
-      setActStart(roundData.schedule.actualStartDate || "2026-10-19");
-      setActEnd(roundData.schedule.actualEndDate || "2026-10-21");
-      setActMass(roundData.schedule.actualMassStartDate || "2026-10-22");
+      setPlanStart(normalizeDateForInput(roundData.schedule?.planStartDate));
+      setPlanEnd(normalizeDateForInput(roundData.schedule?.planEndDate));
+      setPlanMass(normalizeDateForInput(roundData.schedule?.planMassStartDate));
+      setActStart(normalizeDateForInput(roundData.schedule?.actualStartDate));
+      setActEnd(normalizeDateForInput(roundData.schedule?.actualEndDate));
+      setActMass(normalizeDateForInput(roundData.schedule?.actualMassStartDate));
     } else {
-      // 해당 차수에 아직 저장된 데이터가 없는 경우 직전 차수 데이터 기반 기본값 자동 생성
+      // 해당 차수에 아직 저장된 데이터가 없는 경우 직전 차수 / DB 마스터 값 기반 초기화
       const prevRound = rounds[targetRound - 1];
-      const prevShots = prevRound
-        ? parseInt(String(prevRound.currentShots).replace(/[^0-9]/g, ""), 10) || ((targetRound - 1) * 40000)
-        : ((targetRound - 1) * 40000);
-      const cycle = prevRound
-        ? parseInt(String(prevRound.pmCycleShots).replace(/[^0-9]/g, ""), 10) || 40000
-        : 40000;
-      const calcShots = prevShots + cycle;
-      const prevDate = prevRound?.schedule?.actualEndDate || prevRound?.schedule?.planEndDate || prevRound?.lastPmDate || "2026. 07.05";
+      const prevShotsNum = prevRound
+        ? parseInt(String(prevRound.currentShots || "0").replace(/[^0-9]/g, ""), 10) || 0
+        : (proj.pmData?.lastPmShots || 0);
+      const cycleNum = prevRound
+        ? parseInt(String(prevRound.pmCycleShots || "0").replace(/[^0-9]/g, ""), 10) || (proj.pmData?.pmCycleShots || 40000)
+        : (proj.pmData?.pmCycleShots || 40000);
+      const calcShotsNum = targetRound === 1 ? (proj.pmData?.currentShots || 0) : (prevShotsNum + cycleNum);
+      const prevDate = normalizeDateForInput(
+        prevRound?.schedule?.actualEndDate || prevRound?.schedule?.planEndDate || prevRound?.lastPmDate || proj.pmData?.lastPmDate
+      );
 
-      setPmCurrentShotsInput(calcShots.toLocaleString());
-      setPmReasonInput(`${targetRound}차 정기 PM (점검 및 세척)`);
+      setPmCurrentShotsInput(calcShotsNum > 0 ? calcShotsNum.toLocaleString() : "");
+      setPmReasonInput(targetRound === 1 ? (proj.pmData?.pmReason || `${targetRound}차 정기 PM (점검 및 세척)`) : `${targetRound}차 정기 PM (점검 및 세척)`);
       setPmLastDate(prevDate);
-      setPmLastShots(prevShots.toLocaleString());
-      setPmMassStartDate(proj.pmData?.massStartDate || "2025. 01.05");
-      setPmCycleShots(cycle.toLocaleString());
-      setPmActiveProcess("금형 분해 점검 중");
-      setPlanStart("2026-10-19");
-      setPlanEnd("2026-10-20");
-      setPlanMass("2026-10-21");
-      setActStart("2026-10-19");
-      setActEnd("2026-10-21");
-      setActMass("2026-10-22");
+      setPmLastShots(prevShotsNum > 0 ? prevShotsNum.toLocaleString() : "");
+      setPmMassStartDate(normalizeDateForInput(proj.pmData?.massStartDate || proj.massStartDate));
+      setPmCycleShots(cycleNum > 0 ? cycleNum.toLocaleString() : "40,000");
+      setPmActiveProcess(proj.pmData?.activeProcess || "금형 분해 점검 중");
+      setPlanStart(targetRound === 1 ? normalizeDateForInput(proj.pmData?.schedule?.planStartDate) : "");
+      setPlanEnd(targetRound === 1 ? normalizeDateForInput(proj.pmData?.schedule?.planEndDate) : "");
+      setPlanMass(targetRound === 1 ? normalizeDateForInput(proj.pmData?.schedule?.planMassStartDate) : "");
+      setActStart(targetRound === 1 ? normalizeDateForInput(proj.pmData?.schedule?.actualStartDate) : "");
+      setActEnd(targetRound === 1 ? normalizeDateForInput(proj.pmData?.schedule?.actualEndDate) : "");
+      setActMass(targetRound === 1 ? normalizeDateForInput(proj.pmData?.schedule?.actualMassStartDate) : "");
     }
   };
 
   // PM 모달 열기 핸들러
   const openPmModalForProject = (item: PmRevisionProjectItem) => {
     setSelectedProject(item);
-    const roundToOpen = item.pmData?.currentRound || 3;
+    const roundToOpen = item.pmData?.currentRound || 1;
     switchPmRound(roundToOpen, item);
     setPmMemoInput("");
     setIsPmModalOpen(true);
@@ -314,23 +350,24 @@ export default function VendorMassPmRevisionPage() {
       openPmModalForProject(item);
     } else if (item.currentState === "설변 중") {
       setSelectedProject(item);
-      setRevDateInput(item.revisionMassStartDate || item.massStartDate || "2026-10-19");
+      setRevDateInput(normalizeDateForInput(item.revisionMassStartDate || item.massStartDate));
+      setRevFileInput("");
+      setRevFileUrl("");
       setRevMemoInput("");
       setIsRevisionModalOpen(true);
     } else {
-      // 양산 중 상태인 경우 상태 전환 모달 띄우기
       handleOpenTransitionModal(item, "설변 중");
     }
   };
 
-  // [핵심 요구사항] 모달 내 [저장] 하기 버튼 핸들러: 현재 차수의 모든 입력값을 해당 차수 맵과 프로젝트에 영구 저장
-  const handleSaveCurrentRound = () => {
+  // 모달 내 [저장하기] 버튼 핸들러: 현재 차수의 모든 입력값을 DB에 영구 저장
+  const handleSaveCurrentRound = async () => {
     if (!selectedProject) return;
 
     const roundDataToSave = {
       round: pmActiveRound,
       currentShots: pmCurrentShotsInput,
-      pmReason: pmReasonInput,
+      pmReason: pmReasonInput.trim(),
       lastPmDate: pmLastDate,
       lastPmShots: pmLastShots,
       massStartDate: pmMassStartDate,
@@ -346,36 +383,9 @@ export default function VendorMassPmRevisionPage() {
       }
     };
 
-    savePmRoundData(selectedProject.id, roundDataToSave, currentVendor);
-    
-    // 로컬 상태 즉시 동기화
-    setSelectedProject((prev) => {
-      if (!prev || !prev.pmData) return prev;
-      const prevRounds = prev.pmData.roundsData || {};
-      return {
-        ...prev,
-        progressProcess: pmActiveProcess,
-        massStartDate: actMass || planMass || prev.massStartDate,
-        pmData: {
-          ...prev.pmData,
-          currentRound: pmActiveRound,
-          currentShots: parseInt(pmCurrentShotsInput.replace(/[^0-9]/g, ""), 10) || 120000,
-          pmReason: pmReasonInput,
-          lastPmDate: pmLastDate,
-          lastPmShots: parseInt(pmLastShots.replace(/[^0-9]/g, ""), 10) || 80000,
-          massStartDate: pmMassStartDate,
-          pmCycleShots: parseInt(pmCycleShots.replace(/[^0-9]/g, ""), 10) || 40000,
-          activeProcess: pmActiveProcess,
-          schedule: roundDataToSave.schedule,
-          roundsData: {
-            ...prevRounds,
-            [pmActiveRound]: roundDataToSave
-          }
-        }
-      };
-    });
+    await savePmRoundData(selectedProject.id, roundDataToSave, currentVendor);
 
-    showToast(`[${selectedProject.projectNo}] ${pmActiveRound}차 PM 정보가 성공적으로 저장되었습니다.`);
+    showToast(`[${selectedProject.projectNo}] ${pmActiveRound}차 PM 정보가 DB에 영구 저장되었습니다.`);
 
     // [공통 알림 발송] 공급업체가 PM 차수 저장 시 MPSI 본사에 알림 전송
     addNotification({
@@ -383,40 +393,68 @@ export default function VendorMassPmRevisionPage() {
       menuPath: "/portal/vendor-portal/mass/revision",
       senderCompany: currentVendor,
       senderName: currentVendor,
-      content: `[${selectedProject.projectNo} / ${selectedProject.productName}] ${pmActiveRound}차 PM 정보 저장 완료 (누적 ${pmCurrentShotsInput}샷, 공정: ${pmActiveProcess})`,
+      content: `[${selectedProject.projectNo} / ${selectedProject.productName}] ${pmActiveRound}차 PM 정보 저장 완료 (누적 ${pmCurrentShotsInput || "0"}샷, 공정: ${pmActiveProcess})`,
       projectNo: selectedProject.projectNo,
       targetRole: "MPSI",
     });
   };
 
-  // 신작/설변(N001, E001...) 클릭 시 이력 모달 오픈
+  // 신작/설변(N001, E001...) 클릭 시 전체 차수 DB 이력 모달 오픈
   const handleOpenHistoryModal = (item: PmRevisionProjectItem) => {
     setSelectedProject(item);
     setIsHistoryModalOpen(true);
   };
 
-  // 설계변경 양산시작일 저장
-  const handleSaveRevisionMassStartDate = () => {
+  // 설계변경 양산시작일 DB 저장
+  const handleSaveRevisionMassStartDate = async () => {
     if (!selectedProject) return;
     if (!revDateInput) {
-      alert("양산 시작일을 입력해 주세요.");
+      alert("양산 시작일을 캘린더에서 선택해 주세요.");
       return;
     }
-    updateRevisionMassStartDate(selectedProject.id, revDateInput, currentVendor, revMemoInput);
+    await updateRevisionMassStartDate(selectedProject.id, revDateInput, currentVendor, revMemoInput);
     setIsRevisionModalOpen(false);
-    showToast(`[${selectedProject.projectNo}] 설계변경 양산 시작일(${revDateInput})이 등록되었습니다.`);
+    showToast(`[${selectedProject.projectNo}] 설계변경 양산 시작일(${revDateInput})이 DB에 저장되었습니다.`);
   };
 
-  // 설계변경 파일 및 메모 추가
-  const handleSaveRevisionFileMemo = () => {
+  // 설계변경 파일 업로드 핸들러
+  const handleRevisionFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !selectedProject) return;
+    setIsUploadingFile(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("projectNo", selectedProject.projectNo);
+      formData.append("step", "revision");
+      const res = await fetch("/api/v1/files/upload", { method: "POST", body: formData });
+      const json = await res.json();
+      if (json.success && json.data?.fileName) {
+        setRevFileInput(json.data.fileName);
+        setRevFileUrl(json.data.fileUrl || "");
+        showToast(`파일 [${json.data.fileName}] 업로드 완료`);
+      } else {
+        setRevFileInput(file.name);
+      }
+    } catch {
+      setRevFileInput(file.name);
+    } finally {
+      setIsUploadingFile(false);
+    }
+  };
+
+  // 설계변경 파일 및 메모 DB 저장
+  const handleSaveRevisionFileMemo = async () => {
     if (!selectedProject || !revMemoInput.trim()) {
       alert("업무 이력 메모를 입력해 주세요.");
       return;
     }
-    const content = revFileInput ? `[${revFileInput}] ${revMemoInput.trim()}` : revMemoInput.trim();
-    addMemo(selectedProject.id, "REVISION", content, currentVendor);
+    const content = revFileInput.trim() ? `[${revFileInput.trim()}] ${revMemoInput.trim()}` : revMemoInput.trim();
+    await addMemo(selectedProject.id, "REVISION", content, currentVendor, {
+      fileName: revFileInput.trim() || undefined,
+      fileUrl: revFileUrl || undefined,
+    });
 
-    // [공통 알림 발송]
     addNotification({
       menuName: "양산외주 - PM 및 설변관리",
       menuPath: "/portal/vendor-portal/mass/revision",
@@ -428,47 +466,48 @@ export default function VendorMassPmRevisionPage() {
     });
 
     setRevMemoInput("");
-    showToast("설계변경 업무 이력 메모가 영구 보존 기록되었으며, MPSI 본사에 알림이 발송되었습니다.");
+    setRevFileInput("");
+    setRevFileUrl("");
+    showToast("설계변경 파일/업무 이력 메모가 DB에 영구 저장되었습니다.");
   };
 
   // PM 공정 버튼 클릭
-  const handleSelectPmProcess = (processName: string) => {
+  const handleSelectPmProcess = async (processName: string) => {
     if (!selectedProject) return;
-    updatePmProcess(selectedProject.id, processName, currentVendor);
-    showToast(`PM 공정이 [${processName}]으로 등록 및 메모 기록되었습니다.`);
+    await updatePmProcess(selectedProject.id, processName, currentVendor);
+    showToast(`PM 공정이 [${processName}]으로 DB에 저장되었습니다.`);
   };
 
   // PM 계획 일정 저장
-  const handleSavePmPlanSchedule = () => {
+  const handleSavePmPlanSchedule = async () => {
     if (!selectedProject) return;
-    updatePmSchedule(selectedProject.id, {
+    await updatePmSchedule(selectedProject.id, {
       planStartDate: planStart,
       planEndDate: planEnd,
       planMassStartDate: planMass,
     }, currentVendor, `PM 계획일정 등록 (시작: ${planStart}, 완료: ${planEnd}, 양산시작: ${planMass})`);
-    showToast("PM 계획 일정이 등록되었습니다.");
+    showToast("PM 계획 일정이 DB에 저장되었습니다.");
   };
 
   // PM 실적 일정 저장
-  const handleSavePmActualSchedule = () => {
+  const handleSavePmActualSchedule = async () => {
     if (!selectedProject) return;
-    updatePmSchedule(selectedProject.id, {
+    await updatePmSchedule(selectedProject.id, {
       actualStartDate: actStart,
       actualEndDate: actEnd,
       actualMassStartDate: actMass,
     }, currentVendor, `PM 실적일정 등록 (시작: ${actStart}, 완료: ${actEnd}, 양산시작: ${actMass})`);
-    showToast("PM 실적 일정이 등록되었습니다.");
+    showToast("PM 실적 일정이 DB에 저장되었습니다.");
   };
 
-  // PM 메모 등록
-  const handleSavePmMemo = () => {
+  // PM 메모 DB 등록
+  const handleSavePmMemo = async () => {
     if (!selectedProject || !pmMemoInput.trim()) {
       alert("업무 이력 메모를 입력해 주세요.");
       return;
     }
-    addMemo(selectedProject.id, "PM", pmMemoInput.trim(), currentVendor);
+    await addMemo(selectedProject.id, "PM", pmMemoInput.trim(), currentVendor);
 
-    // [공통 알림 발송] 공급업체가 메모 등록 시 MPSI 본사에 알림 전송
     addNotification({
       menuName: "양산외주 - PM 및 설변관리",
       menuPath: "/portal/vendor-portal/mass/revision",
@@ -480,7 +519,7 @@ export default function VendorMassPmRevisionPage() {
     });
 
     setPmMemoInput("");
-    showToast("PM 공정 업무 이력 메모가 영구 보존 기록되었으며, MPSI 본사에 알림이 발송되었습니다.");
+    showToast("PM 공정 업무 이력 메모가 DB에 영구 저장되었습니다.");
   };
 
   return (
@@ -518,15 +557,6 @@ export default function VendorMassPmRevisionPage() {
             <span className="inline-block w-2 h-2 rounded-full bg-purple-500 animate-pulse" />
             <span>MPSI 설계변경 상태 연동 (확인 전용)</span>
           </div>
-
-          <Button
-            onClick={() => handleOpenTransitionModal(undefined, "PM 중")}
-            size="xs"
-            className="h-8 px-3 bg-amber-600 hover:bg-amber-700 text-white font-bold gap-1.5 text-xs shadow-xs"
-          >
-            <Wrench className="h-3.5 w-3.5" />
-            + 금형 PM 착수
-          </Button>
         </div>
       </div>
 
@@ -567,20 +597,31 @@ export default function VendorMassPmRevisionPage() {
           />
         </div>
 
-        <Button 
-          onClick={() => { 
-            setFilterKeyword(""); 
-            setFilterCategory("REVISION_AND_PM");
-            setFilterDateFrom("");
-            setFilterDateTo("");
-            setSelectedDatePreset("all");
-          }} 
-          variant="outline" 
-          className="h-7 px-3 gap-1 text-xs text-zinc-600"
-        >
-          <RefreshCw className="h-3.5 w-3.5" />
-          초기화
-        </Button>
+        <div className="flex items-center gap-1.5">
+          <Button
+            onClick={handleSyncFromDb}
+            disabled={isSyncing || isLoading}
+            variant="outline"
+            className="h-7 px-2.5 gap-1 text-xs border-emerald-300 text-emerald-700 hover:bg-emerald-50 cursor-pointer"
+          >
+            <RefreshCw className={`h-3.5 w-3.5 ${isSyncing || isLoading ? "animate-spin" : ""}`} />
+            DB 동기화
+          </Button>
+          <Button 
+            onClick={() => { 
+              setFilterKeyword(""); 
+              setFilterCategory("REVISION_AND_PM");
+              setFilterDateFrom("");
+              setFilterDateTo("");
+              setSelectedDatePreset("all");
+            }} 
+            variant="outline" 
+            className="h-7 px-3 gap-1 text-xs text-zinc-600 cursor-pointer"
+          >
+            <RotateCcw className="h-3.5 w-3.5" />
+            초기화
+          </Button>
+        </div>
       </div>
 
       {/* 3. 메인 데이터 그리드 (스크린샷 엑셀 양식 100% 일치) */}
@@ -615,6 +656,9 @@ export default function VendorMassPmRevisionPage() {
                 <th className="py-2.5 px-2 border-r border-slate-700 min-w-[95px] text-center bg-amber-400 text-slate-900">
                   현재 상태
                 </th>
+                <th className="py-2.5 px-2 border-r border-slate-700 min-w-[160px] text-center">
+                  상태전환 사유
+                </th>
                 
                 {/* 우측 세부 일정 (양산관리 메뉴에서 확인되는 컬럼들) */}
                 <th className="py-2.5 px-2 border-r border-slate-700 min-w-[105px] text-center">
@@ -638,7 +682,7 @@ export default function VendorMassPmRevisionPage() {
                 <th className="py-2.5 px-2 border-r border-slate-700 min-w-[110px] text-center bg-emerald-950 text-emerald-300">
                   양산시작일<br/><span className="text-[9.5px] font-normal text-emerald-400">공급업체 입력</span>
                 </th>
-                <th className="py-2.5 px-2 min-w-[80px] text-center">작업</th>
+                <th className="py-2.5 px-2 min-w-[155px] text-center">작업</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200 dark:divide-zinc-800 text-zinc-800 dark:text-zinc-200 text-[11px]">
@@ -707,6 +751,30 @@ export default function VendorMassPmRevisionPage() {
                     >
                       {row.currentState}
                     </button>
+                  </td>
+
+                  {/* 8-1. 최근 상태전환 사유 (클릭 시 상태전환 사유/이력 상세 확인) */}
+                  <td className="p-2 border-r border-slate-200 dark:border-zinc-800 text-left max-w-[200px]">
+                    {(() => {
+                      const latestReason = row.lastTransitionReason || row.stateTransitionLogs?.[0]?.reason;
+                      const logCount = row.stateTransitionLogs?.length || 0;
+                      return latestReason ? (
+                        <button
+                          onClick={() => handleOpenTransitionModal(row, row.currentState)}
+                          className="w-full text-left flex items-center justify-between gap-1.5 text-[10.5px] text-zinc-700 dark:text-zinc-300 hover:text-amber-700 cursor-pointer group"
+                          title={latestReason}
+                        >
+                          <span className="truncate group-hover:underline">{latestReason}</span>
+                          {logCount > 0 && (
+                            <span className="shrink-0 px-1 py-0.2 rounded bg-zinc-100 dark:bg-zinc-800 text-zinc-500 font-mono text-[9.5px]">
+                              {logCount}건
+                            </span>
+                          )}
+                        </button>
+                      ) : (
+                        <span className="block text-center text-zinc-400 text-[10px]">-</span>
+                      );
+                    })()}
                   </td>
 
                   {/* 9. 금형 수정 시작 */}
@@ -781,20 +849,31 @@ export default function VendorMassPmRevisionPage() {
 
                   {/* 16. 작업 버튼 */}
                   <td className="p-2 text-center">
-                    <Button 
-                      onClick={() => handleOpenStatusModal(row)} 
-                      size="xs" 
-                      className="h-6 px-2.5 text-[10px] gap-1 font-bold bg-slate-800 hover:bg-slate-700 text-white"
-                    >
-                      <Eye className="h-3 w-3" />
-                      입력/상세
-                    </Button>
+                    <div className="flex items-center justify-center gap-1.5">
+                      <Button 
+                        onClick={() => handleOpenStatusModal(row)} 
+                        size="xs" 
+                        className="h-6 px-2.5 text-[10px] gap-1 font-bold bg-slate-800 hover:bg-slate-700 text-white cursor-pointer"
+                      >
+                        <Eye className="h-3 w-3" />
+                        입력/상세
+                      </Button>
+                      <Button
+                        onClick={() => handleOpenTransitionModal(row, row.currentState === "PM 중" ? "양산 중" : "PM 중")}
+                        size="xs"
+                        className="h-6 px-2 text-[10px] gap-1 font-bold bg-amber-600 hover:bg-amber-700 text-white cursor-pointer"
+                        title="해당 프로젝트 상태 전환 (설변 중 / PM 중 / 양산 중)"
+                      >
+                        <Wrench className="h-3 w-3" />
+                        상태전환
+                      </Button>
+                    </div>
                   </td>
                 </tr>
               ))}
               {filteredProjects.length === 0 && (
                 <tr>
-                  <td colSpan={16} className="p-8 text-center text-zinc-500">
+                  <td colSpan={17} className="p-8 text-center text-zinc-500">
                     설계변경 또는 PM 관리 대상 프로젝트가 없습니다.
                   </td>
                 </tr>
@@ -808,13 +887,12 @@ export default function VendorMassPmRevisionPage() {
       {/* 4. [공급업체 PM 입력화면] 모달 - 컴팩트 대시보드 리팩토링 */}
       {/* ========================================================================= */}
       {isPmModalOpen && selectedProject && (() => {
-        // [핵심] MPSI 프로젝트 마스터에 등록된 '8. 보증 수명(Shot)' 값 자동 연동
+        // MPSI 프로젝트 마스터에 등록된 '8. 보증 수명(Shot)' 값 실제 DB 연동
         const masterProject = masterProjects.find(
           (p) => p.projectNo === selectedProject.projectNo || p.projectNo === selectedProject.projectNo?.replace(/P\d+$/, "P0")
         );
-        const resolvedWarrantyShots = masterProject?.warrantyShots 
-          ? Number(String(masterProject.warrantyShots).replace(/[^0-9]/g, "")).toLocaleString() + "샷"
-          : (selectedProject.pmData?.warrantyShots ? selectedProject.pmData.warrantyShots.toLocaleString() + "샷" : "300,000샷");
+        const rawWarrantyNum = Number(String(masterProject?.warrantyShots ?? selectedProject.warrantyShots ?? selectedProject.pmData?.warrantyShots ?? 0).replace(/[^0-9]/g, ""));
+        const resolvedWarrantyShots = rawWarrantyNum > 0 ? `${rawWarrantyNum.toLocaleString()}샷` : "미지정";
 
         const roundsMap = selectedProject.pmData?.roundsData || {};
         const savedRoundNumbers = Object.keys(roundsMap).map(Number).sort((a, b) => a - b);
@@ -968,23 +1046,25 @@ export default function VendorMassPmRevisionPage() {
                       </div>
                     </div>
 
-                    {/* 현재 누적 금형타수 */}
+                    {/* 현재 누적 금형타수 (숫자만 입력) */}
                     <div className="border border-slate-300 dark:border-zinc-700 rounded-md overflow-hidden shadow-2xs bg-white dark:bg-zinc-900">
                       <div className="bg-slate-700 dark:bg-slate-800 text-white py-1 px-2.5 text-center font-bold text-[11px]">
                         누적 금형타수 (Shot)
                       </div>
-                      <div className="p-1.5 flex items-center justify-center h-9">
+                      <div className="p-1.5 flex items-center justify-center gap-1 h-9">
                         <Input 
                           type="text"
+                          inputMode="numeric"
                           value={pmCurrentShotsInput}
-                          onChange={(e) => setPmCurrentShotsInput(e.target.value)}
-                          placeholder="120,000"
+                          onChange={(e) => setPmCurrentShotsInput(formatNumericInput(e.target.value))}
+                          placeholder="0"
                           className="h-7 text-center font-mono font-bold text-xs bg-slate-50/40 dark:bg-zinc-800 border-slate-200 dark:border-zinc-700"
                         />
+                        <span className="text-[10px] font-bold text-zinc-500 shrink-0">샷</span>
                       </div>
                     </div>
 
-                    {/* PM 사유 */}
+                    {/* PM 사유 (문자 입력) */}
                     <div className="border border-slate-300 dark:border-zinc-700 rounded-md overflow-hidden shadow-2xs bg-white dark:bg-zinc-900">
                       <div className="bg-slate-700 dark:bg-slate-800 text-white py-1 px-2.5 text-center font-bold text-[11px]">
                         PM 사유 (작업 개요)
@@ -994,46 +1074,52 @@ export default function VendorMassPmRevisionPage() {
                           type="text"
                           value={pmReasonInput}
                           onChange={(e) => setPmReasonInput(e.target.value)}
-                          placeholder="정기(정기PM, 불량개선등)"
+                          placeholder="예: 정기PM, 점검 및 세척"
                           className="h-7 px-2 font-medium text-xs bg-slate-50/40 dark:bg-zinc-800 border-slate-200 dark:border-zinc-700"
                         />
                       </div>
                     </div>
                   </div>
 
-                  {/* 하단 2행: 4대 스펙 박스 (타이틀 상단, 인풋 하단 세로 배치) */}
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-                    {/* 직전 PM 일자 / 누적 금형 타수 */}
+                  {/* 하단 2행: 4대 스펙 박스 (날짜는 캘린더, 타수는 숫자만) */}
+                  <div className="grid grid-cols-1 sm:grid-cols-4 gap-2.5">
+                    {/* 직전 PM 일자(캘린더) / 누적 타수(숫자만) */}
                     <div className="border border-slate-300 dark:border-zinc-700 rounded-md overflow-hidden shadow-2xs bg-white dark:bg-zinc-900">
                       <div className="bg-slate-700 dark:bg-slate-800 text-white py-1 px-2 text-center font-bold text-[11px]">
                         직전 PM 일자 / 누적 타수
                       </div>
-                      <div className="p-1.5 flex items-center justify-center h-9">
+                      <div className="p-1.5 flex items-center gap-1 h-9">
+                        <Input 
+                          type="date"
+                          value={pmLastDate}
+                          onChange={(e) => setPmLastDate(e.target.value)}
+                          className="h-7 px-1 font-mono font-bold text-[10.5px] bg-slate-50/40 dark:bg-zinc-800 border-slate-200 dark:border-zinc-700 flex-1 min-w-0"
+                          title="직전 PM 일자 (캘린더 선택)"
+                        />
+                        <span className="text-zinc-400 text-[10px]">/</span>
                         <Input 
                           type="text"
-                          value={`${pmLastDate} / ${pmLastShots} 샷`}
-                          onChange={(e) => {
-                            const parts = e.target.value.split("/");
-                            setPmLastDate(parts[0]?.trim() || "");
-                            if (parts[1]) setPmLastShots(parts[1].replace(/[^0-9,]/g, "").trim());
-                          }}
-                          placeholder="2026. 07.05 / 80,000 샷"
-                          className="h-7 text-center font-mono font-bold text-[11px] bg-slate-50/40 dark:bg-zinc-800 border-slate-200 dark:border-zinc-700"
+                          inputMode="numeric"
+                          value={pmLastShots}
+                          onChange={(e) => setPmLastShots(formatNumericInput(e.target.value))}
+                          placeholder="0"
+                          className="h-7 w-18 px-1 text-right font-mono font-bold text-[10.5px] bg-slate-50/40 dark:bg-zinc-800 border-slate-200 dark:border-zinc-700 shrink-0"
+                          title="직전 누적 타수 (숫자만 입력)"
                         />
+                        <span className="text-[10px] font-bold text-zinc-500 shrink-0">샷</span>
                       </div>
                     </div>
 
-                    {/* 양산 시작 일자 */}
+                    {/* 양산 시작 일자 (캘린더 선택) */}
                     <div className="border border-slate-300 dark:border-zinc-700 rounded-md overflow-hidden shadow-2xs bg-white dark:bg-zinc-900">
                       <div className="bg-slate-700 dark:bg-slate-800 text-white py-1 px-2 text-center font-bold text-[11px]">
                         양산 시작 일자
                       </div>
                       <div className="p-1.5 flex items-center justify-center h-9">
                         <Input 
-                          type="text"
+                          type="date"
                           value={pmMassStartDate}
                           onChange={(e) => setPmMassStartDate(e.target.value)}
-                          placeholder="2025. 01.05"
                           className="h-7 text-center font-mono font-bold text-xs bg-slate-50/40 dark:bg-zinc-800 border-slate-200 dark:border-zinc-700"
                         />
                       </div>
@@ -1054,19 +1140,21 @@ export default function VendorMassPmRevisionPage() {
                       </div>
                     </div>
 
-                    {/* PM 주기 */}
+                    {/* PM 주기 (숫자만 입력) */}
                     <div className="border border-slate-300 dark:border-zinc-700 rounded-md overflow-hidden shadow-2xs bg-white dark:bg-zinc-900">
                       <div className="bg-slate-700 dark:bg-slate-800 text-white py-1 px-2 text-center font-bold text-[11px]">
                         PM 주기
                       </div>
-                      <div className="p-1.5 flex items-center justify-center h-9">
+                      <div className="p-1.5 flex items-center justify-center gap-1 h-9">
                         <Input 
                           type="text"
-                          value={`${pmCycleShots} 샷`}
-                          onChange={(e) => setPmCycleShots(e.target.value.replace(/[^0-9,]/g, ""))}
-                          placeholder="40,000 샷"
+                          inputMode="numeric"
+                          value={pmCycleShots}
+                          onChange={(e) => setPmCycleShots(formatNumericInput(e.target.value))}
+                          placeholder="40,000"
                           className="h-7 text-center font-mono font-bold text-xs bg-slate-50/40 dark:bg-zinc-800 border-slate-200 dark:border-zinc-700"
                         />
+                        <span className="text-[10px] font-bold text-zinc-500 shrink-0">샷</span>
                       </div>
                     </div>
                   </div>
@@ -1363,13 +1451,24 @@ export default function VendorMassPmRevisionPage() {
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
                   <div>
-                    <label className="text-[10.5px] text-slate-400 block mb-0.5">첨부 파일명</label>
-                    <Input 
-                      value={revFileInput}
-                      onChange={(e) => setRevFileInput(e.target.value)}
-                      placeholder="예: 261010_치수검토보고서.pdf"
-                      className="h-8 text-xs bg-slate-900/80 border-slate-700 text-white font-mono"
-                    />
+                    <label className="text-[10.5px] text-slate-400 block mb-0.5">첨부 파일 (직접 입력 또는 업로드)</label>
+                    <div className="flex items-center gap-1.5">
+                      <Input 
+                        value={revFileInput}
+                        onChange={(e) => setRevFileInput(e.target.value)}
+                        placeholder="파일명 입력 또는 우측 업로드"
+                        className="h-8 text-xs bg-slate-900/80 border-slate-700 text-white font-mono flex-1"
+                      />
+                      <label className="h-8 px-2.5 rounded bg-slate-700 hover:bg-slate-600 text-white text-[11px] font-bold flex items-center gap-1 cursor-pointer shrink-0">
+                        <Upload className="h-3 w-3" />
+                        <span>{isUploadingFile ? "..." : "첨부"}</span>
+                        <input
+                          type="file"
+                          className="hidden"
+                          onChange={handleRevisionFileUpload}
+                        />
+                      </label>
+                    </div>
                   </div>
                   <div>
                     <label className="text-[10.5px] text-slate-400 block mb-0.5">업무 이력 메모</label>
@@ -1377,13 +1476,14 @@ export default function VendorMassPmRevisionPage() {
                       <Input 
                         value={revMemoInput}
                         onChange={(e) => setRevMemoInput(e.target.value)}
+                        onKeyDown={(e) => e.key === "Enter" && handleSaveRevisionFileMemo()}
                         placeholder="예: 261010_치수검토보고서 등록"
                         className="h-8 text-xs bg-slate-900/80 border-slate-700 text-white"
                       />
                       <Button 
                         onClick={handleSaveRevisionFileMemo}
                         size="sm"
-                        className="h-8 px-3 text-xs bg-orange-600 hover:bg-orange-700 text-white font-bold shrink-0"
+                        className="h-8 px-3 text-xs bg-orange-600 hover:bg-orange-700 text-white font-bold shrink-0 cursor-pointer"
                       >
                         등록
                       </Button>
@@ -1418,26 +1518,14 @@ export default function VendorMassPmRevisionPage() {
       )}
 
       {/* ========================================================================= */}
-      {/* 6. [신작/설변(E001, E002...) 차수별 이력 조회 모달] - 사용자의 요청: N001부터 나오는 것이 아니라, 해당하는 정보만 단독 표기 */}
+      {/* 6. [신작/설변(N001, E001...) 차수별 DB 이력 조회 모달] (/mass/projects와 동일) */}
       {/* ========================================================================= */}
       {isHistoryModalOpen && selectedProject && (() => {
-        // [핵심 요구사항 2] N001부터 전부 나오는 것이 아니라, 클릭한 해당 차수(E001, E002 등)에 해당하는 정보만 단독 노출
-        const targetHist = selectedProject.historyList.find((h) => h.revisionCode === selectedProject.revisionCode) || selectedProject.historyList[0] || {
-          revisionCode: selectedProject.revisionCode,
-          revisionDate: "2026-10-14",
-          title: `${selectedProject.revisionCode} 설계변경 상세 내역`,
-          modelReview: "3D CAD 제품 모델링 검토 승인 완료",
-          moldCostQuote: "금형 수정비 및 사출 단가 조정 확정 (금형견적, 사출견적)",
-          moldTrialReport: "우성정공 가공 진행 중 (방전/와이어 완료 후 피팅)",
-          massValidationReport: "자체검증 및 시양산 일정 확정",
-          author: currentVendor,
-          memo: "도면 변경에 따른 설계변경 확정",
-          createdAt: "2026.10.14 09:30"
-        };
+        const historyList: RevisionHistoryItem[] = selectedProject.historyList || [];
 
         return (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-3">
-            <div className="bg-white dark:bg-zinc-900 w-full max-w-2xl rounded-xl shadow-2xl border overflow-hidden flex flex-col max-h-[92vh]">
+            <div className="bg-white dark:bg-zinc-900 w-full max-w-3xl rounded-xl shadow-2xl border overflow-hidden flex flex-col max-h-[92vh]">
               
               {/* 모달 헤더 */}
               <div className="flex items-center justify-between px-5 py-3.5 bg-[#1e293b] text-white">
@@ -1445,10 +1533,10 @@ export default function VendorMassPmRevisionPage() {
                   <History className="h-5 w-5 text-emerald-400" />
                   <div>
                     <h3 className="font-bold text-sm">
-                      [{selectedProject.projectNo}] {selectedProject.revisionCode} 설계변경 상세 내역
+                      [{selectedProject.projectNo}] 신작(N001) 및 설계변경(E001...) 차수별 DB 이력
                     </h3>
                     <span className="text-[11px] text-slate-300">
-                      차종: {selectedProject.projectName} | 제품명: {selectedProject.productName} | 금형번호: {selectedProject.moldNo}
+                      차종: {selectedProject.projectName || "-"} | 제품명: {selectedProject.productName || "-"} | 금형번호: {selectedProject.moldNo || "-"}
                     </span>
                   </div>
                 </div>
@@ -1457,86 +1545,96 @@ export default function VendorMassPmRevisionPage() {
                 </button>
               </div>
 
-              {/* 모달 본문 - N001 제외하고 오직 클릭한 차수(E001/E002 등)만 단독 노출 */}
+              {/* 모달 본문 - N001, E001... 전체 DB 이력 순차 노출 */}
               <div className="p-5 flex flex-col gap-4 overflow-y-auto text-xs">
-                <div className="p-3 bg-purple-50/70 dark:bg-purple-950/20 rounded-lg border border-purple-200 dark:border-purple-800 text-[11px] text-purple-900 dark:text-purple-300 flex items-center justify-between">
-                  <div>
-                    • 선택하신 <b>[{selectedProject.revisionCode}]</b> 설계변경 건의 4대 핵심 이력 정보입니다.
-                  </div>
-                  <span className="px-2 py-0.5 rounded font-mono font-bold bg-purple-600 text-white text-[10.5px]">
-                    {targetHist.revisionCode}
-                  </span>
+                <div className="p-3 bg-zinc-50 dark:bg-zinc-800/40 rounded-lg border text-[11px] text-zinc-600 dark:text-zinc-400">
+                  • <b>N001은 신규(신작)</b>, <b>E001은 1차 설계변경</b>, E002는 2차 설계변경입니다.
+                  <br />
+                  • 아래 내용은 실제 PostgreSQL DB(ProjectMaster · 견적 · 시사출 · 시양산 · PM/설변 테이블)에서 실시간 조회된 차수별 이력입니다.
                 </div>
 
-                <div className="border-2 rounded-xl p-4 bg-white dark:bg-zinc-900 shadow-xs flex flex-col gap-3 border-slate-300 dark:border-slate-700">
-                  {/* 차수 헤더 */}
-                  <div className="flex items-center justify-between border-b pb-2.5">
-                    <div className="flex items-center gap-2">
-                      <span className="px-2.5 py-1 rounded font-mono font-bold text-xs bg-rose-100 text-rose-800 border border-rose-300">
-                        {targetHist.revisionCode}
-                      </span>
-                      <h4 className="font-bold text-sm text-zinc-900 dark:text-zinc-100">
-                        {targetHist.title}
-                      </h4>
-                    </div>
-                    <span className="font-mono text-zinc-500 text-[11px]">{targetHist.revisionDate}</span>
+                {historyList.length === 0 ? (
+                  <div className="p-8 text-center text-zinc-500 border rounded-xl bg-zinc-50/50">
+                    DB에 등록된 차수별 상세 이력이 없습니다.
                   </div>
+                ) : (
+                  <div className="flex flex-col gap-4">
+                    {historyList.map((hist) => (
+                      <div 
+                        key={hist.revisionCode} 
+                        className="border-2 rounded-xl p-4 bg-white dark:bg-zinc-900 shadow-xs flex flex-col gap-3 border-slate-300 dark:border-slate-700"
+                      >
+                        {/* 차수 헤더 */}
+                        <div className="flex items-center justify-between border-b pb-2.5">
+                          <div className="flex items-center gap-2">
+                            <span className={`px-2.5 py-1 rounded font-mono font-bold text-xs ${
+                              hist.revisionCode.startsWith("E")
+                                ? "bg-rose-100 text-rose-800 border border-rose-300"
+                                : "bg-blue-100 text-blue-800 border border-blue-300"
+                            }`}>
+                              {hist.revisionCode}
+                            </span>
+                            <h4 className="font-bold text-sm text-zinc-900 dark:text-zinc-100">
+                              {hist.title}
+                            </h4>
+                          </div>
+                          <span className="font-mono text-zinc-500 text-[11px]">{hist.revisionDate}</span>
+                        </div>
 
-                  {/* 4대 필수 이력 내용 그리드 */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-[11px]">
-                    {/* 1. 3D 제품 모델 검토 승인 내용 */}
-                    <div className="p-2.5 rounded-lg border bg-zinc-50/70 dark:bg-zinc-800/40 flex flex-col gap-1">
-                      <span className="font-bold text-zinc-700 dark:text-zinc-300 flex items-center gap-1.5">
-                        <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
-                        1. 3D 제품 모델 검토 승인 내용
-                      </span>
-                      <p className="text-zinc-600 dark:text-zinc-400 pl-5 leading-relaxed">
-                        {targetHist.modelReview}
-                      </p>
-                    </div>
+                        {/* 4대 필수 이력 내용 그리드 */}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-[11px]">
+                          <div className="p-2.5 rounded-lg border bg-zinc-50/70 dark:bg-zinc-800/40 flex flex-col gap-1">
+                            <span className="font-bold text-zinc-700 dark:text-zinc-300 flex items-center gap-1.5">
+                              <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
+                              1. 3D 제품 모델 검토 승인 내용
+                            </span>
+                            <p className="text-zinc-600 dark:text-zinc-400 pl-5 leading-relaxed">
+                              {hist.modelReview}
+                            </p>
+                          </div>
 
-                    {/* 2. 금형비 견적 검토 확정 내용 */}
-                    <div className="p-2.5 rounded-lg border bg-zinc-50/70 dark:bg-zinc-800/40 flex flex-col gap-1">
-                      <span className="font-bold text-zinc-700 dark:text-zinc-300 flex items-center gap-1.5">
-                        <FileSpreadsheet className="h-3.5 w-3.5 text-blue-600" />
-                        2. 금형비 견적 검토 확정 내용
-                      </span>
-                      <p className="text-zinc-600 dark:text-zinc-400 pl-5 leading-relaxed">
-                        {targetHist.moldCostQuote}
-                      </p>
-                    </div>
+                          <div className="p-2.5 rounded-lg border bg-zinc-50/70 dark:bg-zinc-800/40 flex flex-col gap-1">
+                            <span className="font-bold text-zinc-700 dark:text-zinc-300 flex items-center gap-1.5">
+                              <FileSpreadsheet className="h-3.5 w-3.5 text-blue-600" />
+                              2. 금형/사출 견적 검토 확정 내용
+                            </span>
+                            <p className="text-zinc-600 dark:text-zinc-400 pl-5 leading-relaxed">
+                              {hist.moldCostQuote}
+                            </p>
+                          </div>
 
-                    {/* 3. 금형처 시사출 보고서 내용 */}
-                    <div className="p-2.5 rounded-lg border bg-zinc-50/70 dark:bg-zinc-800/40 flex flex-col gap-1">
-                      <span className="font-bold text-zinc-700 dark:text-zinc-300 flex items-center gap-1.5">
-                        <FileText className="h-3.5 w-3.5 text-purple-600" />
-                        3. 금형처 시사출 보고서 내용
-                      </span>
-                      <p className="text-zinc-600 dark:text-zinc-400 pl-5 leading-relaxed">
-                        {targetHist.moldTrialReport}
-                      </p>
-                    </div>
+                          <div className="p-2.5 rounded-lg border bg-zinc-50/70 dark:bg-zinc-800/40 flex flex-col gap-1">
+                            <span className="font-bold text-zinc-700 dark:text-zinc-300 flex items-center gap-1.5">
+                              <FileText className="h-3.5 w-3.5 text-purple-600" />
+                              3. 금형처 시사출 보고서 내용
+                            </span>
+                            <p className="text-zinc-600 dark:text-zinc-400 pl-5 leading-relaxed">
+                              {hist.moldTrialReport}
+                            </p>
+                          </div>
 
-                    {/* 4. 양산처 시양산 보고서 내용 */}
-                    <div className="p-2.5 rounded-lg border bg-zinc-50/70 dark:bg-zinc-800/40 flex flex-col gap-1">
-                      <span className="font-bold text-zinc-700 dark:text-zinc-300 flex items-center gap-1.5">
-                        <Award className="h-3.5 w-3.5 text-amber-600" />
-                        4. 양산처 시양산 보고서 내용
-                      </span>
-                      <p className="text-zinc-600 dark:text-zinc-400 pl-5 leading-relaxed">
-                        {targetHist.massValidationReport}
-                      </p>
-                    </div>
+                          <div className="p-2.5 rounded-lg border bg-zinc-50/70 dark:bg-zinc-800/40 flex flex-col gap-1">
+                            <span className="font-bold text-zinc-700 dark:text-zinc-300 flex items-center gap-1.5">
+                              <Award className="h-3.5 w-3.5 text-amber-600" />
+                              4. 양산처 시양산 보고서 내용
+                            </span>
+                            <p className="text-zinc-600 dark:text-zinc-400 pl-5 leading-relaxed">
+                              {hist.massValidationReport}
+                            </p>
+                          </div>
+                        </div>
+
+                        {/* 이력 메모 */}
+                        <div className="bg-zinc-100 dark:bg-zinc-800/80 p-2 rounded text-[10.5px] flex items-center justify-between text-zinc-600 dark:text-zinc-400">
+                          <div>
+                            <b>작성/승인처:</b> {hist.author} • <span>{hist.memo}</span>
+                          </div>
+                          <span className="font-mono">{hist.createdAt}</span>
+                        </div>
+                      </div>
+                    ))}
                   </div>
-
-                  {/* 이력 메모 */}
-                  <div className="bg-zinc-100 dark:bg-zinc-800/80 p-2 rounded text-[10.5px] flex items-center justify-between text-zinc-600 dark:text-zinc-400">
-                    <div>
-                      <b>작성/승인처:</b> {targetHist.author} • <span>{targetHist.memo}</span>
-                    </div>
-                    <span className="font-mono">{targetHist.createdAt}</span>
-                  </div>
-                </div>
+                )}
               </div>
 
               {/* 모달 푸터 */}
@@ -1552,54 +1650,32 @@ export default function VendorMassPmRevisionPage() {
       })()}
 
       {/* ========================================================================= */}
-      {/* 7. [설계변경 / PM 상태 전환 및 E채번 등록 모달] */}
+      {/* 7. [프로젝트 상태 전환 모달] - 선택한 그리드 행 프로젝트 자동 바인딩 */}
       {/* ========================================================================= */}
-      {isStateTransitionModalOpen && (
+      {isStateTransitionModalOpen && targetTransitionProject && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-3">
-          <div className="bg-white dark:bg-zinc-900 w-full max-w-xl rounded-xl shadow-2xl border overflow-hidden flex flex-col">
+          <div className="bg-white dark:bg-zinc-900 w-full max-w-xl rounded-xl shadow-2xl border overflow-hidden flex flex-col max-h-[92vh]">
             
             {/* 모달 헤더 */}
             <div className="flex items-center justify-between px-5 py-3.5 bg-[#1e293b] text-white">
               <div className="flex items-center gap-2">
                 <Wrench className="h-5 w-5 text-amber-400" />
-                <h3 className="font-bold text-sm">
-                  프로젝트 상태 전환 및 신규 설계변경(E채번) / PM 착수 등록
-                </h3>
+                <div>
+                  <h3 className="font-bold text-sm">
+                    [{targetTransitionProject.projectNo}] 프로젝트 상태 전환 ({targetTransitionProject.revisionCode})
+                  </h3>
+                  <span className="text-[11px] text-slate-300">
+                    {targetTransitionProject.projectName} · {targetTransitionProject.productName} ({targetTransitionProject.moldNo}) | 현재: {targetTransitionProject.currentState}
+                  </span>
+                </div>
               </div>
-              <button onClick={() => setIsStateTransitionModalOpen(false)} className="text-zinc-400 hover:text-white">
+              <button onClick={() => setIsStateTransitionModalOpen(false)} className="text-zinc-400 hover:text-white cursor-pointer">
                 <X className="h-5 w-5" />
               </button>
             </div>
 
             {/* 모달 본문 */}
-            <div className="p-5 flex flex-col gap-4 text-xs">
-              <div className="p-3 bg-amber-50 dark:bg-amber-950/30 rounded-lg border border-amber-300 dark:border-amber-800 text-[11px] text-amber-900 dark:text-amber-200">
-                • <b>설계변경(E001)</b> 전환 시: 제품 도면 버전 변경에 따른 E채번이 자동 부여되며, <b>(금형견적, 사출견적)</b> 견적 관리 체계로 즉시 연동됩니다.
-                <br />
-                • <b>금형 PM(PM 중)</b> 전환 시: 1~30차 PM 차수, 분해점검 공정 및 계획/실적 일정 관리가 시작됩니다.
-              </div>
-
-              {/* 대상 프로젝트 선택 */}
-              <div className="flex flex-col gap-1.5">
-                <label className="font-bold text-zinc-700 dark:text-zinc-300">
-                  대상 프로젝트 선택
-                </label>
-                <select
-                  value={targetTransitionProject?.id || ""}
-                  onChange={(e) => {
-                    const found = vendorProjects.find((p) => p.id === Number(e.target.value));
-                    if (found) setTargetTransitionProject(found);
-                  }}
-                  className="h-8 rounded-md border bg-white dark:bg-zinc-900 px-2.5 text-xs font-bold text-zinc-800 dark:text-zinc-100"
-                >
-                  {vendorProjects.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      [{p.projectNo}] {p.projectName} - {p.productName} ({p.moldNo}) | 현재: {p.currentState} ({p.revisionCode})
-                    </option>
-                  ))}
-                </select>
-              </div>
-
+            <div className="p-5 flex flex-col gap-4 text-xs overflow-y-auto">
               {/* 변경할 목표 상태 선택 */}
               <div className="flex flex-col gap-1.5">
                 <label className="font-bold text-zinc-700 dark:text-zinc-300">
@@ -1607,14 +1683,24 @@ export default function VendorMassPmRevisionPage() {
                 </label>
                 <div className="grid grid-cols-3 gap-2">
                   {[
-                    { state: "설변 중" as const, label: "설계변경 (설변 중)", badge: "E001 채번 자동 부여", color: "border-rose-400 bg-rose-50/50 text-rose-800" },
-                    { state: "PM 중" as const, label: "금형 PM (PM 중)", badge: "정기점검/보수 착수", color: "border-amber-400 bg-amber-50/50 text-amber-800" },
-                    { state: "양산 중" as const, label: "정상 양산 (양산 중)", badge: "정상 납품 가동", color: "border-emerald-400 bg-emerald-50/50 text-emerald-800" },
+                    { state: "설변 중" as const, label: "설계변경 (설변 중)", badge: "설변 공정 진행", defaultReason: "원청 고객사 도면 변경 및 금형/사출 단가 조정 접수", color: "border-rose-400 bg-rose-50/50 text-rose-800" },
+                    { state: "PM 중" as const, label: "금형 PM (PM 중)", badge: "정기점검/보수 착수", defaultReason: "정기 타수 도달에 따른 금형 분해점검 PM 착수", color: "border-amber-400 bg-amber-50/50 text-amber-800" },
+                    { state: "양산 중" as const, label: "정상 양산 (양산 중)", badge: "정상 납품 가동", defaultReason: "설변/PM 완료 후 정상 양산 가동 복귀", color: "border-emerald-400 bg-emerald-50/50 text-emerald-800" },
                   ].map((opt) => (
                     <button
                       type="button"
                       key={opt.state}
-                      onClick={() => setTransitionTargetState(opt.state)}
+                      onClick={() => {
+                        setTransitionTargetState(opt.state);
+                        const defaults = [
+                          "원청 고객사 도면 변경 및 금형/사출 단가 조정 접수",
+                          "정기 타수 도달에 따른 금형 분해점검 PM 착수",
+                          "설변/PM 완료 후 정상 양산 가동 복귀",
+                        ];
+                        if (!transitionReason.trim() || defaults.includes(transitionReason.trim())) {
+                          setTransitionReason(opt.defaultReason);
+                        }
+                      }}
                       className={`p-2.5 rounded-lg border text-left flex flex-col justify-between gap-1 transition-all cursor-pointer ${
                         transitionTargetState === opt.state
                           ? `${opt.color} ring-2 ring-slate-800 dark:ring-white font-bold`
@@ -1641,20 +1727,56 @@ export default function VendorMassPmRevisionPage() {
                 />
               </div>
 
+              {/* 저장된 상태 전환 사유 이력 (DB 영구 보존) */}
+              <div className="bg-[#1e293b] text-white p-3 rounded-lg border border-slate-700 flex flex-col gap-2">
+                <div className="flex items-center justify-between border-b border-slate-700 pb-1.5">
+                  <span className="font-bold text-[11px] flex items-center gap-1.5 text-amber-400">
+                    <History className="h-3.5 w-3.5" />
+                    상태 전환 사유 및 이력 ({(targetTransitionProject.stateTransitionLogs || []).length}건)
+                  </span>
+                  <span className="text-[10px] text-slate-400">DB 영구 보존</span>
+                </div>
+
+                {(targetTransitionProject.stateTransitionLogs || []).length === 0 ? (
+                  <div className="text-[11px] text-slate-400 py-2 text-center">
+                    아직 기록된 상태 전환 사유 이력이 없습니다.
+                  </div>
+                ) : (
+                  <div className="flex flex-col gap-1.5 max-h-40 overflow-y-auto">
+                    {(targetTransitionProject.stateTransitionLogs || []).map((log) => (
+                      <div
+                        key={log.id}
+                        className="p-2 rounded bg-slate-800/80 border border-slate-700 text-[11px] flex flex-col gap-1"
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="font-bold text-amber-300">
+                            [{log.fromState} → {log.toState}]
+                          </span>
+                          <span className="text-[10px] text-slate-400 font-mono">
+                            {cleanCompanyAuthor(log.author, currentVendor)} · {log.createdAt}
+                          </span>
+                        </div>
+                        <p className="text-slate-100 leading-relaxed">{log.reason}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
             </div>
 
             {/* 모달 푸터 */}
             <div className="flex items-center justify-between p-3.5 bg-zinc-50 dark:bg-zinc-800 border-t">
-              <Button onClick={() => setIsStateTransitionModalOpen(false)} variant="outline" className="h-8 px-4 text-xs">
+              <Button onClick={() => setIsStateTransitionModalOpen(false)} variant="outline" className="h-8 px-4 text-xs cursor-pointer">
                 취소
               </Button>
 
               <Button 
                 onClick={handleConfirmStateTransition}
-                className="h-8 px-5 text-xs font-bold bg-slate-900 hover:bg-slate-800 text-white gap-1.5 shadow-sm"
+                className="h-8 px-5 text-xs font-bold bg-slate-900 hover:bg-slate-800 text-white gap-1.5 shadow-sm cursor-pointer"
               >
                 <Check className="h-4 w-4 text-emerald-400" />
-                상태 전환 및 채번 확정
+                상태 전환 확정
               </Button>
             </div>
 

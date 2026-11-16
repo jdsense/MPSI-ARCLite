@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { 
@@ -25,20 +25,69 @@ import {
 import { useAuthRole } from "@/lib/role-store";
 import { useMassValidationStore } from "@/lib/mass-validation-store";
 import { useMassPpapStore } from "@/lib/mass-ppap-store";
-import { usePmRevisionStore, RevisionHistoryItem } from "@/lib/pm-revision-store";
+import { isMatchingMassVendor, isInvalidMassVendorName } from "@/lib/mass-quotation-store";
+
+interface DbRevisionHistoryItem {
+  revisionCode: string;
+  revisionDate: string;
+  title: string;
+  modelReview: string;
+  moldCostQuote: string;
+  moldTrialReport: string;
+  massValidationReport: string;
+  author: string;
+  memo: string;
+  createdAt: string;
+}
+
+interface DbPmRevisionProject {
+  projectNo: string;
+  hasPmMaster: boolean;
+  cumulativeShotCount: number | null;
+  pmTargetShotInterval: number | null;
+  nextPmScheduledDate: string | null;
+  activeRevisionCode: string;
+  latestPmRound: {
+    roundNumber: number;
+    inspectionDate: string;
+    inspectorName: string;
+    pmStatus: string;
+  } | null;
+  historyList: DbRevisionHistoryItem[];
+}
 
 export default function VendorMassProjectsPage() {
   const router = useRouter();
-  const { projects, activeProjects } = useProjectMaster();
-  const { validations } = useMassValidationStore();
-  const { items: ppapItems } = useMassPpapStore();
-  const { items: pmRevisionItems } = usePmRevisionStore();
+  const { projects, activeProjects, refreshFromDb: refreshProjectsFromDb, isLoading: isProjectsLoading } = useProjectMaster();
+  const { validations, refreshFromDb: refreshValidationsFromDb } = useMassValidationStore();
+  const { items: ppapItems, refreshFromDb: refreshPpapFromDb } = useMassPpapStore();
   const { role, vendorName } = useAuthRole();
 
-  // 현재 로그인/선택된 양산 외주업체 (뉴몰드 등)
-  const currentVendor = (role === "VENDOR_MASS" && vendorName && !vendorName.includes("MPSI"))
+  const [dbPmRevisions, setDbPmRevisions] = useState<DbPmRevisionProject[]>([]);
+  const [isSyncing, setIsSyncing] = useState(false);
+
+  const loadPmRevisionsFromDb = useCallback(async () => {
+    try {
+      const res = await fetch("/api/v1/pm-revisions", { cache: "no-store" });
+      if (res.ok) {
+        const json = await res.json();
+        if (json.success && Array.isArray(json.data)) {
+          setDbPmRevisions(json.data);
+        }
+      }
+    } catch (e) {
+      console.warn("Failed to load PM revisions from DB:", e);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadPmRevisionsFromDb();
+  }, [loadPmRevisionsFromDb]);
+
+  // 현재 로그인된 양산 외주업체
+  const currentVendor = (role === "VENDOR_MASS" && vendorName && !vendorName.includes("MPSI") && !isInvalidMassVendorName(vendorName))
     ? vendorName
-    : (vendorName && !vendorName.includes("MPSI") ? vendorName : "(주)뉴몰드");
+    : (vendorName && !vendorName.includes("MPSI") && !isInvalidMassVendorName(vendorName) ? vendorName : "(주)뉴몰드");
 
   // 필터 상태
   const [filterKeyword, setFilterKeyword] = useState("");
@@ -77,22 +126,23 @@ export default function VendorMassProjectsPage() {
   // 토스트 알림
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
-  // 협력사 이름 정규화 유틸리티 ((주), 주식회사, 공백 제거 후 비교)
-  const cleanVendorName = (name?: string) => {
-    return (name || "").replace(/\(주\)|주식회사|\s/g, "").trim().toLowerCase();
+  const handleSyncFromDb = async () => {
+    setIsSyncing(true);
+    try {
+      await Promise.all([
+        refreshProjectsFromDb(),
+        refreshValidationsFromDb(),
+        refreshPpapFromDb(),
+        loadPmRevisionsFromDb(),
+      ]);
+      setToastMessage("실시간 DB 데이터 동기화가 완료되었습니다.");
+      setTimeout(() => setToastMessage(null), 2500);
+    } finally {
+      setIsSyncing(false);
+    }
   };
 
-  const isMatchingVendor = (projectVendor?: string, targetVendor?: string) => {
-    const pClean = cleanVendorName(projectVendor);
-    const tClean = cleanVendorName(targetVendor);
-    if (!pClean || !tClean) return false;
-    return pClean === tClean || pClean.includes(tClean) || tClean.includes(pClean);
-  };
-
-  // 현재 외주업체에게 배정된 양산 프로젝트 목록 필터링 (MPSI 연동)
-  // * 전체 프로젝트 매트릭스는 배제
-  // * 수주가 확정되어 MI로 시작하는 정식 프로젝트만 노출 ("Q"로 시작하는 견적 단계 프로젝트는 철저히 배제)
-  // * 최신 리비전(설계변경 E차수가 있는 경우 이전 차수 배제) 적용
+  // 현재 외주업체에게 배정된 양산 프로젝트 목록 필터링 (100% DB 연동)
   const baseProjects = activeProjects && activeProjects.length > 0 ? activeProjects : projects;
   const vendorProjects = baseProjects.filter((p) => {
     // 1. Q로 시작하거나 0단계 견적 건은 외주업체 프로젝트 관리 목록에 절대 노출하지 않음
@@ -101,7 +151,7 @@ export default function VendorMassProjectsPage() {
     }
 
     // 2. 자사 배정 프로젝트 매칭 (사출양산 외주업체명 정규화 매칭)
-    const matchVendor = isMatchingVendor(p.massVendor, currentVendor);
+    const matchVendor = isMatchingMassVendor(p.massVendor, currentVendor);
     if (!matchVendor) return false;
 
     // 3. 키워드 검색
@@ -119,8 +169,8 @@ export default function VendorMassProjectsPage() {
       return false;
     }
 
-    // 4-1. 신작/설변 필터 (N001 vs E001)
-    const rowChangeType = p.changeType || (p.projectNo?.includes("E") || p.projectNo === "MI26003P0" ? "E001" : "N001");
+    // 4-1. 신작/설변 필터 (N001 vs E001 - DB changeType 기준)
+    const rowChangeType = p.changeType || (p.projectNo?.includes("E") ? "E001" : "N001");
     if (filterChangeType !== "ALL" && rowChangeType !== filterChangeType) {
       return false;
     }
@@ -173,7 +223,7 @@ export default function VendorMassProjectsPage() {
                 [{currentVendor}] 사출양산 외주 관제
               </span>
               <span className="text-[11px] text-zinc-500 font-medium">
-                (조회 결과: <b className="text-emerald-700 dark:text-emerald-300 font-mono font-bold">{vendorProjects.length}</b>건 / 전체: <b className="font-mono">{projects.filter(p => !p.projectNo?.startsWith('Q')).length}</b>건)
+                (조회 결과: <b className="text-emerald-700 dark:text-emerald-300 font-mono font-bold">{vendorProjects.length}</b>건 · 실시간 DB 연동)
               </span>
             </div>
             <p className="text-[11px] text-zinc-500 mt-0.5">
@@ -280,21 +330,32 @@ export default function VendorMassProjectsPage() {
           />
         </div>
 
-        <Button
-          onClick={() => {
-            setFilterKeyword("");
-            setFilterStatus("ALL");
-            setFilterChangeType("ALL");
-            setFilterDateFrom("");
-            setFilterDateTo("");
-            setSelectedDatePreset("all");
-          }}
-          variant="outline"
-          className="h-7 px-2.5 text-xs gap-1 text-zinc-600 self-end sm:self-auto"
-        >
-          <RefreshCw className="h-3 w-3" />
-          초기화
-        </Button>
+        <div className="flex items-center gap-1.5 self-end sm:self-auto">
+          <Button
+            onClick={handleSyncFromDb}
+            disabled={isSyncing || isProjectsLoading}
+            variant="outline"
+            className="h-7 px-2.5 text-xs gap-1 border-emerald-300 text-emerald-700 hover:bg-emerald-50 cursor-pointer"
+          >
+            <RefreshCw className={`h-3 w-3 ${isSyncing || isProjectsLoading ? "animate-spin" : ""}`} />
+            DB 동기화
+          </Button>
+          <Button
+            onClick={() => {
+              setFilterKeyword("");
+              setFilterStatus("ALL");
+              setFilterChangeType("ALL");
+              setFilterDateFrom("");
+              setFilterDateTo("");
+              setSelectedDatePreset("all");
+            }}
+            variant="outline"
+            className="h-7 px-2.5 text-xs gap-1 text-zinc-600 cursor-pointer"
+          >
+            <RotateCcw className="h-3 w-3" />
+            초기화
+          </Button>
+        </div>
       </div>
 
       {/* 4. 자사 배정 프로젝트 목록 테이블 (MPSI /portal/project와 동일한 다크 네이비 테마 및 컬럼 구조) */}
@@ -333,7 +394,16 @@ export default function VendorMassProjectsPage() {
             ) : (
               vendorProjects.map((row, idx) => {
                 const currentStepObj = PROCESS_13_STEPS.find((s) => s.step === row.currentStep);
-                let stepDisplayName = row.stepNameCustom || currentStepObj?.name || `Step ${row.currentStep}`;
+                const isSpecialCustomName = Boolean(
+                  row.stepNameCustom &&
+                  row.stepNameCustom !== "수주확정" &&
+                  !PROCESS_13_STEPS.some((s) => s.name === row.stepNameCustom)
+                );
+                const stepDisplayName =
+                  (isSpecialCustomName ? row.stepNameCustom : currentStepObj?.name) ||
+                  currentStepObj?.name ||
+                  `Step ${row.currentStep}`;
+                const rowChangeType = row.changeType || (row.projectNo?.includes("E") ? "E001" : "N001");
 
                 return (
                   <tr 
@@ -348,7 +418,7 @@ export default function VendorMassProjectsPage() {
                       <span>{row.projectNo}</span>
                     </td>
 
-                    {/* 2-1. 신작/설변 (클릭 시 이력 모달) */}
+                    {/* 2-1. 신작/설변 (클릭 시 DB 이력 모달) */}
                     <td className="p-2 border-r border-slate-200 dark:border-zinc-800 text-center">
                       <button 
                         onClick={() => {
@@ -356,24 +426,24 @@ export default function VendorMassProjectsPage() {
                           setIsHistoryModalOpen(true);
                         }}
                         className={`px-2 py-0.5 rounded font-mono font-bold text-[10.5px] cursor-pointer transition-all hover:scale-105 shadow-xs ${
-                          (row.changeType === "E001" || row.projectNo?.includes("E") || row.projectNo === "MI26003P0")
+                          rowChangeType.startsWith("E")
                             ? "bg-rose-100 text-rose-800 border border-rose-300 hover:bg-rose-200"
                             : "bg-blue-100 text-blue-800 border border-blue-300 hover:bg-blue-200"
                         }`}
-                        title="클릭하여 신작/설변 차수별 상세 이력 확인"
+                        title="클릭하여 신작/설변 차수별 상세 DB 이력 확인"
                       >
-                        {row.changeType || (row.projectNo?.includes("E") || row.projectNo === "MI26003P0" ? "E001" : "N001")}
+                        {rowChangeType}
                       </button>
                     </td>
 
                     {/* 3. 고객사 */}
-                    <td className="p-2 border-r border-slate-200 dark:border-zinc-800 text-center text-zinc-600">{row.customerName}</td>
+                    <td className="p-2 border-r border-slate-200 dark:border-zinc-800 text-center text-zinc-600">{row.customerName || "-"}</td>
 
                     {/* 4. 프로젝트명 */}
-                    <td className="p-2 border-r border-slate-200 dark:border-zinc-800 font-medium truncate max-w-[130px]">{row.projectName}</td>
+                    <td className="p-2 border-r border-slate-200 dark:border-zinc-800 font-medium truncate max-w-[130px]">{row.projectName || "-"}</td>
 
                     {/* 5. 제품명 */}
-                    <td className="p-2 border-r border-slate-200 dark:border-zinc-800 font-semibold text-zinc-900 dark:text-zinc-100 truncate max-w-[160px]">{row.productName}</td>
+                    <td className="p-2 border-r border-slate-200 dark:border-zinc-800 font-semibold text-zinc-900 dark:text-zinc-100 truncate max-w-[160px]">{row.productName || "-"}</td>
 
                     {/* 6. 품번 */}
                     <td className="p-2 border-r border-slate-200 dark:border-zinc-800 text-center font-mono text-zinc-500">{row.partNo || "-"}</td>
@@ -382,10 +452,10 @@ export default function VendorMassProjectsPage() {
                     <td className="p-2 border-r border-slate-200 dark:border-zinc-800 text-center font-mono font-semibold text-zinc-700 dark:text-zinc-300">{row.moldNo || "-"}</td>
 
                     {/* 8. 캐비티사양 */}
-                    <td className="p-2 border-r border-slate-200 dark:border-zinc-800 text-center font-mono text-[10px]">{row.cavity}</td>
+                    <td className="p-2 border-r border-slate-200 dark:border-zinc-800 text-center font-mono text-[10px]">{row.cavity || "-"}</td>
 
                     {/* 9. 금형 제작처 */}
-                    <td className="p-2 border-r border-slate-200 dark:border-zinc-800 text-center text-zinc-600">{row.moldVendor}</td>
+                    <td className="p-2 border-r border-slate-200 dark:border-zinc-800 text-center text-zinc-600">{row.moldVendor || "-"}</td>
 
                     {/* 10. 현재 스텝 */}
                     <td className="p-2 border-r border-slate-200 dark:border-zinc-800 text-center">
@@ -430,13 +500,18 @@ export default function VendorMassProjectsPage() {
         </table>
       </div>
 
-      {/* 5. [양산 외주업체 전용 상세 모달] 양산 승인 및 PM/설변 관리 상세 현황 (MPSI 동기화) */}
+      {/* 5. [양산 외주업체 전용 상세 모달] 양산 승인 및 PM/설변 관리 상세 현황 (MPSI DB 동기화) */}
       {isEditModalOpen && selectedProject && (() => {
         const validation = validations.find((v) => 
           v.projectNo === selectedProject.projectNo ||
+          v.officialProjectNo === selectedProject.projectNo ||
           v.projectNo?.replace(/-01$/, "P0") === selectedProject.projectNo ||
           (Boolean(selectedProject.projectNo && v.projectNo) && selectedProject.projectNo.substring(0, 7) === v.projectNo.substring(0, 7))
         );
+
+        const validTrial = validation?.trials
+          ? (validation.trials.slice().reverse().find((t) => (t.totalShotCount || 0) > 0 || (t.measuredCpk || 0) > 0 || Boolean(t.machineNo)) || validation.trials[0])
+          : undefined;
 
         const ppap = ppapItems.find((p) => 
           p.projectNo === selectedProject.projectNo ||
@@ -444,7 +519,18 @@ export default function VendorMassProjectsPage() {
           (Boolean(selectedProject.projectNo && p.projectNo) && selectedProject.projectNo.substring(0, 7) === p.projectNo.substring(0, 7))
         );
 
+        const dbPm = dbPmRevisions.find((r) =>
+          r.projectNo?.toUpperCase() === selectedProject.projectNo?.toUpperCase()
+        );
+
         const currentStepObj = PROCESS_13_STEPS.find((s) => s.step === selectedProject.currentStep);
+        const totalShots = dbPm?.cumulativeShotCount ?? validTrial?.totalShotCount ?? 0;
+        const warrantyShotsNum = typeof selectedProject.warrantyShots === "number"
+          ? selectedProject.warrantyShots
+          : Number(selectedProject.warrantyShots || 0);
+        const shotProgressPct = warrantyShotsNum > 0
+          ? Math.min(100, Math.max(totalShots > 0 ? 1 : 0, Math.round((totalShots / warrantyShotsNum) * 100)))
+          : 0;
 
         return (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-3">
@@ -458,7 +544,7 @@ export default function VendorMassProjectsPage() {
                       [{selectedProject.projectNo}] 양산 프로젝트 상세 정보
                     </h3>
                     <span className="text-[11px] text-slate-300">
-                      사출양산처: {currentVendor} | 차종: {selectedProject.projectName} - {selectedProject.productName}
+                      사출양산처: {currentVendor} | 차종: {selectedProject.projectName || "-"} - {selectedProject.productName || "-"}
                     </span>
                   </div>
                 </div>
@@ -477,40 +563,40 @@ export default function VendorMassProjectsPage() {
                       양산 정보 및 일정
                     </h4>
                     <span className="text-[10px] text-zinc-500">
-                      * 프로젝트 관리대장 및 양산 마스터 연동
+                      * 프로젝트 마스터 DB 및 양산 공정 테이블 실시간 연동
                     </span>
                   </div>
 
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-[11px]">
-                    <div><span className="text-zinc-500">원청 고객사:</span> <b className="ml-1 text-zinc-900 dark:text-zinc-100">{selectedProject.customerName}</b></div>
-                    <div><span className="text-zinc-500">제품명 / 차종:</span> <b className="ml-1 text-zinc-900 dark:text-zinc-100 truncate">{selectedProject.productName} ({selectedProject.projectName})</b></div>
+                    <div><span className="text-zinc-500">원청 고객사:</span> <b className="ml-1 text-zinc-900 dark:text-zinc-100">{selectedProject.customerName || "-"}</b></div>
+                    <div><span className="text-zinc-500">제품명 / 차종:</span> <b className="ml-1 text-zinc-900 dark:text-zinc-100 truncate">{selectedProject.productName || "-"} ({selectedProject.projectName || "-"})</b></div>
                     <div><span className="text-zinc-500">품번:</span> <b className="ml-1 font-mono text-zinc-800 dark:text-zinc-200">{selectedProject.partNo || "-"}</b></div>
                     <div><span className="text-zinc-500">금형번호:</span> <b className="ml-1 font-mono font-bold text-zinc-800 dark:text-zinc-200">{selectedProject.moldNo || "-"}</b></div>
 
                     <div>
                       <span className="text-zinc-500">금형제작처:</span> 
-                      <b className="ml-1 text-purple-700 dark:text-purple-300 font-bold">[외주] {selectedProject.moldVendor}</b>
+                      <b className="ml-1 text-purple-700 dark:text-purple-300 font-bold">{selectedProject.moldVendor ? `[외주] ${selectedProject.moldVendor}` : "-"}</b>
                     </div>
                     <div>
                       <span className="text-zinc-500">사출양산처:</span> 
-                      <b className="ml-1 text-emerald-600 dark:text-emerald-400 font-bold">[외주] {selectedProject.massVendor}</b>
+                      <b className="ml-1 text-emerald-600 dark:text-emerald-400 font-bold">{selectedProject.massVendor ? `[외주] ${selectedProject.massVendor}` : "-"}</b>
                     </div>
-                    <div><span className="text-zinc-500">캐비티 / 원재료:</span> <b className="ml-1 text-zinc-800 dark:text-zinc-200">{selectedProject.cavity || "1*2"} / {selectedProject.material || "PP-EPDM"}</b></div>
-                    <div><span className="text-zinc-500">사출기 사양:</span> <b className="ml-1 font-mono text-zinc-800 dark:text-zinc-200">{selectedProject.machineTon || "450T"}</b></div>
+                    <div><span className="text-zinc-500">캐비티 / 원재료:</span> <b className="ml-1 text-zinc-800 dark:text-zinc-200">{selectedProject.cavity || "-"} / {selectedProject.material || selectedProject.resinSpec || "-"}</b></div>
+                    <div><span className="text-zinc-500">사출기 사양:</span> <b className="ml-1 font-mono text-zinc-800 dark:text-zinc-200">{selectedProject.machineTon || "-"}</b></div>
 
-                    <div><span className="text-zinc-500">총 발주 수량:</span> <b className="ml-1 font-mono font-bold text-zinc-800 dark:text-zinc-200">{selectedProject.orderQty?.toLocaleString() || "10,000"} EA</b></div>
+                    <div><span className="text-zinc-500">총 발주 수량:</span> <b className="ml-1 font-mono font-bold text-zinc-800 dark:text-zinc-200">{selectedProject.orderQty ? `${selectedProject.orderQty.toLocaleString()} EA` : "-"}</b></div>
                     <div><span className="text-zinc-500">수주일 / 발주일:</span> <b className="ml-1 font-mono text-zinc-700 dark:text-zinc-300">{selectedProject.orderDate || "-"} / {selectedProject.poDate || selectedProject.registeredDate || "-"}</b></div>
                     <div><span className="text-zinc-500">킥오프:</span> <b className="ml-1 font-mono text-zinc-700 dark:text-zinc-300">{selectedProject.kickoffDate || "-"}</b></div>
                     <div><span className="text-zinc-500">목표 T1 일정:</span> <b className="ml-1 font-mono text-zinc-700 dark:text-zinc-300">{selectedProject.targetT1Date || "-"}</b></div>
 
-                    <div><span className="text-zinc-500">금형 이관(입고)일:</span> <b className="ml-1 font-mono text-purple-700 font-bold">{selectedProject.moldDeliveryDate || selectedProject.targetT1Date || "-"}</b></div>
+                    <div><span className="text-zinc-500">금형 이관(입고)일:</span> <b className="ml-1 font-mono text-purple-700 font-bold">{selectedProject.moldDeliveryDate || "-"}</b></div>
                     <div><span className="text-zinc-500">목표 양산 승인 일정:</span> <b className="ml-1 font-mono text-emerald-700 dark:text-emerald-400 font-bold">{selectedProject.targetMassDate || "-"}</b></div>
-                    <div><span className="text-zinc-500">양산 시작일:</span> <b className="ml-1 font-mono text-emerald-700 dark:text-emerald-400 font-bold">{selectedProject.massStartDate || selectedProject.targetMassDate || "-"}</b></div>
-                    <div><span className="text-zinc-500">누적 납품 수량:</span> <b className="ml-1 font-mono font-bold text-zinc-800 dark:text-zinc-200">{selectedProject.deliveredQty?.toLocaleString() || "0"} EA</b></div>
+                    <div><span className="text-zinc-500">양산 시작일:</span> <b className="ml-1 font-mono text-emerald-700 dark:text-emerald-400 font-bold">{selectedProject.massStartDate || "-"}</b></div>
+                    <div><span className="text-zinc-500">누적 납품 수량:</span> <b className="ml-1 font-mono font-bold text-zinc-800 dark:text-zinc-200">{(selectedProject.deliveredQty || 0).toLocaleString()} EA</b></div>
                   </div>
                 </div>
 
-                {/* 2. 시양산 및 12H 연속사출 검증 현황 (타 메뉴 데이터 연동 뷰) */}
+                {/* 2. 시양산 및 12H 연속사출 검증 현황 (DB MpsiMassValidation 연동) */}
                 <div className="border rounded-xl p-3.5 bg-white dark:bg-zinc-900 flex flex-col gap-3">
                   <div className="flex items-center justify-between border-b pb-2">
                     <h4 className="font-bold text-zinc-800 dark:text-zinc-100 flex items-center gap-1.5">
@@ -518,7 +604,7 @@ export default function VendorMassProjectsPage() {
                       시양산 및 12H 연속사출 검증 현황
                     </h4>
                     <span className="px-2.5 py-0.5 rounded-full text-xs font-bold border bg-emerald-50 text-emerald-700 border-emerald-300 dark:bg-emerald-950 dark:text-emerald-300">
-                      {validation?.overallStatus || (selectedProject.currentStep >= 11 ? "CPK 검증완료" : "시양산 진행중")}
+                      {validation?.overallStatus || (selectedProject.currentStep >= 11 ? "실적 미등록" : "시양산 착수 전")}
                     </span>
                   </div>
 
@@ -526,35 +612,45 @@ export default function VendorMassProjectsPage() {
                     <div className="p-2 rounded bg-zinc-50 dark:bg-zinc-800/40 border">
                       <span className="text-zinc-500 block text-[10px]">사출기 호기</span>
                       <b className="text-xs text-zinc-800 dark:text-zinc-200 mt-0.5 block font-mono">
-                        {validation?.trials[0]?.machineNo || `사출 3호기 (${selectedProject.machineTon || "450T"})`}
+                        {validTrial?.machineNo || selectedProject.machineTon || "-"}
                       </b>
                     </div>
 
                     <div className="p-2 rounded bg-zinc-50 dark:bg-zinc-800/40 border">
                       <span className="text-zinc-500 block text-[10px]">연속 가동시간</span>
                       <b className="text-xs text-zinc-800 dark:text-zinc-200 mt-0.5 block font-mono">
-                        {validation?.trials[0]?.continuousHours || 12}시간 연속가동
+                        {validTrial?.continuousHours ? `${validTrial.continuousHours}시간 연속가동` : "-"}
                       </b>
                     </div>
 
                     <div className="p-2 rounded bg-zinc-50 dark:bg-zinc-800/40 border">
                       <span className="text-zinc-500 block text-[10px]">사출 타수 / 생산량</span>
                       <b className="text-xs text-emerald-700 dark:text-emerald-400 mt-0.5 block font-mono font-bold">
-                        {(validation?.trials[0]?.totalShotCount || 1250).toLocaleString()} Shot / {(validation?.trials[0]?.totalProduced || 2500).toLocaleString()} EA
+                        {validTrial
+                          ? `${(validTrial.totalShotCount || 0).toLocaleString()} Shot / ${(validTrial.totalProduced || 0).toLocaleString()} EA`
+                          : "-"}
                       </b>
                     </div>
 
                     <div className="p-2 rounded bg-zinc-50 dark:bg-zinc-800/40 border">
                       <span className="text-zinc-500 block text-[10px]">공정능력지수 (Cpk)</span>
                       <b className="text-xs text-sky-700 dark:text-sky-400 mt-0.5 block font-mono font-bold">
-                        Cpk {validation?.trials[0]?.measuredCpk || 1.45} <span className="text-[10px] text-zinc-400 font-normal">(기준 ≥ 1.33)</span>
+                        {validTrial?.measuredCpk ? (
+                          <>
+                            Cpk {validTrial.measuredCpk} <span className="text-[10px] text-zinc-400 font-normal">(기준 ≥ {validTrial.targetCpk || 1.33})</span>
+                          </>
+                        ) : "-"}
                       </b>
                     </div>
 
                     <div className="p-2 rounded bg-zinc-50 dark:bg-zinc-800/40 border">
                       <span className="text-zinc-500 block text-[10px]">Cycle Time (C/T)</span>
                       <b className="text-xs text-zinc-800 dark:text-zinc-200 mt-0.5 block font-mono font-bold">
-                        {validation?.trials[0]?.measuredCycleTime || 34.2}초 <span className="text-[10px] text-zinc-400 font-normal">(목표 {validation?.trials[0]?.targetCycleTime || 35}초)</span>
+                        {validTrial?.measuredCycleTime ? (
+                          <>
+                            {validTrial.measuredCycleTime}초 {validTrial.targetCycleTime ? <span className="text-[10px] text-zinc-400 font-normal">(목표 {validTrial.targetCycleTime}초)</span> : null}
+                          </>
+                        ) : "-"}
                       </b>
                     </div>
                   </div>
@@ -563,16 +659,16 @@ export default function VendorMassProjectsPage() {
                     <div className="flex items-center gap-2">
                       <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
                       <span className="text-zinc-700 dark:text-zinc-300">
-                        <b>시양산 검증 의견:</b> {validation?.trials[0]?.opinion || (selectedProject.currentStep >= 11 ? "시양산 12H 연속 가동 검증 진행 대기" : "시양산 단계 착수 전")}
+                        <b>시양산 검증 의견:</b> {validTrial?.opinion || "DB에 등록된 시양산 검증 의견이 없습니다."}
                       </span>
                     </div>
                     <span className="text-[10px] text-zinc-400 shrink-0 font-mono">
-                      검증 참관: {validation?.mpsiWitnessInspector || "MPSI 품질팀"}
+                      검증 참관: {validation?.mpsiWitnessInspector || "-"}
                     </span>
                   </div>
                 </div>
 
-                {/* 3. 양산 승인 (PPAP 6대 필수 품질 요건) 현황 (타 메뉴 데이터 연동 뷰) */}
+                {/* 3. 양산 승인 (PPAP 6대 필수 품질 요건) 현황 (DB MpsiMassPpap 연동) */}
                 <div className="border rounded-xl p-3.5 bg-white dark:bg-zinc-900 flex flex-col gap-3">
                   <div className="flex items-center justify-between border-b pb-2">
                     <h4 className="font-bold text-zinc-800 dark:text-zinc-100 flex items-center gap-1.5">
@@ -582,36 +678,56 @@ export default function VendorMassProjectsPage() {
                     <div className="flex items-center gap-2">
                       <span className="text-[10px] text-zinc-400 font-mono">서류 완성률:</span>
                       <span className="px-2 py-0.5 rounded text-xs font-mono font-bold bg-emerald-100 text-emerald-800 border border-emerald-300 dark:bg-emerald-950 dark:text-emerald-300">
-                        {ppap?.completionRate || 100}%
+                        {ppap ? `${ppap.completionRate ?? 0}%` : "0%"}
                       </span>
                       <span className={`px-2 py-0.5 rounded-full text-xs font-bold border ${
-                        ppap?.ppapStatus === "양산 승인 (Pass)"
+                        ppap?.ppapStatus === "양산 승인 (Pass)" || ppap?.ppapStatus === "승인완료"
                           ? "bg-emerald-100 text-emerald-800 border-emerald-300"
-                          : ppap?.ppapStatus === "서류접수(심사대기)"
+                          : ppap?.ppapStatus === "서류접수(심사대기)" || ppap?.ppapStatus === "검토 진행 중"
                           ? "bg-sky-100 text-sky-800 border-sky-300"
-                          : "bg-amber-100 text-amber-800 border-amber-300"
+                          : "bg-zinc-100 text-zinc-600 border-zinc-300"
                       }`}>
-                        {ppap?.ppapStatus || (selectedProject.currentStep >= 12 ? "양산 승인 (Pass)" : "서류접수(심사대기)")}
+                        {ppap?.ppapStatus || "미등록(대기)"}
                       </span>
                     </div>
                   </div>
 
-                  {/* 6대 필수 패키지 배지 그리드 */}
+                  {/* 6대 필수 패키지 배지 그리드 (실제 DB 서류 상태 반영) */}
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-[11px]">
-                    {[
-                      { code: "PSW", name: "부품제출보증서 (PSW)", status: "적합 완료" },
-                      { code: "DIM", name: "초·중·종물 전수 치수 성적서", status: "적합 완료" },
-                      { code: "CPK", name: "공정능력분석 보고서 (Cpk≥1.33)", status: "적합 완료" },
-                      { code: "OQC", name: "자체 OQC 출하검사 성적서", status: "적합 완료" },
-                      { code: "MS", name: "마스터 샘플 한도견본 등록서", status: "적합 완료" },
-                      { code: "SOP", name: "사출조건표 및 표준작업지침서", status: "적합 완료" },
-                    ].map((doc) => (
+                    {(ppap?.documents && ppap.documents.length > 0
+                      ? ppap.documents.map((d) => ({
+                          code: d.docCode,
+                          name: d.docName,
+                          status: d.reviewStatus === "적합"
+                            ? "적합 완료"
+                            : d.reviewStatus === "보완요청"
+                            ? "보완요청"
+                            : d.isSubmitted
+                            ? "제출완료(검토중)"
+                            : "미제출",
+                          tone: d.reviewStatus === "적합"
+                            ? "bg-emerald-100 text-emerald-800 border-emerald-200"
+                            : d.reviewStatus === "보완요청"
+                            ? "bg-rose-100 text-rose-800 border-rose-200"
+                            : d.isSubmitted
+                            ? "bg-sky-100 text-sky-800 border-sky-200"
+                            : "bg-zinc-100 text-zinc-500 border-zinc-200",
+                        }))
+                      : [
+                          { code: "PSW", name: "부품제출보증서 (PSW)", status: "미등록", tone: "bg-zinc-100 text-zinc-500 border-zinc-200" },
+                          { code: "DIM", name: "초·중·종물 전수 치수 성적서", status: "미등록", tone: "bg-zinc-100 text-zinc-500 border-zinc-200" },
+                          { code: "CPK", name: "공정능력분석 보고서 (Cpk≥1.33)", status: "미등록", tone: "bg-zinc-100 text-zinc-500 border-zinc-200" },
+                          { code: "OQC", name: "자체 OQC 출하검사 성적서", status: "미등록", tone: "bg-zinc-100 text-zinc-500 border-zinc-200" },
+                          { code: "MS", name: "마스터 샘플 한도견본 등록서", status: "미등록", tone: "bg-zinc-100 text-zinc-500 border-zinc-200" },
+                          { code: "SOP", name: "사출조건표 및 표준작업지침서", status: "미등록", tone: "bg-zinc-100 text-zinc-500 border-zinc-200" },
+                        ]
+                    ).map((doc) => (
                       <div key={doc.code} className="p-2 rounded border bg-zinc-50/70 dark:bg-zinc-800/40 flex items-center justify-between">
                         <div className="min-w-0 pr-1">
                           <span className="font-mono font-bold text-emerald-700 text-[10px] block">{doc.code}</span>
                           <span className="text-zinc-700 dark:text-zinc-300 truncate block text-[10.5px]">{doc.name}</span>
                         </div>
-                        <span className="shrink-0 px-1.5 py-0.5 rounded text-[9.5px] font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 border border-emerald-200">
+                        <span className={`shrink-0 px-1.5 py-0.5 rounded text-[9.5px] font-bold border ${doc.tone}`}>
                           {doc.status}
                         </span>
                       </div>
@@ -622,17 +738,17 @@ export default function VendorMassProjectsPage() {
                     <div className="flex items-center gap-2">
                       <ShieldAlert className="h-4 w-4 text-emerald-600 shrink-0" />
                       <span className="text-zinc-700 dark:text-zinc-300">
-                        <b>MPSI 승인 소견:</b> {ppap?.mpsiOpinion || (selectedProject.currentStep >= 12 ? "양산 승인(PPAP) 종합 심사 진행 중" : "서류 제출 및 심사 대기")}
+                        <b>MPSI 승인 소견:</b> {ppap?.mpsiOpinion || "DB에 등록된 PPAP 심사 소견이 없습니다."}
                       </span>
                     </div>
                     <div className="text-[10px] text-right text-zinc-500 shrink-0 font-mono">
-                      <div>승인권자: {ppap?.approvalOfficer || "MPSI 품질본부"}</div>
+                      <div>승인권자: {ppap?.approvalOfficer || "-"}</div>
                       {ppap?.partPoNo && <div className="text-emerald-700 font-bold">발주 PO: {ppap.partPoNo}</div>}
                     </div>
                   </div>
                 </div>
 
-                {/* 4. 양산 금형 PM(예방보전) 및 설계변경(MCR) 현황 */}
+                {/* 4. 양산 금형 PM(예방보전) 및 설계변경(MCR) 현황 (DB MpsiPmRevisionMaster 연동) */}
                 <div className="border rounded-xl p-3.5 bg-white dark:bg-zinc-900 flex flex-col gap-3">
                   <div className="flex items-center justify-between border-b pb-2">
                     <h4 className="font-bold text-zinc-800 dark:text-zinc-100 flex items-center gap-1.5">
@@ -640,7 +756,7 @@ export default function VendorMassProjectsPage() {
                       양산 금형 PM(예방보전) 및 설계변경(MCR) 현황
                     </h4>
                     <span className="px-2.5 py-0.5 rounded-full text-xs font-bold border bg-emerald-50 text-emerald-700 border-emerald-300 dark:bg-emerald-950 dark:text-emerald-300">
-                      PM 정상 유지관리중
+                      {dbPm?.latestPmRound?.pmStatus || (dbPm?.hasPmMaster ? "PM 마스터 연동중" : "PM 실적 미등록")}
                     </span>
                   </div>
 
@@ -649,16 +765,16 @@ export default function VendorMassProjectsPage() {
                       <span className="text-zinc-500 block text-[10px]">금형 보증 수명 대비 누적 타수</span>
                       <div className="mt-1 flex items-baseline justify-between">
                         <b className="text-xs font-mono font-bold text-zinc-900 dark:text-zinc-100">
-                          {(validation?.trials[0]?.totalShotCount || 1250).toLocaleString()} Shot
+                          {totalShots.toLocaleString()} Shot
                         </b>
                         <span className="text-[10px] font-mono text-zinc-400">
-                          / {typeof selectedProject.warrantyShots === "number" ? selectedProject.warrantyShots.toLocaleString() : "500,000"} Shot
+                          / {warrantyShotsNum > 0 ? `${warrantyShotsNum.toLocaleString()} Shot` : "보증수명 미지정"}
                         </span>
                       </div>
                       <div className="w-full bg-zinc-200 dark:bg-zinc-700 h-1.5 rounded-full mt-1.5 overflow-hidden">
                         <div 
                           className="bg-emerald-600 h-full rounded-full" 
-                          style={{ width: `${Math.min(100, Math.max(1, Math.round(((validation?.trials[0]?.totalShotCount || 1250) / (typeof selectedProject.warrantyShots === "number" ? selectedProject.warrantyShots : 500000)) * 100)))}%` }} 
+                          style={{ width: `${shotProgressPct}%` }} 
                         />
                       </div>
                     </div>
@@ -666,20 +782,28 @@ export default function VendorMassProjectsPage() {
                     <div className="p-2.5 rounded-lg border bg-zinc-50 dark:bg-zinc-800/40">
                       <span className="text-zinc-500 block text-[10px]">정기 PM 주기 및 점검 상태</span>
                       <b className="text-xs font-medium text-zinc-800 dark:text-zinc-200 mt-1 block">
-                        매 20,000 Shot 분해세척 / 구리스 주입
+                        {dbPm?.pmTargetShotInterval
+                          ? `매 ${dbPm.pmTargetShotInterval.toLocaleString()} Shot 주기 점검`
+                          : "등록된 정기 PM 주기 없음"}
                       </b>
                       <span className="text-[10px] text-emerald-600 font-bold block mt-0.5">
-                        차기 정기 PM까지 잔여 18,750 Shot
+                        {dbPm?.nextPmScheduledDate
+                          ? `차기 정기 PM 예정일: ${dbPm.nextPmScheduledDate}`
+                          : dbPm?.latestPmRound
+                          ? `최근 점검일: ${dbPm.latestPmRound.inspectionDate}`
+                          : "점검 이력 미등록"}
                       </span>
                     </div>
 
                     <div className="p-2.5 rounded-lg border bg-zinc-50 dark:bg-zinc-800/40">
                       <span className="text-zinc-500 block text-[10px]">설계변경(MCR) 및 금형수정 이력</span>
                       <b className="text-xs font-medium text-zinc-800 dark:text-zinc-200 mt-1 block">
-                        {validation?.urgentMoldRevision || "최신 설계(Rev.02) 반영 완료"}
+                        {validation?.urgentMoldRevision || `현재 활성 차수: ${dbPm?.activeRevisionCode || selectedProject.changeType || "N001"}`}
                       </b>
                       <span className="text-[10px] text-zinc-400 block mt-0.5">
-                        우성정공(주) 금형수정 및 사출성형 타당성 검증 합격
+                        {dbPm?.historyList && dbPm.historyList.length > 0
+                          ? `DB 등록 이력 ${dbPm.historyList.length}건 (${selectedProject.moldVendor || "금형처 미지정"})`
+                          : "등록된 추가 설변 이력 없음"}
                       </span>
                     </div>
                   </div>
@@ -851,14 +975,14 @@ export default function VendorMassProjectsPage() {
                       <span className="text-[10px] text-zinc-400">금형 제작 및 사출 타당성 검토 기준</span>
                     </div>
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px] bg-white dark:bg-zinc-900 p-2.5 rounded border">
-                      <div><span className="text-zinc-500">1. 제품 중량:</span> <b className="font-mono text-zinc-800 dark:text-zinc-200 ml-1">{curProject.partWeight || "420g"}</b></div>
-                      <div><span className="text-zinc-500">2. 캐비티 수:</span> <b className="font-mono text-zinc-800 dark:text-zinc-200 ml-1">{curProject.cavity || "1*2"}</b></div>
-                      <div><span className="text-zinc-500">3. 연간 볼륨:</span> <b className="font-mono text-emerald-700 ml-1">{curProject.annualVolume ? `${Number(curProject.annualVolume).toLocaleString()} ea` : "50,000 ea/년"}</b></div>
-                      <div><span className="text-zinc-500">4. 사출기 톤수:</span> <b className="font-mono text-zinc-800 dark:text-zinc-200 ml-1">{curProject.machineTon || "650T"}</b></div>
-                      <div><span className="text-zinc-500">5. HRS 사양:</span> <b className="font-mono text-indigo-700 ml-1">{curProject.hrsSpec || "밸브게이트 2-Drop"}</b></div>
-                      <div><span className="text-zinc-500">6. 금형 소재:</span> <b className="font-mono text-purple-700 ml-1">{curProject.moldMaterial || "NAK80"}</b></div>
-                      <div><span className="text-zinc-500">7. 원자재:</span> <b className="font-mono text-zinc-800 dark:text-zinc-200 ml-1">{curProject.resinSpec || "PP-EPDM"}</b></div>
-                      <div><span className="text-zinc-500">8. 보증 수명:</span> <b className="font-mono text-emerald-700 ml-1">{curProject.warrantyShots ? `${Number(curProject.warrantyShots).toLocaleString()} Shot` : "500,000 Shot"}</b></div>
+                      <div><span className="text-zinc-500">1. 제품 중량:</span> <b className="font-mono text-zinc-800 dark:text-zinc-200 ml-1">{curProject.partWeight || "-"}</b></div>
+                      <div><span className="text-zinc-500">2. 캐비티 수:</span> <b className="font-mono text-zinc-800 dark:text-zinc-200 ml-1">{curProject.cavity || "-"}</b></div>
+                      <div><span className="text-zinc-500">3. 연간 볼륨:</span> <b className="font-mono text-emerald-700 ml-1">{curProject.annualVolume ? `${Number(curProject.annualVolume).toLocaleString()} ea` : "-"}</b></div>
+                      <div><span className="text-zinc-500">4. 사출기 톤수:</span> <b className="font-mono text-zinc-800 dark:text-zinc-200 ml-1">{curProject.machineTon || "-"}</b></div>
+                      <div><span className="text-zinc-500">5. HRS 사양:</span> <b className="font-mono text-indigo-700 ml-1">{curProject.hrsSpec || "-"}</b></div>
+                      <div><span className="text-zinc-500">6. 금형 소재:</span> <b className="font-mono text-purple-700 ml-1">{curProject.moldMaterial || "-"}</b></div>
+                      <div><span className="text-zinc-500">7. 원자재:</span> <b className="font-mono text-zinc-800 dark:text-zinc-200 ml-1">{curProject.resinSpec || "-"}</b></div>
+                      <div><span className="text-zinc-500">8. 보증 수명:</span> <b className="font-mono text-emerald-700 ml-1">{curProject.warrantyShots ? `${Number(curProject.warrantyShots).toLocaleString()} Shot` : "-"}</b></div>
                     </div>
                   </div>
 
@@ -877,12 +1001,12 @@ export default function VendorMassProjectsPage() {
                       </div>
                       <div className="flex items-center justify-between">
                         <span className="text-zinc-500">실제 T1 완료 (Actual):</span>
-                        <b className="font-mono text-emerald-600 font-bold">{curProject.actualT1Date || curProject.targetT1Date || "-"}</b>
+                        <b className="font-mono text-emerald-600 font-bold">{curProject.actualT1Date || "-"}</b>
                       </div>
                       <div className="flex items-center justify-between pt-1 border-t">
-                        <span className="text-zinc-500">일정 준수 편차:</span>
+                        <span className="text-zinc-500">일정 상태:</span>
                         <span className="font-mono text-[10px] px-1.5 py-0.2 rounded bg-emerald-100 text-emerald-800 font-bold">
-                          정상 진행 (±0일)
+                          {curProject.actualT1Date ? "T1 완료" : "T1 실적 대기"}
                         </span>
                       </div>
                     </div>
@@ -979,41 +1103,13 @@ export default function VendorMassProjectsPage() {
         );
       })()}
 
-      {/* 5. [신작/설변(N001, E001...) 차수별 이력 조회 모달] */}
+      {/* 5. [신작/설변(N001, E001...) 차수별 DB 이력 조회 모달] */}
       {isHistoryModalOpen && historyProject && (() => {
-        const pmProject = pmRevisionItems.find(
-          (p) => p.projectNo === historyProject.projectNo ||
-                 (Boolean(historyProject.projectNo && p.projectNo) && historyProject.projectNo.substring(0, 7) === p.projectNo.substring(0, 7))
+        const pmProject = dbPmRevisions.find(
+          (p) => p.projectNo?.toUpperCase() === historyProject.projectNo?.toUpperCase()
         );
 
-        const historyList: RevisionHistoryItem[] = pmProject?.historyList || [
-          {
-            revisionCode: "N001",
-            revisionDate: historyProject.kickoffDate || "2026-03-15",
-            title: `초도 신작 승인 및 양산 진입 (N001)`,
-            modelReview: "3D CAD 제품 모델링 v1.0 검토 승인 완료 (수축률 0.5% 반영)",
-            moldCostQuote: `신작 금형제작비 125,000,000원 / 사출 단가 2,450원 확정`,
-            moldTrialReport: `${historyProject.moldVendor || "우성정공"} T1~T3 시사출 성적서 치수 공차 100% 만족`,
-            massValidationReport: `${historyProject.massVendor || "뉴몰드"} 12H 연속사출 및 Cpk 1.42 달성, PPAP Pass 승인`,
-            author: "MPSI 품질본부 / 뉴몰드",
-            memo: "초도 신작 양산 PO 발행 및 공급 개시",
-            createdAt: `${historyProject.kickoffDate || "2026-03-15"} 11:00`
-          },
-          ...(historyProject.changeType === "E001" || historyProject.projectNo?.includes("E") || historyProject.projectNo === "MI26003P0" ? [
-            {
-              revisionCode: "E001",
-              revisionDate: "2026-10-10",
-              title: "1차 설계변경 (E001) - 조립 리브 보강 및 파팅 단차 개선",
-              modelReview: "제품도면 v2.0 변경 접수. 3D 모델 검토 승인 (중량 +3.2g, CT +1.5초 변동)",
-              moldCostQuote: "금형 수정비 9,800,000원 확정 / 사출 단가 +35원 변동 조정 확정 (금형견적, 사출견적)",
-              moldTrialReport: "금형 수정 가공 진행 중 (방전 및 와이어 컷팅 보정)",
-              massValidationReport: "금형 이관 후 시양산 및 재양산 승인 진행 예정",
-              author: "(주)뉴몰드",
-              memo: "설변 수주 확정 및 단가조정 반영, 261010_치수검토보고서 등록",
-              createdAt: "2026.10.10 10:54"
-            }
-          ] : [])
-        ];
+        const historyList: DbRevisionHistoryItem[] = pmProject?.historyList || [];
 
         return (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-3">
@@ -1024,107 +1120,113 @@ export default function VendorMassProjectsPage() {
                   <History className="h-5 w-5 text-emerald-400" />
                   <div>
                     <h3 className="font-bold text-sm">
-                      [{historyProject.projectNo}] 신작(N001) 및 설계변경(E001...) 차수별 종합 이력
+                      [{historyProject.projectNo}] 신작(N001) 및 설계변경(E001...) 차수별 DB 이력
                     </h3>
                     <span className="text-[11px] text-slate-300">
-                      차종: {historyProject.projectName} | 제품명: {historyProject.productName} | 금형번호: {historyProject.moldNo || "-"}
+                      차종: {historyProject.projectName || "-"} | 제품명: {historyProject.productName || "-"} | 금형번호: {historyProject.moldNo || "-"}
                     </span>
                   </div>
                 </div>
-                <button onClick={() => setIsHistoryModalOpen(false)} className="text-zinc-400 hover:text-white">
+                <button onClick={() => setIsHistoryModalOpen(false)} className="text-zinc-400 hover:text-white cursor-pointer">
                   <X className="h-5 w-5" />
                 </button>
               </div>
 
-              {/* 모달 본문 (아래로 스크롤하여 N001, E001 이력 순차 확인) */}
+              {/* 모달 본문 */}
               <div className="p-5 flex flex-col gap-4 overflow-y-auto text-xs">
                 <div className="p-3 bg-zinc-50 dark:bg-zinc-800/40 rounded-lg border text-[11px] text-zinc-600 dark:text-zinc-400">
                   • <b>N001은 신규(신작)</b>, <b>E001은 1차 설계변경</b>, E002는 2차 설계변경입니다.
                   <br />
-                  • 아래 스크롤을 통해 각 차수별 <b>① 3D 모델 검토 승인</b>, <b>② 금형비 견적 확정</b>, <b>③ 금형처 시사출 보고서</b>, <b>④ 양산처 시양산 보고서</b> 내용을 확인하실 수 있습니다.
+                  • 아래 내용은 실제 PostgreSQL DB(ProjectMaster · 견적 · 시사출 · 시양산 · PM/설변 테이블)에서 실시간 조회된 차수별 이력입니다.
                 </div>
 
-                <div className="flex flex-col gap-4">
-                  {historyList.map((hist) => (
-                    <div 
-                      key={hist.revisionCode} 
-                      className="border-2 rounded-xl p-4 bg-white dark:bg-zinc-900 shadow-xs flex flex-col gap-3 border-slate-300 dark:border-slate-700"
-                    >
-                      {/* 차수 헤더 */}
-                      <div className="flex items-center justify-between border-b pb-2.5">
-                        <div className="flex items-center gap-2">
-                          <span className={`px-2.5 py-1 rounded font-mono font-bold text-xs ${
-                            hist.revisionCode.startsWith("E")
-                              ? "bg-rose-100 text-rose-800 border border-rose-300"
-                              : "bg-blue-100 text-blue-800 border border-blue-300"
-                          }`}>
-                            {hist.revisionCode}
-                          </span>
-                          <h4 className="font-bold text-sm text-zinc-900 dark:text-zinc-100">
-                            {hist.title}
-                          </h4>
+                {historyList.length === 0 ? (
+                  <div className="p-8 text-center text-zinc-500 border rounded-xl bg-zinc-50/50">
+                    DB에 등록된 차수별 상세 이력이 없습니다.
+                  </div>
+                ) : (
+                  <div className="flex flex-col gap-4">
+                    {historyList.map((hist) => (
+                      <div 
+                        key={hist.revisionCode} 
+                        className="border-2 rounded-xl p-4 bg-white dark:bg-zinc-900 shadow-xs flex flex-col gap-3 border-slate-300 dark:border-slate-700"
+                      >
+                        {/* 차수 헤더 */}
+                        <div className="flex items-center justify-between border-b pb-2.5">
+                          <div className="flex items-center gap-2">
+                            <span className={`px-2.5 py-1 rounded font-mono font-bold text-xs ${
+                              hist.revisionCode.startsWith("E")
+                                ? "bg-rose-100 text-rose-800 border border-rose-300"
+                                : "bg-blue-100 text-blue-800 border border-blue-300"
+                            }`}>
+                              {hist.revisionCode}
+                            </span>
+                            <h4 className="font-bold text-sm text-zinc-900 dark:text-zinc-100">
+                              {hist.title}
+                            </h4>
+                          </div>
+                          <span className="font-mono text-zinc-500 text-[11px]">{hist.revisionDate}</span>
                         </div>
-                        <span className="font-mono text-zinc-500 text-[11px]">{hist.revisionDate}</span>
+
+                        {/* 4대 필수 이력 내용 그리드 */}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-[11px]">
+                          <div className="p-2.5 rounded-lg border bg-zinc-50/70 dark:bg-zinc-800/40 flex flex-col gap-1">
+                            <span className="font-bold text-zinc-700 dark:text-zinc-300 flex items-center gap-1.5">
+                              <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
+                              1. 3D 제품 모델 검토 승인 내용
+                            </span>
+                            <p className="text-zinc-600 dark:text-zinc-400 pl-5 leading-relaxed">
+                              {hist.modelReview}
+                            </p>
+                          </div>
+
+                          <div className="p-2.5 rounded-lg border bg-zinc-50/70 dark:bg-zinc-800/40 flex flex-col gap-1">
+                            <span className="font-bold text-zinc-700 dark:text-zinc-300 flex items-center gap-1.5">
+                              <FileSpreadsheet className="h-3.5 w-3.5 text-blue-600" />
+                              2. 금형/사출 견적 검토 확정 내용
+                            </span>
+                            <p className="text-zinc-600 dark:text-zinc-400 pl-5 leading-relaxed">
+                              {hist.moldCostQuote}
+                            </p>
+                          </div>
+
+                          <div className="p-2.5 rounded-lg border bg-zinc-50/70 dark:bg-zinc-800/40 flex flex-col gap-1">
+                            <span className="font-bold text-zinc-700 dark:text-zinc-300 flex items-center gap-1.5">
+                              <FileText className="h-3.5 w-3.5 text-purple-600" />
+                              3. 금형처 시사출 보고서 내용
+                            </span>
+                            <p className="text-zinc-600 dark:text-zinc-400 pl-5 leading-relaxed">
+                              {hist.moldTrialReport}
+                            </p>
+                          </div>
+
+                          <div className="p-2.5 rounded-lg border bg-zinc-50/70 dark:bg-zinc-800/40 flex flex-col gap-1">
+                            <span className="font-bold text-zinc-700 dark:text-zinc-300 flex items-center gap-1.5">
+                              <Award className="h-3.5 w-3.5 text-amber-600" />
+                              4. 양산처 시양산 보고서 내용
+                            </span>
+                            <p className="text-zinc-600 dark:text-zinc-400 pl-5 leading-relaxed">
+                              {hist.massValidationReport}
+                            </p>
+                          </div>
+                        </div>
+
+                        {/* 이력 메모 */}
+                        <div className="bg-zinc-100 dark:bg-zinc-800/80 p-2 rounded text-[10.5px] flex items-center justify-between text-zinc-600 dark:text-zinc-400">
+                          <div>
+                            <b>작성/승인처:</b> {hist.author} • <span>{hist.memo}</span>
+                          </div>
+                          <span className="font-mono">{hist.createdAt}</span>
+                        </div>
                       </div>
-
-                      {/* 4대 필수 이력 내용 그리드 */}
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-[11px]">
-                        <div className="p-2.5 rounded-lg border bg-zinc-50/70 dark:bg-zinc-800/40 flex flex-col gap-1">
-                          <span className="font-bold text-zinc-700 dark:text-zinc-300 flex items-center gap-1.5">
-                            <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
-                            1. 3D 제품 모델 검토 승인 내용
-                          </span>
-                          <p className="text-zinc-600 dark:text-zinc-400 pl-5 leading-relaxed">
-                            {hist.modelReview}
-                          </p>
-                        </div>
-
-                        <div className="p-2.5 rounded-lg border bg-zinc-50/70 dark:bg-zinc-800/40 flex flex-col gap-1">
-                          <span className="font-bold text-zinc-700 dark:text-zinc-300 flex items-center gap-1.5">
-                            <FileSpreadsheet className="h-3.5 w-3.5 text-blue-600" />
-                            2. 금형비 견적 검토 확정 내용
-                          </span>
-                          <p className="text-zinc-600 dark:text-zinc-400 pl-5 leading-relaxed">
-                            {hist.moldCostQuote}
-                          </p>
-                        </div>
-
-                        <div className="p-2.5 rounded-lg border bg-zinc-50/70 dark:bg-zinc-800/40 flex flex-col gap-1">
-                          <span className="font-bold text-zinc-700 dark:text-zinc-300 flex items-center gap-1.5">
-                            <FileText className="h-3.5 w-3.5 text-purple-600" />
-                            3. 금형처 시사출 보고서 내용
-                          </span>
-                          <p className="text-zinc-600 dark:text-zinc-400 pl-5 leading-relaxed">
-                            {hist.moldTrialReport}
-                          </p>
-                        </div>
-
-                        <div className="p-2.5 rounded-lg border bg-zinc-50/70 dark:bg-zinc-800/40 flex flex-col gap-1">
-                          <span className="font-bold text-zinc-700 dark:text-zinc-300 flex items-center gap-1.5">
-                            <Award className="h-3.5 w-3.5 text-amber-600" />
-                            4. 양산처 시양산 보고서 내용
-                          </span>
-                          <p className="text-zinc-600 dark:text-zinc-400 pl-5 leading-relaxed">
-                            {hist.massValidationReport}
-                          </p>
-                        </div>
-                      </div>
-
-                      {/* 이력 메모 */}
-                      <div className="bg-zinc-100 dark:bg-zinc-800/80 p-2 rounded text-[10.5px] flex items-center justify-between text-zinc-600 dark:text-zinc-400">
-                        <div>
-                          <b>작성/승인처:</b> {hist.author} • <span>{hist.memo}</span>
-                        </div>
-                        <span className="font-mono">{hist.createdAt}</span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
+                    ))}
+                  </div>
+                )}
               </div>
 
               {/* 모달 푸터 */}
               <div className="flex items-center justify-end p-3.5 bg-zinc-50 dark:bg-zinc-800 border-t">
-                <Button onClick={() => setIsHistoryModalOpen(false)} variant="outline" className="h-8 px-5 text-xs">
+                <Button onClick={() => setIsHistoryModalOpen(false)} variant="outline" className="h-8 px-5 text-xs cursor-pointer">
                   닫기
                 </Button>
               </div>

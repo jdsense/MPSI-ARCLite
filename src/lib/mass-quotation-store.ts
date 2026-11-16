@@ -127,6 +127,153 @@ const EVENT_NAME = "mpsi_mass_quotation_update_v13";
 // 더미 데이터 초기값 전면 비움
 export const INITIAL_MASS_ESTIMATES: MassProductionEstimateItem[] = [];
 
+// 협력사 이름 정규화 유틸리티 (법인격 (주), 부가 태그 (사출양산) 및 코드 접두사 제거 후 비교)
+export function cleanMassVendorName(name?: string): string {
+  if (!name) return "";
+  // "NEWMOLD - (주)뉴몰드" 형태인 경우 하이픈 뒤의 실제 사명 추출
+  let target = name.includes(" - ") ? name.split(" - ").slice(1).join(" - ") : name;
+  const cleaned = target
+    .replace(/\((주|유|사|사출양산|금형제작|품질보증|품질관리|생산총괄|기술영업)\)/g, "")
+    .replace(/주식회사|\s/g, "")
+    .trim()
+    .toLowerCase();
+  // 만약 전체가 괄호로 둘러싸여 빈 문자열이 된 경우 괄호 기호만 제거하여 반환
+  if (!cleaned) {
+    return target.replace(/[()\s]/g, "").trim().toLowerCase();
+  }
+  return cleaned;
+}
+
+// 잘못된 소속명((본사/해당없음) 등)인지 판별하는 헬퍼
+export function isInvalidMassVendorName(name?: string): boolean {
+  if (!name) return true;
+  const trimmed = name.trim();
+  if (!trimmed) return true;
+  if (
+    trimmed === "(본사/해당없음)" ||
+    trimmed === "본사/해당없음" ||
+    trimmed === "협력사" ||
+    trimmed.includes("해당없음") ||
+    trimmed.includes("시스템/본사") ||
+    trimmed.includes("MPSI")
+  ) {
+    return true;
+  }
+  return false;
+}
+
+export function isMatchingMassVendor(vendorA?: string, vendorB?: string): boolean {
+  if (!vendorA || !vendorB) return false;
+  if (vendorA.trim() === vendorB.trim()) return true;
+  const a = cleanMassVendorName(vendorA);
+  const b = cleanMassVendorName(vendorB);
+  if (!a || !b) return false;
+  if (a === b) return true;
+
+  // 동의어 매칭 (뉴몰드 / NEWMOLD)
+  const isA_Newmold = a.includes("뉴몰드") || a.includes("newmold");
+  const isB_Newmold = b.includes("뉴몰드") || b.includes("newmold");
+  if (isA_Newmold && isB_Newmold) return true;
+  if (isA_Newmold !== isB_Newmold && (isA_Newmold || isB_Newmold)) return false;
+
+  // 한국정밀사출 / KOREAPLAS
+  const isA_Korea = a.includes("한국정밀") || a.includes("koreaplas");
+  const isB_Korea = b.includes("한국정밀") || b.includes("koreaplas");
+  if (isA_Korea && isB_Korea) return true;
+  if (isA_Korea !== isB_Korea && (isA_Korea || isB_Korea)) return false;
+
+  // 세원사출
+  const isA_Sewon = a.includes("세원");
+  const isB_Sewon = b.includes("세원");
+  if (isA_Sewon && isB_Sewon) return true;
+  if (isA_Sewon !== isB_Sewon && (isA_Sewon || isB_Sewon)) return false;
+
+  // 제일프라테크
+  const isA_Jeil = a.includes("제일");
+  const isB_Jeil = b.includes("제일");
+  if (isA_Jeil && isB_Jeil) return true;
+  if (isA_Jeil !== isB_Jeil && (isA_Jeil || isB_Jeil)) return false;
+
+  // 한일엔프라
+  const isA_Hanil = a.includes("한일");
+  const isB_Hanil = b.includes("한일");
+  if (isA_Hanil && isB_Hanil) return true;
+  if (isA_Hanil !== isB_Hanil && (isA_Hanil || isB_Hanil)) return false;
+
+  return a.includes(b) || b.includes(a);
+}
+
+// '(본사/해당없음)' 등으로 잘못 기록된 외주사 견적 제출 내역을 실제 배포 대상 외주사명으로 자동 복구
+export function repairInvalidVendorQuotes(item: MassProductionEstimateItem): { item: MassProductionEstimateItem; repaired: boolean } {
+  if (!item.vendorQuotes || item.vendorQuotes.length === 0) {
+    return { item, repaired: false };
+  }
+
+  const candidateVendors: string[] = [];
+  if (item.assignedVendors && item.assignedVendors.length > 0) {
+    item.assignedVendors.forEach((v) => {
+      if (v && v !== "전체 업체" && !isInvalidMassVendorName(v)) {
+        candidateVendors.push(v);
+      }
+    });
+  }
+  // 기본 DB 양산처 후보 보충 ((주)뉴몰드, (주)한국정밀사출)
+  ["(주)뉴몰드", "(주)한국정밀사출"].forEach((defV) => {
+    if (!candidateVendors.some((c) => isMatchingMassVendor(c, defV))) {
+      candidateVendors.push(defV);
+    }
+  });
+
+  let repaired = false;
+  let repairedVendorName = "";
+
+  const fixedQuotes = item.vendorQuotes.map((vq) => {
+    if (isInvalidMassVendorName(vq.vendorName)) {
+      // 이미 정상 등록된 다른 업체들을 제외한 후보 업체 찾기
+      const otherValidQuotes = item.vendorQuotes!.filter((other) => other.id !== vq.id && !isInvalidMassVendorName(other.vendorName));
+      const unusedCandidate = candidateVendors.find(
+        (cand) => !otherValidQuotes.some((oq) => isMatchingMassVendor(oq.vendorName, cand))
+      );
+      const targetVendor = unusedCandidate || "(주)한국정밀사출";
+      repaired = true;
+      repairedVendorName = targetVendor;
+      return {
+        ...vq,
+        vendorName: targetVendor,
+      };
+    }
+    return vq;
+  });
+
+  if (!repaired) {
+    return { item, repaired: false };
+  }
+
+  const fixedHistory = (item.submissionHistory || []).map((h) => {
+    if (isInvalidMassVendorName(h.author)) {
+      return { ...h, author: repairedVendorName || "(주)한국정밀사출" };
+    }
+    return h;
+  });
+
+  const fixedComments = (item.comments || []).map((c) => {
+    if (c.authorRole === "VENDOR" && isInvalidMassVendorName(c.author)) {
+      return { ...c, author: repairedVendorName || "(주)한국정밀사출" };
+    }
+    return c;
+  });
+
+  return {
+    item: {
+      ...item,
+      vendorQuotes: fixedQuotes,
+      submissionHistory: fixedHistory,
+      comments: fixedComments,
+    },
+    repaired: true,
+  };
+}
+
 // 더미 판별 헬퍼
 export function isDummyMassEstimate(item: any): boolean {
   if (!item) return true;
@@ -214,24 +361,37 @@ export function autoEnrollMassQuotationFromTrial(_trial: any): MassProductionEst
 }
 
 export function useMassQuotationStore() {
-  const [estimates, setEstimatesState] = useState<MassProductionEstimateItem[]>(() => {
-    return getStoredMassEstimates();
-  });
+  const [estimates, setEstimatesState] = useState<MassProductionEstimateItem[]>([]);
   const [isLoading, setIsLoading] = useState(false);
 
   const refreshFromDb = async () => {
     try {
       setIsLoading(true);
+
+      // 오직 DB(MpsiMassQuotation)로부터 100% 실제 데이터 조회 (Single Source of Truth)
       const res = await fetch("/api/v1/mass-prod/quotations", { cache: "no-store" });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const json = await res.json();
       if (json.success && Array.isArray(json.data)) {
-        const cleaned = json.data.filter((it: any) => !isDummyMassEstimate(it));
+        const rawCleaned = json.data.filter((it: any) => !isDummyMassEstimate(it));
+        const cleaned: MassProductionEstimateItem[] = [];
+        for (const it of rawCleaned) {
+          const { item: fixedItem, repaired } = repairInvalidVendorQuotes(it);
+          cleaned.push(fixedItem);
+          if (repaired) {
+            // '(본사/해당없음)' 등으로 잘못 기록된 내역이 있으면 즉시 DB 자동 치유 반영
+            syncMassEstimateToBackend(fixedItem).catch(() => {});
+          }
+        }
+        // DB 상태가 최우선 기준: DB에서 삭제되었으면 로컬 스토리지도 비우고 화면도 빈 배열로 세팅
         saveMassEstimatesToStorage(cleaned);
         setEstimatesState(cleaned);
+      } else {
+        setEstimatesState([]);
+        saveMassEstimatesToStorage([]);
       }
     } catch (e) {
-      console.warn("[useMassQuotationStore] Fallback to local storage:", e);
+      console.warn("[useMassQuotationStore] Fallback to local storage on DB error:", e);
       setEstimatesState(getStoredMassEstimates());
     } finally {
       setIsLoading(false);
@@ -255,7 +415,7 @@ export function useMassQuotationStore() {
   }, []);
 
   // 1. MPSI에서 신규 양산 견적 등록
-  const addEstimate = (item: Omit<MassProductionEstimateItem, "id" | "estimateNo" | "requestDate"> & { estimateNo?: string }) => {
+  const addEstimate = async (item: Omit<MassProductionEstimateItem, "id" | "estimateNo" | "requestDate"> & { estimateNo?: string }) => {
     const current = getStoredMassEstimates();
     const id = current.length > 0 ? Math.max(...current.map((c) => c.id)) + 1 : 1;
     const now = new Date();
@@ -275,15 +435,18 @@ export function useMassQuotationStore() {
       vendorQuotes: item.vendorQuotes || [],
     };
 
-    const nextList = [newItem, ...current];
+    // 동일 견적번호 또는 동일 프로젝트 건이 기존에 있으면 업데이트, 없으면 신규 추가
+    const filteredCurrent = current.filter((c) => c.estimateNo !== estimateNo && c.projectNo !== item.projectNo);
+    const nextList = [newItem, ...filteredCurrent];
     saveMassEstimatesToStorage(nextList);
     setEstimatesState(nextList);
-    syncMassEstimateToBackend(newItem);
+    await syncMassEstimateToBackend(newItem);
+    await refreshFromDb();
     return newItem;
   };
 
   // 2. 외주사(뉴몰드 등)에서 양산 견적서 작성 및 제출 (상태: "외주견적제출"로 동기화, 메모 이력 영구 보존)
-  const submitVendorQuote = (
+  const submitVendorQuote = async (
     estimateNo: string,
     submission: {
       finalUnitPrice: number;
@@ -316,7 +479,12 @@ export function useMassQuotationStore() {
     let updatedTarget: MassProductionEstimateItem | undefined;
 
     const nextList = current.map((item) => {
-      if (item.estimateNo !== estimateNo && item.projectNo !== estimateNo) return item;
+      const isMatch = 
+        item.estimateNo === estimateNo ||
+        item.projectNo === estimateNo ||
+        item.estimateNo?.replace(/사출견적$/i, "") === estimateNo?.replace(/사출견적$/i, "") ||
+        item.officialProjectNo === estimateNo;
+      if (!isMatch) return item;
 
       const newComments = [...item.comments];
       if (submission.vendorComment) {
@@ -346,26 +514,25 @@ export function useMassQuotationStore() {
         targetMassApprovalDate: submission.targetMassApprovalDate || item.targetMassApprovalDate,
         massStartDate: submission.massStartDate || item.massStartDate,
         submittedAt: timeStr,
-        author: submission.authorName || `${item.vendorName} 김재열 차장`,
+        author: submission.authorName || `${item.vendorName} 견적담당`,
       });
 
-      // 복수 업체 견적 리스트(vendorQuotes) 동기화 (정규화 매칭)
-      const vName = submission.authorName || item.vendorName;
-      let existingQuotes = item.vendorQuotes || [];
-      const cleanV = (s?: string) => (s || "").replace(/\([^)]*\)|주식회사|\s/g, "").trim().toLowerCase();
-      const vqIndex = existingQuotes.findIndex((q) => {
-        const a = cleanV(q.vendorName);
-        const b = cleanV(vName);
-        return a === b || a.includes(b) || b.includes(a);
-      });
+      // 복수 업체 견적 리스트(vendorQuotes) 동기화 (개별 외주사 단위로 완전 분리 저장)
+      const submitVendor = (submission.authorName && submission.authorName.trim() && !submission.authorName.includes("외"))
+        ? submission.authorName.trim()
+        : (item.selectedVendorName || item.vendorName || "(주)뉴몰드");
+
+      let existingQuotes = Array.isArray(item.vendorQuotes) ? [...item.vendorQuotes] : [];
+      const vqIndex = existingQuotes.findIndex((q) => isMatchingMassVendor(q.vendorName, submitVendor));
+
       const newVq: MassVendorQuoteSubmission = {
-        id: vqIndex >= 0 ? existingQuotes[vqIndex].id : `vq-${Date.now()}`,
-        vendorName: vName,
+        id: vqIndex >= 0 ? existingQuotes[vqIndex].id : `vq-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        vendorName: submitVendor,
         submittedDate: dateStr,
         materialCost: submission.materialCost ?? item.materialCost,
         processingCost: submission.processingCost ?? item.processingCost,
-        overheadCost: submission.overheadCost ?? 60,
-        profitCost: submission.profitCost ?? 40,
+        overheadCost: submission.overheadCost ?? 0,
+        profitCost: submission.profitCost ?? 0,
         packagingCost: submission.packagingCost ?? item.packagingCost,
         logisticsCost: submission.logisticsCost ?? item.logisticsCost,
         unitPrice: submission.finalUnitPrice,
@@ -374,7 +541,7 @@ export function useMassQuotationStore() {
         quotationFileSize: submission.estimateFileSize,
         quotationFileUrl: submission.estimateFileUrl,
         vendorNotes: submission.vendorNotes || submission.vendorMemo || "",
-        mpsiReplies: vqIndex >= 0 ? existingQuotes[vqIndex].mpsiReplies : [],
+        mpsiReplies: vqIndex >= 0 ? (existingQuotes[vqIndex].mpsiReplies || []) : [],
         status: "제출완료",
       };
 
@@ -382,25 +549,35 @@ export function useMassQuotationStore() {
         ? existingQuotes.map((q, i) => i === vqIndex ? newVq : q)
         : [...existingQuotes, newVq];
 
+      // 대표 단가 및 대표 C/T 산출
+      // 1) 수주확정된 업체가 있으면 해당 업체의 견적단가
+      // 2) 아직 확정 전이면 이번에 제출한 업체의 단가 또는 유효한 제출 단가
+      const winnerQuote = updatedVendorQuotes.find((q) => q.status === "수주확정");
+      const repPrice = winnerQuote 
+        ? winnerQuote.unitPrice 
+        : (submission.finalUnitPrice || item.finalUnitPrice || (updatedVendorQuotes[0]?.unitPrice ?? 0));
+      const repCT = winnerQuote
+        ? (winnerQuote.targetCycleTime || item.targetCycleTime)
+        : (submission.targetCycleTime || item.targetCycleTime || (updatedVendorQuotes[0]?.targetCycleTime ?? 35));
+
       const merged: MassProductionEstimateItem = {
         ...item,
-        finalUnitPrice: submission.finalUnitPrice,
-        targetCycleTime: submission.targetCycleTime || item.targetCycleTime,
+        finalUnitPrice: repPrice,
+        targetCycleTime: repCT,
         targetMassApprovalDate: submission.targetMassApprovalDate || item.targetMassApprovalDate,
         massStartDate: submission.massStartDate || item.massStartDate,
-        machineTonnage: submission.machineTonnage || item.machineTonnage,
-        estimateFileName: submission.estimateFileName,
-        estimateFileSize: submission.estimateFileSize,
-        estimateFileDate: dateStr,
-        estimateFileUrl: submission.estimateFileUrl,
-        vendorNotes: submission.vendorNotes || item.vendorNotes || "",
         materialCost: submission.materialCost ?? item.materialCost,
         processingCost: submission.processingCost ?? item.processingCost,
         overheadCost: submission.overheadCost ?? item.overheadCost,
         profitCost: submission.profitCost ?? item.profitCost,
         packagingCost: submission.packagingCost ?? item.packagingCost,
         logisticsCost: submission.logisticsCost ?? item.logisticsCost,
-        status: "외주견적제출" as MassQuotationStatus,
+        estimateFileName: submission.estimateFileName || item.estimateFileName,
+        estimateFileSize: submission.estimateFileSize || item.estimateFileSize,
+        estimateFileUrl: submission.estimateFileUrl || item.estimateFileUrl,
+        estimateFileDate: dateStr,
+        // 견적 제출이 하나라도 있으면 상태를 '외주견적제출'로 표시 (이미 단가합의완료인 경우 유지)
+        status: (item.status === "단가합의완료" || item.status === "양산계약확정") ? item.status : "외주견적제출",
         submittedDate: dateStr,
         comments: newComments,
         submissionHistory: historyList,
@@ -414,7 +591,8 @@ export function useMassQuotationStore() {
     saveMassEstimatesToStorage(nextList);
     setEstimatesState(nextList);
     if (updatedTarget) {
-      syncMassEstimateToBackend(updatedTarget);
+      await syncMassEstimateToBackend(updatedTarget);
+      await refreshFromDb();
     }
   };
 
@@ -436,6 +614,7 @@ export function useMassQuotationStore() {
     setEstimatesState(nextList);
     if (updatedTarget) {
       await syncMassEstimateToBackend(updatedTarget);
+      await refreshFromDb();
       if (newStatus === "단가합의완료" || newStatus === "양산계약확정") {
         autoEnrollMassValidationFromQuotation(updatedTarget);
       }
@@ -503,6 +682,7 @@ export function useMassQuotationStore() {
     setEstimatesState(nextList);
     if (updatedTarget) {
       await syncMassEstimateToBackend(updatedTarget);
+      await refreshFromDb();
       if (newQuoteStatus === "수주확정" || updatedTarget.status === "단가합의완료") {
         autoEnrollMassValidationFromQuotation(updatedTarget);
       }
@@ -591,17 +771,17 @@ export function useMassQuotationStore() {
 
   // 7. 양산 견적 삭제
   const deleteEstimate = async (estimateNo: string) => {
-    const current = getStoredMassEstimates();
-    const nextList = current.filter((item) => item.estimateNo !== estimateNo);
-    saveMassEstimatesToStorage(nextList);
-    setEstimatesState(nextList);
-
     try {
       await fetch(`/api/v1/mass-prod/quotations?estimateNo=${encodeURIComponent(estimateNo)}`, {
         method: "DELETE",
       });
+      await refreshFromDb();
     } catch (e) {
       console.warn("Failed to delete quotation from backend:", e);
+      const current = getStoredMassEstimates();
+      const nextList = current.filter((item) => item.estimateNo !== estimateNo);
+      saveMassEstimatesToStorage(nextList);
+      setEstimatesState(nextList);
     }
   };
 

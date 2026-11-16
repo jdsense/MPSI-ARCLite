@@ -100,7 +100,8 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url);
     const projectId = searchParams.get("projectId");
 
-    // 1. 양산성 검증(MpsiMassValidation)에서 '검증완료' 또는 '양산승인(내부)' 완료된 프로젝트 자동 등재 연계
+    // 1. MPSI가 [적합 판정] 양산승인 및 PPAP 연동 확정을 완료한 프로젝트만 PPAP 자동 등재 연계
+    const confirmedPjtIds = new Set<string>();
     try {
       const valRows = await query(`
         SELECT v."ProjectID", v."MassVendorID", v."CurrentTrial", v."OverallStatus", 
@@ -127,13 +128,16 @@ export async function GET(req: NextRequest) {
           continue;
         }
 
-        // '검증완료' 또는 최신 trial의 status === '양산승인(내부)' 여부 확인
-        const isValidationComplete =
-          v.OverallStatus === "검증완료" ||
-          vMeta.overallStatus === "검증완료" ||
-          vMeta.trials?.some((tr: any) => tr.status === "양산승인(내부)");
+        // MPSI가 [적합 판정] 양산승인 및 PPAP 연동 확정을 명시적으로 완료했는지 확인
+        // (MPSI가 적합 판정 버튼을 누르기 전까지는 절대 PPAP 등록 불가)
+        const isMpsiPpapConfirmed =
+          Boolean(vMeta.isPpapLinked) === true ||
+          Boolean(vMeta.ppapLinked) === true ||
+          (Array.isArray(vMeta.trials) && vMeta.trials.some((tr: any) => tr.status === "양산승인(내부)"));
 
-        if (!isValidationComplete) continue;
+        if (!isMpsiPpapConfirmed) continue;
+
+        confirmedPjtIds.add(pid);
 
         // MpsiMassPpap 테이블에 이미 존재하는지 확인
         const ppapExist = await query(
@@ -238,15 +242,29 @@ export async function GET(req: NextRequest) {
 
     const res = await query(sql, params);
 
-    const items: PPAPApprovalItem[] = res.rows
-      .map(mapRowToPpapItem)
-      .filter(
-        (it) =>
-          !it.projectName?.includes("현대 NT5") &&
-          !it.projectName?.includes("NQ5") &&
-          it.projectNo !== "MI25001P1" &&
-          it.projectNo !== "MI25001P2"
-      );
+    // MPSI의 PPAP 연동 확정을 받지 않은 프로젝트는 PPAP 테이블에서 정리하고 목록에서 제외
+    const items: PPAPApprovalItem[] = [];
+    for (const row of res.rows) {
+      const it = mapRowToPpapItem(row);
+      if (
+        it.projectName?.includes("현대 NT5") ||
+        it.projectName?.includes("NQ5") ||
+        it.projectNo === "MI25001P1" ||
+        it.projectNo === "MI25001P2"
+      ) {
+        continue;
+      }
+
+      // MPSI 연동 확정 대상이 아닌 프로젝트는 PPAP 테이블에서 정리 및 목록 제외
+      if (!confirmedPjtIds.has(it.projectNo)) {
+        try {
+          await query(`DELETE FROM "MpsiMassPpap" WHERE "ProjectID" = $1`, [it.projectNo]);
+        } catch {}
+        continue;
+      }
+
+      items.push(it);
+    }
 
     return NextResponse.json({
       success: true,

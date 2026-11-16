@@ -498,7 +498,11 @@ export default function VendorMassValidationPage() {
     const dateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")} ${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
 
     const reportCount = getReportCount(latestTrial);
-    const finalOverallStatus = editingOverallStatus || getValidationStatus(latestTrial);
+    // "검증완료"는 MPSI 전용 판정이므로 외주사 실적등록 시 임의 지정 불가
+    const isAlreadyMpsiCompleted = selectedProject.overallStatus === "검증완료";
+    const finalOverallStatus = isAlreadyMpsiCompleted
+      ? "검증완료"
+      : (editingOverallStatus === "검증완료" ? "검증 진행 중" : (editingOverallStatus || "검증 진행 중"));
 
     // 1. MassValidationStore 및 DB 업데이트
     updateValidationProject(selectedProject.id, {
@@ -914,16 +918,22 @@ export default function VendorMassValidationPage() {
                 <div>
                   <span className="text-zinc-500 font-medium text-[11px] block mb-1">
                     전체 프로젝트 상태
+                    <span className="text-[10px] text-zinc-400 ml-1">(검증완료는 MPSI 전용)</span>
                   </span>
-                  <select
-                    value={editingOverallStatus}
-                    onChange={(e) => setEditingOverallStatus(e.target.value as any)}
-                    className="h-8 text-xs w-full rounded border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 px-2 font-bold text-emerald-700 dark:text-emerald-300"
-                  >
-                    <option value="검증 대기">검증 대기</option>
-                    <option value="검증 진행 중">검증 진행 중</option>
-                    <option value="검증완료">검증완료</option>
-                  </select>
+                  {selectedProject.overallStatus === "검증완료" ? (
+                    <div className="h-8 flex items-center px-2.5 rounded border border-emerald-300 dark:border-emerald-700 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300 font-bold text-xs">
+                      검증완료 (MPSI 최종 판정)
+                    </div>
+                  ) : (
+                    <select
+                      value={editingOverallStatus === "검증완료" ? "검증 진행 중" : editingOverallStatus}
+                      onChange={(e) => setEditingOverallStatus(e.target.value as any)}
+                      className="h-8 text-xs w-full rounded border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 px-2 font-bold text-emerald-700 dark:text-emerald-300 cursor-pointer"
+                    >
+                      <option value="검증 대기">검증 대기</option>
+                      <option value="검증 진행 중">검증 진행 중</option>
+                    </select>
+                  )}
                 </div>
               </div>
 

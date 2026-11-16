@@ -28,6 +28,7 @@ export const MOLD_VENDOR_LIST: VendorItem[] = [
 export const MASS_VENDOR_LIST: VendorItem[] = [
   { id: "MPSI_SELF_MASS", name: "MPSI 자체사출라인", isSelf: true, type: "IN_HOUSE", manager: "이생산 차장", tel: "02-555-0102" },
   { id: "NEWMOLD", name: "(주)뉴몰드", isSelf: false, type: "OUTSOURCING", bizNo: "130-86-54321", manager: "최진호 팀장", tel: "031-498-8888" },
+  { id: "KOREAPLAS", name: "(주)한국정밀사출", isSelf: false, type: "OUTSOURCING", bizNo: "135-86-44332", manager: "강성호 부장", tel: "032-621-3300" },
   { id: "SEWON", name: "세원사출(주)", isSelf: false, type: "OUTSOURCING", bizNo: "220-81-67890", manager: "강동원 부장", tel: "032-567-1122" },
   { id: "JEIL", name: "제일프라테크", isSelf: false, type: "OUTSOURCING", bizNo: "128-85-11223", manager: "윤태호 이사", tel: "031-678-9900" },
   { id: "HANIL", name: "한일엔프라", isSelf: false, type: "OUTSOURCING", bizNo: "110-82-44556", manager: "송재민 과장", tel: "041-555-7788" },
@@ -91,6 +92,59 @@ export function hasStoredRoleSession(): boolean {
   }
 }
 
+export function normalizeVendorSession(session: RoleSession): RoleSession {
+  if (!session) return session;
+  let vName = (session.vendorName || "").trim();
+
+  // "NEWMOLD - (주)뉴몰드" 형태에서 실제 업체명만 분리
+  if (vName.includes(" - ")) {
+    vName = vName.split(" - ").slice(1).join(" - ").trim();
+  }
+  // "(사출양산)", "(금형제작)" 꼬리표 제거
+  vName = vName.replace(/\(사출양산\)|\(금형제작\)/g, "").trim();
+  if (vName === "뉴몰드") vName = "(주)뉴몰드";
+  if (vName === "한국정밀사출") vName = "(주)한국정밀사출";
+
+  if (session.role === "VENDOR_MASS" || session.role === "VENDOR_MOLD") {
+    const isInvalid =
+      !vName ||
+      vName === "(본사/해당없음)" ||
+      vName === "본사/해당없음" ||
+      vName === "협력사" ||
+      vName.includes("해당없음") ||
+      vName.includes("시스템/본사") ||
+      vName.includes("MPSI");
+
+    if (isInvalid) {
+      const uName = (session.userName || "").trim();
+      if (uName.includes("뉴몰드") || uName.toLowerCase().includes("newmold")) {
+        vName = "(주)뉴몰드";
+      } else if (uName.includes("한국정밀") || uName.toLowerCase().includes("korea")) {
+        vName = "(주)한국정밀사출";
+      } else if (uName.includes("세원")) {
+        vName = "세원사출(주)";
+      } else if (uName.includes("제일")) {
+        vName = "제일프라테크";
+      } else if (uName.includes("한일")) {
+        vName = "한일엔프라";
+      } else if (uName.includes("우성")) {
+        vName = "우성정공(주)";
+      } else if (uName.includes("대한")) {
+        vName = "대한금형(주)";
+      } else if (uName && uName !== "관리자" && uName !== "담당자" && !uName.includes("팀장")) {
+        vName = uName;
+      } else {
+        vName = session.role === "VENDOR_MASS" ? "(주)한국정밀사출" : "우성정공(주)";
+      }
+    }
+  }
+
+  return {
+    ...session,
+    vendorName: vName,
+  };
+}
+
 export function getStoredRole(): RoleSession {
   const defaultSession = getDefaultSessionForNode();
   const node = getCurrentNodeConfig();
@@ -121,7 +175,12 @@ export function getStoredRole(): RoleSession {
     if (!raw) {
       return defaultSession;
     }
-    return JSON.parse(raw);
+    const parsed = JSON.parse(raw);
+    const normalized = normalizeVendorSession(parsed);
+    if (normalized.vendorName !== parsed.vendorName) {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(normalized));
+    }
+    return normalized;
   } catch (e) {
     return defaultSession;
   }
@@ -130,9 +189,10 @@ export function getStoredRole(): RoleSession {
 export function saveRoleSession(session: RoleSession): void {
   if (typeof window === "undefined") return;
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(session));
-    document.cookie = `mpsi_auth_role=${encodeURIComponent(session.role)}; path=/; max-age=86400; SameSite=Lax`;
-    window.dispatchEvent(new CustomEvent(EVENT_NAME, { detail: session }));
+    const normalized = normalizeVendorSession(session);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(normalized));
+    document.cookie = `mpsi_auth_role=${encodeURIComponent(normalized.role)}; path=/; max-age=86400; SameSite=Lax`;
+    window.dispatchEvent(new CustomEvent(EVENT_NAME, { detail: normalized }));
   } catch (e) {
     console.error("Failed to save role session", e);
   }

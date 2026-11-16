@@ -437,23 +437,27 @@ export default function MassValidationPage() {
         : tr
     );
 
-    const newOverallStatus = verdict === "양산승인(내부)" ? "검증완료" : "검증 진행 중";
-    const targetStep = verdict === "양산승인(내부)" ? 12 : 11;
-    const targetStatus = verdict === "양산승인(내부)" ? "진행중" : "진행중";
+    const isPpapApproved = verdict === "양산승인(내부)";
+    const newOverallStatus = isPpapApproved ? "검증완료" : "검증 진행 중";
+    const targetStep = isPpapApproved ? 12 : 11;
+    const targetStatus = isPpapApproved ? "진행중" : "진행중";
 
-    updateValidationProject(currentProject.id, {
+    const updatedProjectPayload = {
       mpsiWitnessInspector: "MPSI",
-      overallStatus: newOverallStatus,
+      overallStatus: newOverallStatus as any,
+      isPpapLinked: isPpapApproved,
       currentStep: targetStep,
       updatedAt: `${dateStr} ${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`,
       trials: updatedTrials,
-    });
+    };
+
+    updateValidationProject(currentProject.id, updatedProjectPayload);
 
     // 프로젝트 마스터 Step 12 동기화
     updateStep(currentProject.projectNo, {
       currentStep: targetStep,
       stepStatus: targetStatus,
-      notes: `[MPSI] ${activeTrial.trialDegree} 시양산 검증 ${verdict === "양산승인(내부)" ? "최종 적합 판정 완료 -> Step 12(양산품질 검증 PPAP) 진행중" : "보완요청 통보"}`,
+      notes: `[MPSI] ${activeTrial.trialDegree} 시양산 검증 ${isPpapApproved ? "최종 적합 판정 완료 -> Step 12(양산품질 검증 PPAP) 진행중" : "보완요청 통보"}`,
     });
 
     // 외주사(뉴몰드)로 알림 발송
@@ -461,18 +465,18 @@ export default function MassValidationPage() {
       menuName: "양산외주 - 시양산/양산성 검증",
       menuPath: "/portal/vendor-portal/mass/validation",
       senderCompany: "MPSI",
-      content: `[${currentProject.projectNo}] ${activeTrial.trialDegree} 시양산 검증 결과: ${verdict === "양산승인(내부)" ? "양산승인(내부) 완료 -> Step 12 PPAP 착수" : "보완요청 통보"}`,
+      content: `[${currentProject.projectNo}] ${activeTrial.trialDegree} 시양산 검증 결과: ${isPpapApproved ? "양산승인(내부) 완료 -> Step 12 PPAP 착수" : "보완요청 통보"}`,
       projectNo: currentProject.projectNo,
       targetRole: "VENDOR_MASS",
       targetVendorName: currentProject.massVendor,
     });
 
-    // PPAP 테이블 자동 등재 트리거 (스토어 및 백엔드 MpsiMassPpap 동기화)
-    if (verdict === "양산승인(내부)") {
-      autoEnrollMassPpapFromValidation(currentProject);
-    }
-
-    if (verdict === "양산승인(내부)") {
+    // MPSI가 [적합 판정] 양산승인 및 PPAP 연동 확정을 완료했을 때만 PPAP 테이블 등재 트리거 실행
+    if (isPpapApproved) {
+      autoEnrollMassPpapFromValidation({
+        ...currentProject,
+        ...updatedProjectPayload,
+      });
       showToast(`[${activeTrial.trialDegree} 양산승인 완료] 6대 보고서 및 Cpk 검증이 최종 적합 판정되었습니다. 공정 관제 Step 12 및 [양산 승인 (PPAP)] 메뉴로 실시간 연동되었습니다.`);
     } else {
       showToast(`[${activeTrial.trialDegree} 보완요청 통보] ${currentProject.moldVendor}(금형수정) 및 ${currentProject.massVendor}(조건튜닝)로 보완 지시서가 전송되었습니다.`);

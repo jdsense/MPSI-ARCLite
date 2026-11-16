@@ -100,6 +100,7 @@ export interface MassValidationProject {
   overallStatus: "시양산 대기" | "시양산 진행중" | "12H 연속사출중" | "CPK 검증완료" | "양산승인 완료" | "검증완료" | "검증 대기" | "검증 진행 중";
   currentStep: number;        // 13단계 중 위치 (Step 11)
   moldTransferConfirmed: boolean; // 금형인수인계증 접수 확인
+  isPpapLinked?: boolean;     // MPSI의 [적합 판정] 양산승인 및 PPAP 연동 확정 여부 (Step 12 PPAP 목록 노출 필수조건)
   urgentMoldRevision?: string;
   urgentRevisionDetail?: UrgentMoldRevisionDetail;
   mpsiWitnessInspector?: string;

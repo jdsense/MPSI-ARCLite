@@ -17,7 +17,8 @@ import {
   useMassPpapStore, 
   PPAPApprovalItem, 
   PPAPPackageSubmissionHistoryItem,
-  getMassPpapStatus 
+  getMassPpapStatus,
+  isPpapConfirmedByMpsi
 } from "@/lib/mass-ppap-store";
 
 export default function VendorMassPpapPage() {
@@ -142,6 +143,10 @@ export default function VendorMassPpapPage() {
       item.projectNo === "MI25001P1" ||
       item.projectNo === "MI25001P2"
     ) {
+      return false;
+    }
+    // MPSI 양산승인 및 PPAP 연동 확정 전에는 외주사 PPAP 목록에서도 노출 차단
+    if (!isPpapConfirmedByMpsi(item.projectNo)) {
       return false;
     }
     return isMatchingVendor(item.massVendor, currentVendor);

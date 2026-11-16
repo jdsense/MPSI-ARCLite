@@ -60,11 +60,15 @@ export function RoleSwitcher() {
     } else if (val.startsWith("VENDOR_MOLD:")) {
       const vName = val.split(":")[1];
       switchRole("VENDOR_MOLD", vName);
-      router.push("/portal/vendor-portal/mold/projects");
+      if (typeof window !== "undefined" && !window.location.pathname.startsWith("/portal/vendor-portal/mold/")) {
+        router.push("/portal/vendor-portal/mold/projects");
+      }
     } else if (val.startsWith("VENDOR_MASS:")) {
       const vName = val.split(":")[1];
       switchRole("VENDOR_MASS", vName);
-      router.push("/portal/vendor-portal/mass/projects");
+      if (typeof window !== "undefined" && !window.location.pathname.startsWith("/portal/vendor-portal/mass/")) {
+        router.push("/portal/vendor-portal/mass/projects");
+      }
     }
   };
 
@@ -94,7 +98,12 @@ export function RoleSwitcher() {
           <option value="ADMIN">🛡️ 시스템 관리자 (통합 제어 & 전 권한)</option>
           <option value="MPSI">🏢 MPSI 본사 (총괄 관제)</option>
           <option value="VENDOR_MOLD:우성정공(주)">⚙️ 금형 협력사 (우성정공)</option>
+          <option value="VENDOR_MOLD:대한금형정공">⚙️ 금형 협력사 (대한금형)</option>
           <option value="VENDOR_MASS:(주)뉴몰드">🏭 양산 협력사 (뉴몰드)</option>
+          <option value="VENDOR_MASS:(주)한국정밀사출">🏭 양산 협력사 (한국정밀사출)</option>
+          <option value="VENDOR_MASS:세원사출(주)">🏭 양산 협력사 (세원사출)</option>
+          <option value="VENDOR_MASS:제일프라테크">🏭 양산 협력사 (제일프라테크)</option>
+          <option value="VENDOR_MASS:한일엔프라">🏭 양산 협력사 (한일엔프라)</option>
         </select>
         <ChevronDown className="h-3 w-3 text-zinc-400 absolute right-2 pointer-events-none" />
       </div>

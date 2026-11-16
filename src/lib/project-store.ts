@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { MOLD_VENDOR_LIST, MASS_VENDOR_LIST } from "./role-store";
 import { ProjectMaster, toKsxProject, fromKsxProject, MpsiProjectStepAttachment } from "@/types/ksx9101";
 
@@ -540,121 +540,6 @@ export function getStoredProjects(): ProjectItem[] {
     let parsed: ProjectItem[] = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
 
-    // 금형 시사출/이관 상태(mold-trial)와 ProjectMaster 단계(0~13단계) 자동 동기화
-    try {
-      const trialRaw = localStorage.getItem("mpsi_mold_trials_v4");
-      if (trialRaw) {
-        const trials = JSON.parse(trialRaw);
-        if (Array.isArray(trials)) {
-          let hasChange = false;
-          parsed = parsed.map((p) => {
-            const matchedTrial = trials.find((t: any) => t.projectNo === p.projectNo);
-            if (!matchedTrial) return p;
-
-            const allDocsVerified = matchedTrial.finalDocuments?.every((d: any) => Boolean(d.fileName) && d.isVerified);
-            const isApproved = matchedTrial.isMoldApproved || allDocsVerified || matchedTrial.currentTrial === "금형 승인";
-            const hasActualTransfer = Boolean(matchedTrial.transferActualDate);
-
-            // 금형 5대 서류 승인 및 이관 완료 상태인 경우 0~13단계 동기화
-            if (isApproved) {
-              const targetStep = hasActualTransfer ? 11 : 10;
-              const targetStatus = hasActualTransfer ? "진행중" : "완료";
-              if (p.currentStep < targetStep || (p.currentStep === 10 && hasActualTransfer)) {
-                hasChange = true;
-                return {
-                  ...p,
-                  currentStep: targetStep,
-                  stepStatus: targetStatus as any,
-                  trialCompletionRate: 100,
-                  notes: hasActualTransfer 
-                    ? `[우성정공(주) -> ${matchedTrial.massVendor || "(주)뉴몰드"}] 금형 이관 완료(${matchedTrial.transferActualDate}), Step 11(양산승인 사출/시양산) 진행중`
-                    : `[우성정공(주)] 금형 5대 승인서류 검증 완료 및 금형 이관 승인(Step 10 완료)`,
-                };
-              }
-            }
-            return p;
-          });
-
-          if (hasChange) {
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(parsed));
-          }
-        }
-      }
-    } catch (e) {}
-
-    // 양산성 검증 상태(mass-validation)와 ProjectMaster 단계(Step 12: 양산품질 검증 PPAP) 자동 동기화
-    try {
-      const valRaw = localStorage.getItem("mpsi_mass_validations_v4") || localStorage.getItem("mpsi_mass_validation_store_v1");
-      if (valRaw) {
-        const valProjects = JSON.parse(valRaw);
-        if (Array.isArray(valProjects)) {
-          let hasChange = false;
-          parsed = parsed.map((p) => {
-            const matchedVal = valProjects.find((v: any) => v.projectNo === p.projectNo);
-            if (!matchedVal) return p;
-
-            const isValApproved =
-              matchedVal.overallStatus === "검증완료" ||
-              matchedVal.trials?.some((tr: any) => tr.status === "양산승인(내부)");
-
-            if (isValApproved) {
-              if (p.currentStep < 12) {
-                hasChange = true;
-                return {
-                  ...p,
-                  currentStep: 12,
-                  stepStatus: "진행중" as any,
-                  notes: `[MPSI 품질팀] 6대 보고서 및 Cpk 검증 적합 판정 완료 -> Step 12(양산품질 검증 PPAP) 진행중`,
-                };
-              }
-            }
-            return p;
-          });
-
-          if (hasChange) {
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(parsed));
-          }
-        }
-      }
-    } catch (e) {}
-
-    // PPAP 양산 승인 상태(mass-ppap)와 ProjectMaster 단계(Step 13: 양산 승인/납품시작) 자동 동기화
-    try {
-      const ppapRaw = localStorage.getItem("mpsi_mass_ppap_store_v5") || localStorage.getItem("mpsi_mass_ppap_store_v4");
-      if (ppapRaw) {
-        const ppapProjects = JSON.parse(ppapRaw);
-        if (Array.isArray(ppapProjects)) {
-          let hasChange = false;
-          parsed = parsed.map((p) => {
-            const matchedPpap = ppapProjects.find((pp: any) => pp.projectNo === p.projectNo);
-            if (!matchedPpap) return p;
-
-            const isPpapApproved =
-              matchedPpap.ppapStatus === "승인완료" ||
-              matchedPpap.ppapStatus === "양산 승인 (Pass)" ||
-              matchedPpap.packageSubmissions?.some((sub: any) => sub.reviewStatus === "승인");
-
-            if (isPpapApproved) {
-              if (p.currentStep < 13) {
-                hasChange = true;
-                return {
-                  ...p,
-                  currentStep: 13,
-                  stepStatus: "완료" as any,
-                  notes: `[MPSI 전결] PPAP 양산승인 완료(PO: ${matchedPpap.partPoNo || "발행완료"}) -> Step 13(양산 납품시작) 승인`,
-                };
-              }
-            }
-            return p;
-          });
-
-          if (hasChange) {
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(parsed));
-          }
-        }
-      }
-    } catch (e) {}
-
     // [핵심] 견적 단계 번호(Q) 데이터 자동 보정: 신작(N001 등) 프로젝트의 견적번호가 MI...이거나 누락된 경우 실제 Q 채번값으로 보정
     try {
       let hasEstimateNoChange = false;
@@ -701,20 +586,6 @@ export function getStoredProjects(): ProjectItem[] {
           }
         }
 
-        // [요구사항] 품번 자동 보정: 비어있거나 누락된 경우 제품명에 따라 기초정보 품번 자동 매칭
-        let newPartNo = p.partNo;
-        if (!newPartNo && p.productName) {
-          if (p.productName.includes("Front Door")) newPartNo = "84710-NT500-LH";
-          else if (p.productName.includes("Rear Pillar")) newPartNo = "85840-NQ500";
-          else if (p.productName.includes("BMS") || p.productName.includes("Battery Case")) newPartNo = "37510-SPX00-BM";
-          else if (p.productName.includes("Battery Pack")) newPartNo = "37500-EV04-L";
-          else if (p.productName.includes("Armrest")) newPartNo = "82710-AA000";
-          else if (p.productName.includes("Console")) newPartNo = "84740-A2XT0-MB";
-          else if (p.productName.includes("Grille")) newPartNo = "86510-K7000";
-          else if (p.productName.includes("Crash Pad")) newPartNo = "84611-L0000";
-          if (newPartNo) modified = true;
-        }
-
         if (modified) {
           hasEstimateNoChange = true;
           return {
@@ -723,7 +594,6 @@ export function getStoredProjects(): ProjectItem[] {
             moldVendor: newMoldVendor,
             massVendor: newMassVendor,
             moldNo: newMoldNo,
-            partNo: newPartNo,
           };
         }
         return p;
@@ -1057,24 +927,38 @@ export function useProjectMaster() {
   const [projects, setProjects] = useState<ProjectItem[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
+  const refreshFromDb = useCallback(async () => {
+    if (typeof window === "undefined") return [];
+    setIsLoading(true);
+    try {
+      const res = await fetch("/api/v1/projects", { cache: "no-store" });
+      const json = await res.json();
+      if (json.success && Array.isArray(json.data)) {
+        saveProjectsToStorage(json.data);
+        setProjects(json.data);
+        return json.data as ProjectItem[];
+      }
+    } catch (err) {
+      console.error("Project DB fetch error:", err);
+    } finally {
+      setIsLoading(false);
+    }
+    const stored = getStoredProjects();
+    setProjects(stored);
+    return stored;
+  }, []);
+
   useEffect(() => {
-    // 1. 임시로 저장소 데이터 표시
-    setProjects(getStoredProjects());
+    // DB로부터 최신 프로젝트 목록 실시간 로드 및 동기화 (캐시 무시)
+    refreshFromDb();
 
-    // 2. DB로부터 최신 프로젝트 목록 실시간 로드 및 동기화
-    fetch("/api/v1/projects")
-      .then((res) => res.json())
-      .then((json) => {
-        if (json.success && Array.isArray(json.data)) {
-          saveProjectsToStorage(json.data);
-          setProjects(json.data);
-        }
-      })
-      .catch((err) => console.error("Project DB fetch error:", err))
-      .finally(() => setIsLoading(false));
-
-    const handleUpdate = () => {
-      setProjects(getStoredProjects());
+    const handleUpdate = (e?: Event) => {
+      const custom = e as CustomEvent | undefined;
+      if (custom?.detail && Array.isArray(custom.detail)) {
+        setProjects(custom.detail);
+      } else {
+        setProjects(getStoredProjects());
+      }
     };
 
     window.addEventListener(EVENT_NAME, handleUpdate);
@@ -1084,7 +968,7 @@ export function useProjectMaster() {
       window.removeEventListener(EVENT_NAME, handleUpdate);
       window.removeEventListener("storage", handleUpdate);
     };
-  }, []);
+  }, [refreshFromDb]);
 
   // 신규 등록
   const addProject = (newItem: Omit<ProjectItem, "id">) => {
@@ -1324,6 +1208,7 @@ export function useProjectMaster() {
     convertQuoteToOfficial,
     triggerProjectRevision,
     isLoading,
-    refresh: () => setProjects(getStoredProjects()),
+    refreshFromDb,
+    refresh: refreshFromDb,
   };
 }

@@ -1018,7 +1018,7 @@ export default function ProjectStatus13StepsPage() {
         massStartDate: formState.massStartDate || "",
         currentStep: 1, // 1단계(제품 data 접수)로 전환
         stepStatus: "진행중",
-        stepNameCustom: "제품 data 접수",
+        stepNameCustom: undefined,
         isContractConfirmed: true,
         isQuotePending: false,
         quotationStatus: "수주확정",
