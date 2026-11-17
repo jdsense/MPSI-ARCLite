@@ -924,7 +924,7 @@ async function callAnthropicEndpoint(
   };
   if (toolSpec) {
     reqBody.tools = [toolSpec];
-    reqBody.tool_choice = { type: "tool", name: toolSpec.name };
+    reqBody.system = `You MUST respond by calling the "${toolSpec.name}" tool with the structured result. Do not output plain text instead of calling the tool.`;
   }
 
   const res = await fetch(endpoint, {
