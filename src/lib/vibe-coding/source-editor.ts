@@ -1150,31 +1150,89 @@ function escapeControlCharsInJsonStrings(input: string): string {
   return out;
 }
 
+/** 문자열에서 최상위 중괄호 균형이 맞는 JSON 객체 후보들을 순서대로 추출 */
+function extractBalancedJsonObjects(input: string): string[] {
+  const results: string[] = [];
+  let inString = false;
+  let escaped = false;
+  let depth = 0;
+  let start = -1;
+
+  for (let i = 0; i < input.length; i++) {
+    const ch = input[i];
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+    if (ch === "\\" && inString) {
+      escaped = true;
+      continue;
+    }
+    if (ch === '"') {
+      inString = !inString;
+      continue;
+    }
+    if (inString) continue;
+    if (ch === "{") {
+      if (depth === 0) start = i;
+      depth++;
+    } else if (ch === "}" && depth > 0) {
+      depth--;
+      if (depth === 0 && start >= 0) {
+        results.push(input.slice(start, i + 1));
+        start = -1;
+      }
+    }
+  }
+  return results;
+}
+
+function tryParseJsonCandidate(slice: string): Record<string, unknown> | null {
+  for (const text of [slice, escapeControlCharsInJsonStrings(slice)]) {
+    try {
+      const parsed = JSON.parse(text);
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        return parsed as Record<string, unknown>;
+      }
+    } catch {
+      // try sanitized or next candidate
+    }
+  }
+  return null;
+}
+
 function extractJsonObject(raw: string): Record<string, unknown> {
-  let candidate = raw.trim();
-  if (!candidate) {
+  const trimmed = raw.trim();
+  if (!trimmed) {
     throw new Error("AI 모델이 빈 응답을 반환했습니다.");
   }
-  // 바깥쪽 마크다운 코드 펜스(```json ... ```)만 제거 (내부에 포함된 ``` 때문에 비탐욕 매칭으로 잘리는 문제 방지)
+
+  let candidate = trimmed;
   if (candidate.startsWith("```")) {
     candidate = candidate.replace(/^```(?:json)?\s*\r?\n?/i, "");
     if (candidate.endsWith("```")) {
       candidate = candidate.slice(0, -3).trim();
     }
   }
-  const first = candidate.indexOf("{");
-  const last = candidate.lastIndexOf("}");
-  const slice = first >= 0 && last > first ? candidate.slice(first, last + 1) : candidate;
-  try {
-    return JSON.parse(slice);
-  } catch (firstErr) {
-    const sanitized = escapeControlCharsInJsonStrings(slice);
-    try {
-      return JSON.parse(sanitized);
-    } catch {
-      throw firstErr;
+
+  // 1) 전체 문자열 또는 균형 잡힌 {...} 블록들을 순서대로 파싱 (뒤에 설명 텍스트가 붙어도 안전)
+  const candidates = extractBalancedJsonObjects(candidate);
+  let fallbackParsed: Record<string, unknown> | null = null;
+  for (const block of candidates) {
+    const parsed = tryParseJsonCandidate(block);
+    if (!parsed) continue;
+    if ("edits" in parsed || "reply" in parsed || "createPage" in parsed) {
+      return parsed;
     }
+    if (!fallbackParsed) fallbackParsed = parsed;
   }
+  if (fallbackParsed) return fallbackParsed;
+
+  const direct = tryParseJsonCandidate(candidate);
+  if (direct) return direct;
+
+  // 2) 모델이 JSON 스키마 대신 일반 텍스트로 답변한 경우 에러 대신 안내 메시지로 반환
+  return { reply: trimmed, edits: [] };
 }
 
 /** 대용량 페이지 소스에서 사용자 지시어 및 JSX 렌더링 영역만 핵심 추출 */
@@ -1248,6 +1306,59 @@ export function buildScreenRecognitionReply(
 3. **클릭으로 직접 선택**: 하단 **[🎯 요소 선택해서 문구 바꾸기]** 버튼을 누르고 화면의 원하는 글자를 클릭하세요.`;
 }
 
+/** 현재 프로젝트에 존재하는 /api/v1 GET 엔드포인트 및 주요 응답 필드 요약 */
+function buildAvailableApiContext(instruction: string): string {
+  const apiV1Dir = path.join(SRC_DIR, "app", "api", "v1");
+  if (!fs.existsSync(apiV1Dir)) return "";
+
+  const routes: { url: string; file: string }[] = [];
+  function walk(dir: string) {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        if (["vibe-coding", "admin", "auth", "sync"].includes(entry.name)) continue;
+        walk(full);
+      } else if (entry.name === "route.ts") {
+        const rel = path.relative(path.join(SRC_DIR, "app"), dir).replace(/\\/g, "/");
+        routes.push({ url: `/${rel}`, file: full });
+      }
+    }
+  }
+  walk(apiV1Dir);
+  if (routes.length === 0) return "";
+
+  const wantsData = /(데이터|데이타|실제|연동|api|db|조회|불러|가져|목록|현황|통계|대시보드|금형|양산|프로젝트)/i.test(instruction);
+  const lines: string[] = [
+    `[사용 가능한 실제 백엔드 GET API 목록 (반드시 상대 경로 fetch("/api/v1/...") 로 호출, 대부분 { success: true, data: [...] } 반환)]:`,
+    ...routes.map((r) => `- GET ${r.url}`),
+  ];
+
+  if (wantsData) {
+    // 지시어/대시보드와 연관도가 높은 주요 라우트 최대 5개의 반환 필드 발췌
+    const priorityMatchers = ["projects", "mold-dev/designs", "mold-dev/manufactures", "mold-dev/quotations", "mass-prod/ppap", "mass-prod/quotations", "mass-prod/validations"];
+    const picked = routes
+      .filter((r) => priorityMatchers.some((p) => r.url.endsWith(p)))
+      .slice(0, 5);
+    for (const r of picked) {
+      try {
+        const src = fs.readFileSync(r.file, "utf-8");
+        const getIdx = src.indexOf("export async function GET");
+        const slice = getIdx >= 0 ? src.slice(Math.max(0, getIdx - 400), getIdx + 2200) : src.slice(0, 1200);
+        const returnMatch = src.slice(getIdx >= 0 ? getIdx : 0).match(/return\s+NextResponse\.json\(\{[\s\S]{0,400}\}\)/);
+        lines.push(`\n[API 참고: GET ${r.url}]`);
+        if (returnMatch) lines.push(`반환 구조: ${returnMatch[0].replace(/\s+/g, " ")}`);
+        const keys = Array.from(new Set(Array.from(slice.matchAll(/\b([a-zA-Z][a-zA-Z0-9_]{2,28})\s*:/g)).map((m) => m[1])))
+          .filter((k) => !["success", "error", "status", "headers", "method", "type"].includes(k))
+          .slice(0, 24);
+        if (keys.length > 0) lines.push(`주요 필드 후보: ${keys.join(", ")}`);
+      } catch {
+        // ignore read failure
+      }
+    }
+  }
+  return lines.join("\n");
+}
+
 /** 설정된 AI 모델(Gemini 2.5 등)로 화면 인식 질문 답변 및 소스 코드 편집안 생성 */
 export async function proposeEditsWithLLM(
   instruction: string,
@@ -1316,6 +1427,8 @@ export async function proposeEditsWithLLM(
     }
   }
 
+  const apiContext = buildAvailableApiContext(instruction);
+
   const prompt = `당신은 MPSI SCM 포털의 실시간 화면 인식 및 Next.js(React/TSX) 풀스택 소스 코드 수정 에이전트(ARC-WIZARD)입니다.
 
 ${domSummary}
@@ -1345,6 +1458,7 @@ ${domSummary}
 
 [SIDEBAR (${sidebarRel} 메뉴 정의 발췌)]:
 ${sidebarExcerpt}
+${apiContext ? `\n${apiContext}\n` : ""}
 ${importedComponentBlocks.join("\n")}
 
 [SOURCE (${rel} 발췌)]:
