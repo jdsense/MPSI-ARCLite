@@ -917,16 +917,17 @@ async function callAnthropicEndpoint(
     },
     body: JSON.stringify({
       model: model || "claude-opus-5-5",
-      max_tokens: 4096,
+      max_tokens: 8192,
+      temperature: 0.1,
       messages: [{ role: "user", content }],
     }),
   });
 
+  const rawBody = await res.text().catch(() => "");
   if (!res.ok) {
-    const errText = await res.text().catch(() => "");
-    let cleanMsg = errText.replace(/\s+/g, " ").slice(0, 240);
+    let cleanMsg = rawBody.replace(/\s+/g, " ").slice(0, 240);
     try {
-      const parsedErr = JSON.parse(errText);
+      const parsedErr = JSON.parse(rawBody);
       if (parsedErr?.error?.message) cleanMsg = String(parsedErr.error.message);
     } catch {
       // keep cleanMsg
@@ -934,12 +935,27 @@ async function callAnthropicEndpoint(
     throw new Error(`Anthropic HTTP ${res.status}: ${cleanMsg}`);
   }
 
-  const json = await res.json();
+  if (!rawBody.trim()) {
+    throw new Error("Anthropic API가 빈 응답 본문을 반환했습니다.");
+  }
+
+  let json: any;
+  try {
+    json = JSON.parse(rawBody);
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e);
+    throw new Error(`Anthropic API 응답 JSON 파싱 실패: ${msg}`);
+  }
+
   const replyText =
     json.content
       ?.filter((part: any) => part.type === "text")
       ?.map((part: any) => part.text)
       ?.join("\n") || "";
+
+  if (!replyText.trim()) {
+    throw new Error(`Anthropic 응답에 텍스트가 비어 있습니다 (stop_reason: ${json.stop_reason || "unknown"}).`);
+  }
 
   const usage = json.usage || {};
   recordAiUsage(
@@ -1077,16 +1093,63 @@ export async function testAiConnection(): Promise<{ ok: boolean; endpoint: strin
   return { ok: true, endpoint: usedEndpoint, model: cfg.model, reply: text.slice(0, 200) };
 }
 
+/** JSON 문자열 리터럴 내부의 이스케이프되지 않은 제어문자(\n, \r, \t)를 안전하게 이스케이프 */
+function escapeControlCharsInJsonStrings(input: string): string {
+  let out = "";
+  let inString = false;
+  let escaped = false;
+  for (let i = 0; i < input.length; i++) {
+    const ch = input[i];
+    if (escaped) {
+      out += ch;
+      escaped = false;
+      continue;
+    }
+    if (ch === "\\" && inString) {
+      out += ch;
+      escaped = true;
+      continue;
+    }
+    if (ch === '"') {
+      inString = !inString;
+      out += ch;
+      continue;
+    }
+    if (inString) {
+      if (ch === "\n") { out += "\\n"; continue; }
+      if (ch === "\r") { out += "\\r"; continue; }
+      if (ch === "\t") { out += "\\t"; continue; }
+    }
+    out += ch;
+  }
+  return out;
+}
+
 function extractJsonObject(raw: string): Record<string, unknown> {
-  const trimmed = raw.trim();
-  const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/i);
-  const candidate = fenced ? fenced[1].trim() : trimmed;
+  let candidate = raw.trim();
+  if (!candidate) {
+    throw new Error("AI 모델이 빈 응답을 반환했습니다.");
+  }
+  // 바깥쪽 마크다운 코드 펜스(```json ... ```)만 제거 (내부에 포함된 ``` 때문에 비탐욕 매칭으로 잘리는 문제 방지)
+  if (candidate.startsWith("```")) {
+    candidate = candidate.replace(/^```(?:json)?\s*\r?\n?/i, "");
+    if (candidate.endsWith("```")) {
+      candidate = candidate.slice(0, -3).trim();
+    }
+  }
   const first = candidate.indexOf("{");
   const last = candidate.lastIndexOf("}");
-  if (first >= 0 && last > first) {
-    return JSON.parse(candidate.slice(first, last + 1));
+  const slice = first >= 0 && last > first ? candidate.slice(first, last + 1) : candidate;
+  try {
+    return JSON.parse(slice);
+  } catch (firstErr) {
+    const sanitized = escapeControlCharsInJsonStrings(slice);
+    try {
+      return JSON.parse(sanitized);
+    } catch {
+      throw firstErr;
+    }
   }
-  return JSON.parse(candidate);
 }
 
 /** 대용량 페이지 소스에서 사용자 지시어 및 JSX 렌더링 영역만 핵심 추출 */
@@ -1246,7 +1309,7 @@ ${domSummary}
    (주의: 화면 내 버튼 추가, 필터 추가, 컬럼 추가, 문구 변경 요청에는 절대 "createPage"를 넣지 마세요!)
 3. 사용자가 현재 화면(${rel}), 하위 컴포넌트(예: DateRangeFilter 등), 또는 사이드바(${sidebarRel})의 문구, 라벨, 버튼 추가/수정, 스타일(className), JSX 구조 등 소스 코드 수정을 요청한 경우:
    - "edits" 배열에 { "file": "${rel}" (또는 실제 해당 코드가 위치한 "src/components/..." 경로), "search": "파일에 실제 존재하는 정확한 원본 코드/문구", "replace": "수정할 새 코드/문구" } 를 넣으세요.
-4. 반드시 아래 JSON 스키마로만 응답하세요:
+4. 반드시 유효한 JSON 객체만 응답하세요 (코드 펜스 없이 순수 JSON 권장). 문자열 내부의 줄바꿈(\n), 큰따옴표(\"), 역슬래시(\\)는 반드시 JSON 규칙에 맞게 이스케이프하세요:
 {
   "reply": "사용자에게 보여줄 설명 또는 수정 내역 요약 (한국어)",
   "createPage": null,
