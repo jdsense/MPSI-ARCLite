@@ -882,12 +882,19 @@ async function callOpenAiCompatible(
   return replyText;
 }
 
+export interface AnthropicToolSpec {
+  name: string;
+  description: string;
+  input_schema: Record<string, unknown>;
+}
+
 async function callAnthropicEndpoint(
   apiKey: string,
   model: string,
   prompt: string,
   imageDataUrl?: string,
-  baseUrl?: string
+  baseUrl?: string,
+  toolSpec?: AnthropicToolSpec
 ): Promise<string> {
   const image = parseDataUrl(imageDataUrl);
   const content: unknown[] = [];
@@ -908,6 +915,18 @@ async function callAnthropicEndpoint(
     ? (cleanBase.endsWith("/messages") ? cleanBase : `${cleanBase}/messages`)
     : "https://api.anthropic.com/v1/messages";
 
+  const targetModel = model || "claude-opus-5-5";
+  const maxTokens = targetModel.includes("claude-3-") ? 8192 : 16384;
+  const reqBody: Record<string, unknown> = {
+    model: targetModel,
+    max_tokens: maxTokens,
+    messages: [{ role: "user", content }],
+  };
+  if (toolSpec) {
+    reqBody.tools = [toolSpec];
+    reqBody.tool_choice = { type: "tool", name: toolSpec.name };
+  }
+
   const res = await fetch(endpoint, {
     method: "POST",
     headers: {
@@ -915,11 +934,7 @@ async function callAnthropicEndpoint(
       "x-api-key": apiKey,
       "anthropic-version": "2026-10-21",
     },
-    body: JSON.stringify({
-      model: model || "claude-opus-5-5",
-      max_tokens: 8192,
-      messages: [{ role: "user", content }],
-    }),
+    body: JSON.stringify(reqBody),
   });
 
   const rawBody = await res.text().catch(() => "");
@@ -946,11 +961,17 @@ async function callAnthropicEndpoint(
     throw new Error(`Anthropic API 응답 JSON 파싱 실패: ${msg}`);
   }
 
-  const replyText =
-    json.content
-      ?.filter((part: any) => part.type === "text")
-      ?.map((part: any) => part.text)
-      ?.join("\n") || "";
+  if (json.stop_reason === "max_tokens") {
+    throw new Error(`AI 응답이 최대 출력 토큰(${maxTokens})을 초과해 중간에 잘렸습니다. 요청을 더 작은 단위로 나누어 지시해 주세요.`);
+  }
+
+  const toolBlock = json.content?.find((part: any) => part.type === "tool_use");
+  const replyText = toolBlock && toolBlock.input && typeof toolBlock.input === "object"
+    ? JSON.stringify(toolBlock.input)
+    : json.content
+        ?.filter((part: any) => part.type === "text")
+        ?.map((part: any) => part.text)
+        ?.join("\n") || "";
 
   if (!replyText.trim()) {
     throw new Error(`Anthropic 응답에 텍스트가 비어 있습니다 (stop_reason: ${json.stop_reason || "unknown"}).`);
@@ -960,7 +981,7 @@ async function callAnthropicEndpoint(
   recordAiUsage(
     Number(usage.input_tokens || Math.ceil(prompt.length / 3)),
     Number(usage.output_tokens || Math.ceil(replyText.length / 3)),
-    model
+    targetModel
   );
   return replyText;
 }
@@ -974,7 +995,12 @@ export interface ScreenSnapshot {
   tableRowCount?: number;
 }
 
-export async function callAiModel(prompt: string, imageDataUrl?: string, jsonMode = true): Promise<{ text: string; usedEndpoint: string }> {
+export async function callAiModel(
+  prompt: string,
+  imageDataUrl?: string,
+  jsonMode = true,
+  anthropicTool?: AnthropicToolSpec
+): Promise<{ text: string; usedEndpoint: string }> {
   const cfg = getAiConfig();
   if (!cfg.apiKey) throw new Error("API 키가 설정되어 있지 않습니다. ⚙️ AI 설정에서 키를 입력해 주세요.");
   const primaryModel = normalizeModelName(cfg.model);
@@ -983,7 +1009,7 @@ export async function callAiModel(prompt: string, imageDataUrl?: string, jsonMod
   // 1) Anthropic Claude (provider가 anthropic이거나 키가 sk-ant-로 시작하거나 모델이 claude인 경우 직결)
   if (cfg.provider === "anthropic" || cfg.apiKey.startsWith("sk-ant-") || primaryModel.toLowerCase().startsWith("claude")) {
     const targetModel = primaryModel.toLowerCase().startsWith("claude") ? primaryModel : "claude-opus-5-5";
-    const text = await callAnthropicEndpoint(cfg.apiKey, targetModel, prompt, imageDataUrl, cfg.baseUrl);
+    const text = await callAnthropicEndpoint(cfg.apiKey, targetModel, prompt, imageDataUrl, cfg.baseUrl, anthropicTool);
     return { text, usedEndpoint: `Anthropic Claude (${targetModel})` };
   }
 
@@ -1324,8 +1350,40 @@ ${importedComponentBlocks.join("\n")}
 [SOURCE (${rel} 발췌)]:
 ${excerpt}`;
 
+  const proposeEditsTool: AnthropicToolSpec = {
+    name: "propose_edits",
+    description: "화면 소스 코드 수정안(edits), 신규 페이지 생성(createPage), 사용자 답변(reply)을 구조화된 JSON으로 반환합니다.",
+    input_schema: {
+      type: "object",
+      properties: {
+        reply: { type: "string", description: "사용자에게 보여줄 설명 또는 수정 내역 요약 (한국어)" },
+        createPage: {
+          type: "object",
+          properties: {
+            parentMenu: { type: "string" },
+            pageTitle: { type: "string" },
+            slug: { type: "string" },
+          },
+        },
+        edits: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              file: { type: "string" },
+              search: { type: "string" },
+              replace: { type: "string" },
+            },
+            required: ["file", "search", "replace"],
+          },
+        },
+      },
+      required: ["reply", "edits"],
+    },
+  };
+
   try {
-    const { text, usedEndpoint } = await callAiModel(prompt, imageDataUrl, true);
+    const { text, usedEndpoint } = await callAiModel(prompt, imageDataUrl, true, proposeEditsTool);
     const parsed = extractJsonObject(text);
 
     // AI가 신규 페이지 생성을 결정한 경우 즉시 실행
